@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react'
+import { useFileWatcher } from './hooks/useIpc'
+import { useOmo } from './hooks/useOmo'
 import TitleBar from './components/TitleBar'
 import ActivityBar, { type PanelView } from './components/ActivityBar'
 import Resizer from './components/Resizer'
@@ -31,6 +33,9 @@ export default function App() {
   const handleBottomResize = useCallback((delta: number) => {
     setBottomPanelHeight((h) => Math.max(100, h - delta))
   }, [])
+
+  useFileWatcher()
+  useOmo()
 
   return (
     <div className="h-screen flex flex-col">
