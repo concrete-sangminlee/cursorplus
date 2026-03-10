@@ -12,18 +12,15 @@ const terminals = new Map<string, PtyProcess>()
 
 function detectShell(): string {
   if (process.platform === 'win32') {
-    return process.env.COMSPEC || 'powershell.exe'
+    return 'powershell.exe'
   }
   return process.env.SHELL || '/bin/bash'
 }
 
 function loadNodePty() {
-  // node-pty must be loaded via require() as a native module
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   try {
     return require('node-pty')
   } catch {
-    // Fallback: try from node_modules directly
     const modulePath = path.join(process.cwd(), 'node_modules', 'node-pty')
     return require(modulePath)
   }
@@ -32,20 +29,27 @@ function loadNodePty() {
 export async function createTerminal(
   id: string,
   onData: (data: string) => void
-): Promise<void> {
-  const pty = loadNodePty()
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const pty = loadNodePty()
 
-  const shell = detectShell()
-  const term = pty.spawn(shell, [], {
-    name: 'xterm-256color',
-    cols: 80,
-    rows: 24,
-    cwd: os.homedir(),
-    env: process.env as Record<string, string>,
-  })
+    const shell = detectShell()
+    const term = pty.spawn(shell, [], {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd: os.homedir(),
+      env: process.env as Record<string, string>,
+      useConpty: false, // Use winpty on Windows to avoid ConPTY AttachConsole errors
+    })
 
-  term.onData(onData)
-  terminals.set(id, term)
+    term.onData(onData)
+    terminals.set(id, term)
+    return { success: true }
+  } catch (err: any) {
+    console.error('Failed to create terminal:', err.message)
+    return { success: false, error: err.message }
+  }
 }
 
 export function writeToTerminal(id: string, data: string) {

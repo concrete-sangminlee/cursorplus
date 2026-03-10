@@ -4,7 +4,7 @@ import { createTerminal, writeToTerminal, resizeTerminal, killTerminal } from '.
 
 export function registerTerminalHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
   ipcMain.handle(IPC.TERM_CREATE, async (_event, id: string) => {
-    await createTerminal(id, (data) => {
+    return await createTerminal(id, (data) => {
       getWindow()?.webContents.send(IPC.TERM_DATA, id, data)
     })
   })

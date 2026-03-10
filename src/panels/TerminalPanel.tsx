@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
@@ -10,10 +10,13 @@ export default function TerminalPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const { sessions, activeSessionId, addSession } = useTerminalStore()
+  const initRef = useRef(false)
+  const [error, setError] = useState<string | null>(null)
+  const { addSession } = useTerminalStore()
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current || initRef.current) return
+    initRef.current = true
 
     const term = new Terminal({
       theme: {
@@ -45,20 +48,30 @@ export default function TerminalPanel() {
     termRef.current = term
     fitRef.current = fit
 
-    // Create a session if none exists
     const sessionId = uuid()
     addSession({ id: sessionId, name: 'Terminal', type: 'shell' })
 
-    window.api.termCreate(sessionId).then(() => {
+    window.api.termCreate(sessionId).then((result: any) => {
+      if (result && !result.success) {
+        setError(result.error || 'Failed to create terminal')
+        term.writeln('\x1b[31mTerminal failed to start: ' + (result.error || 'Unknown error') + '\x1b[0m')
+        term.writeln('\x1b[33mThis is a known issue with node-pty on some Windows configurations.\x1b[0m')
+        return
+      }
       term.onData((data) => window.api.termWrite(sessionId, data))
       term.onResize(({ cols, rows }) => window.api.termResize(sessionId, cols, rows))
+    }).catch((err: any) => {
+      setError(err.message)
+      term.writeln('\x1b[31mTerminal error: ' + err.message + '\x1b[0m')
     })
 
-    const cleanup = window.api.onTermData((id, data) => {
+    const cleanup = window.api.onTermData((id: string, data: string) => {
       if (id === sessionId) term.write(data)
     })
 
-    const resizeObserver = new ResizeObserver(() => fit.fit())
+    const resizeObserver = new ResizeObserver(() => {
+      try { fit.fit() } catch {}
+    })
     resizeObserver.observe(containerRef.current)
 
     return () => {
