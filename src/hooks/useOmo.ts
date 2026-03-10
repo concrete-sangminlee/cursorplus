@@ -11,6 +11,9 @@ export function useOmo() {
   const { markAiModified } = useEditorStore()
 
   useEffect(() => {
+    // Auto-start OMO bridge on mount
+    window.api.omoStart(process.cwd?.() || '.')
+
     const cleanup = window.api.onOmoMessage((raw: any) => {
       const event = raw as { type: string; payload: any }
 

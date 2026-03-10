@@ -1,4 +1,5 @@
 import os from 'os'
+import path from 'path'
 
 interface PtyProcess {
   onData: (callback: (data: string) => void) => void
@@ -16,11 +17,23 @@ function detectShell(): string {
   return process.env.SHELL || '/bin/bash'
 }
 
+function loadNodePty() {
+  // node-pty must be loaded via require() as a native module
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  try {
+    return require('node-pty')
+  } catch {
+    // Fallback: try from node_modules directly
+    const modulePath = path.join(process.cwd(), 'node_modules', 'node-pty')
+    return require(modulePath)
+  }
+}
+
 export async function createTerminal(
   id: string,
   onData: (data: string) => void
 ): Promise<void> {
-  const pty = await import('node-pty')
+  const pty = loadNodePty()
 
   const shell = detectShell()
   const term = pty.spawn(shell, [], {
