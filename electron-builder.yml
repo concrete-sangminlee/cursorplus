@@ -1,0 +1,19 @@
+appId: com.cursorplus.app
+productName: CursorPlus
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist-electron
+  - dist
+npmRebuild: true
+publish:
+  provider: github
+  owner: concrete-sangminlee
+  repo: cursorplus
+win:
+  target: nsis
+mac:
+  target: dmg
+linux:
+  target: AppImage
