@@ -3058,62 +3058,197 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
-        {/* Context badge */}
+        {/* Context indicators panel */}
         {activeFile && (
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 12px',
-              fontSize: 11,
-              color: 'var(--text-muted)',
               borderBottom: '1px solid var(--border)',
               marginBottom: 6,
+              padding: '6px 12px',
+              background: 'rgba(255,255,255,0.01)',
             }}
           >
-            <FileCode size={12} />
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Context: {contextSummary || activeFile.name}
-              {selectionText && (
-                <span style={{ color: 'var(--accent-purple)', marginLeft: 4 }}>
-                  (selection)
-                </span>
-              )}
-            </span>
-            {codeContext && codeContext.relatedFiles.length > 0 && (
-              <span
-                style={{
-                  fontSize: 9,
-                  padding: '1px 5px',
-                  borderRadius: 3,
-                  background: 'rgba(63,185,80,0.1)',
-                  color: '#3fb950',
-                  border: '1px solid rgba(63,185,80,0.2)',
-                  whiteSpace: 'nowrap',
-                }}
-                title={codeContext.relatedFiles.map((f) => f.name).join(', ')}
-              >
-                {codeContext.relatedFiles.length} import{codeContext.relatedFiles.length > 1 ? 's' : ''}
-              </span>
-            )}
-            <button
-              onClick={() => setIncludeContext(!includeContext)}
+            {/* Top row: context summary */}
+            <div
               style={{
-                fontSize: 10,
-                padding: '1px 8px',
-                borderRadius: 4,
-                border: '1px solid',
-                borderColor: includeContext ? 'var(--accent)' : 'var(--border)',
-                background: includeContext ? 'rgba(88,166,255,0.1)' : 'transparent',
-                color: includeContext ? 'var(--accent)' : 'var(--text-muted)',
-                cursor: 'pointer',
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                marginBottom: 4,
               }}
             >
-              {includeContext ? 'Attached' : 'Detached'}
-            </button>
+              <FileCode size={12} />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Context: {contextSummary || activeFile.name}
+              </span>
+
+              {/* Token count estimate for context */}
+              {includeContext && activeFile.content && (
+                <span
+                  style={{
+                    fontSize: 9,
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono, monospace)',
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Estimated tokens in context"
+                >
+                  ~{Math.ceil((activeFile.content?.length || 0) / 4).toLocaleString()} ctx tokens
+                </span>
+              )}
+
+              {codeContext && codeContext.relatedFiles.length > 0 && (
+                <span
+                  style={{
+                    fontSize: 9,
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    background: 'rgba(63,185,80,0.1)',
+                    color: '#3fb950',
+                    border: '1px solid rgba(63,185,80,0.2)',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={codeContext.relatedFiles.map((f) => f.name).join(', ')}
+                >
+                  {codeContext.relatedFiles.length} import{codeContext.relatedFiles.length > 1 ? 's' : ''}
+                </span>
+              )}
+              <button
+                onClick={() => setIncludeContext(!includeContext)}
+                style={{
+                  fontSize: 10,
+                  padding: '1px 8px',
+                  borderRadius: 4,
+                  border: '1px solid',
+                  borderColor: includeContext ? 'var(--accent)' : 'var(--border)',
+                  background: includeContext ? 'rgba(88,166,255,0.1)' : 'transparent',
+                  color: includeContext ? 'var(--accent)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {includeContext ? 'Attached' : 'Detached'}
+              </button>
+            </div>
+
+            {/* File chips row: show files in context */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+              {/* Active file chip */}
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  fontSize: 9,
+                  padding: '1px 6px',
+                  borderRadius: 10,
+                  background: 'rgba(88,166,255,0.1)',
+                  color: 'var(--accent)',
+                  border: '1px solid rgba(88,166,255,0.2)',
+                }}
+              >
+                <FileCode size={8} />
+                {activeFile.name}
+                <Star size={7} style={{ opacity: 0.6 }} title="Active file" />
+              </span>
+
+              {/* Selection indicator */}
+              {selectionText && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    fontSize: 9,
+                    padding: '1px 6px',
+                    borderRadius: 10,
+                    background: 'rgba(188,140,255,0.1)',
+                    color: 'var(--accent-purple)',
+                    border: '1px solid rgba(188,140,255,0.2)',
+                  }}
+                >
+                  <TextCursorInput size={8} />
+                  Selection ({selectionText.split('\n').length} lines)
+                  <button
+                    onClick={() => setSelectionText(null)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--accent-purple)',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <X size={8} />
+                  </button>
+                </span>
+              )}
+
+              {/* Related file chips from imports */}
+              {codeContext?.relatedFiles.slice(0, 4).map((f) => (
+                <span
+                  key={f.path}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    fontSize: 9,
+                    padding: '1px 6px',
+                    borderRadius: 10,
+                    background: 'rgba(63,185,80,0.06)',
+                    color: '#3fb950',
+                    border: '1px solid rgba(63,185,80,0.15)',
+                    opacity: 0.8,
+                  }}
+                  title={f.path}
+                >
+                  <FileCode size={8} />
+                  {f.name}
+                </span>
+              ))}
+
+              {/* Add file to context button */}
+              <button
+                onClick={() => {
+                  setShowMentionDropdown(true)
+                  setMentionQuery('')
+                  setTimeout(() => textareaRef.current?.focus(), 0)
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  fontSize: 9,
+                  padding: '1px 6px',
+                  borderRadius: 10,
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  border: '1px dashed var(--border)',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--accent)'
+                  e.currentTarget.style.color = 'var(--accent)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border)'
+                  e.currentTarget.style.color = 'var(--text-muted)'
+                }}
+                title="Add file to context"
+              >
+                <Plus size={8} />
+                Add file
+              </button>
+            </div>
           </div>
         )}
 
@@ -3459,6 +3594,8 @@ export default function ChatPanel() {
                 models={allModels}
                 selectedModel={selectedModel}
                 onSelect={setModel}
+                customEndpoint={customEndpoint}
+                onCustomEndpointChange={setCustomEndpoint}
               />
               {/* Stop generation button (visible while streaming) */}
               {isStreaming ? (

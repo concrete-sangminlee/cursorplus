@@ -1300,6 +1300,242 @@ export default function SourceControlPanel() {
           flexShrink: 0,
         }}
       >
+        {/* Conventional commits & templates toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, position: 'relative' }}>
+          {/* Conventional commit type dropdown */}
+          <div ref={commitTypesRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => { setShowCommitTypes(!showCommitTypes); setShowTemplates(false) }}
+              title="Conventional commit type"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '3px 8px',
+                fontSize: 10,
+                fontWeight: 600,
+                background: 'var(--bg-tertiary, #2d333b)',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+              className="source-control-action-btn"
+            >
+              <List size={11} />
+              Type
+              <ChevronDown size={9} />
+            </button>
+            {showCommitTypes && (
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                top: '100%',
+                marginTop: 2,
+                width: 200,
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                zIndex: 60,
+                padding: 4,
+              }}>
+                {CONVENTIONAL_COMMIT_TYPES.map(ct => (
+                  <div
+                    key={ct.type}
+                    onClick={() => handleConventionalCommitType(ct.type)}
+                    className="source-control-file-item"
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      borderRadius: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <span style={{
+                      fontWeight: 700,
+                      color: ct.color,
+                      fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace)',
+                      fontSize: 10,
+                      minWidth: 55,
+                    }}>
+                      {ct.label}
+                    </span>
+                    <span style={{ color: 'var(--text-disabled, #545d68)', fontSize: 10 }}>
+                      {ct.description}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Templates dropdown */}
+          <div ref={templatesRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => { setShowTemplates(!showTemplates); setShowCommitTypes(false) }}
+              title="Saved commit templates"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '3px 8px',
+                fontSize: 10,
+                fontWeight: 600,
+                background: 'var(--bg-tertiary, #2d333b)',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+              className="source-control-action-btn"
+            >
+              <Bookmark size={11} />
+              Templates
+              {savedTemplates.length > 0 && (
+                <span style={{
+                  background: 'var(--accent-blue, #388bfd)',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '0 4px',
+                  fontSize: 9,
+                  lineHeight: '14px',
+                  fontWeight: 700,
+                }}>
+                  {savedTemplates.length}
+                </span>
+              )}
+            </button>
+            {showTemplates && (
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                top: '100%',
+                marginTop: 2,
+                width: 240,
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                zIndex: 60,
+                padding: 4,
+              }}>
+                {savedTemplates.length === 0 ? (
+                  <div style={{ padding: '8px', fontSize: 11, color: 'var(--text-disabled, #545d68)', textAlign: 'center' }}>
+                    No saved templates
+                  </div>
+                ) : (
+                  savedTemplates.map(t => (
+                    <div
+                      key={t.id}
+                      className="source-control-file-item"
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        borderRadius: 3,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span
+                        style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        onClick={() => handleApplyTemplate(t.template)}
+                        title={t.template}
+                      >
+                        <span style={{ fontWeight: 600 }}>{t.name}</span>
+                        <span style={{ opacity: 0.5, marginLeft: 4, fontSize: 10 }}>{t.template.substring(0, 30)}</span>
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id) }}
+                        title="Delete template"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 2,
+                          color: 'var(--text-disabled, #545d68)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexShrink: 0,
+                        }}
+                        className="source-control-action-btn"
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))
+                )}
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: 2, paddingTop: 2 }}>
+                  {!showSaveTemplate ? (
+                    <div
+                      onClick={() => { if (commitMessage.trim()) setShowSaveTemplate(true); else addToast({ type: 'info', message: 'Write a commit message first' }) }}
+                      className="source-control-file-item"
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        borderRadius: 3,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        color: 'var(--accent-blue, #388bfd)',
+                      }}
+                    >
+                      <BookmarkPlus size={12} />
+                      Save current as template
+                    </div>
+                  ) : (
+                    <div style={{ padding: '4px', display: 'flex', gap: 4 }}>
+                      <input
+                        autoFocus
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveTemplate()
+                          if (e.key === 'Escape') { setShowSaveTemplate(false); setTemplateName('') }
+                        }}
+                        placeholder="Template name..."
+                        style={{
+                          flex: 1,
+                          padding: '3px 6px',
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 3,
+                          color: 'var(--text-primary)',
+                          fontSize: 10,
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        onClick={handleSaveTemplate}
+                        style={{
+                          padding: '3px 6px',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          background: 'var(--accent-blue, #388bfd)',
+                          border: 'none',
+                          borderRadius: 3,
+                          color: '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <span style={{ flex: 1 }} />
+        </div>
+
         <div style={{ position: 'relative' }}>
           <textarea
             value={commitMessage}
@@ -1441,6 +1677,32 @@ export default function SourceControlPanel() {
             {changesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <span style={{ marginLeft: 4 }}>Changes</span>
             <span style={{ flex: 1 }} />
+            {/* Stage checked button */}
+            {selectedFileChecks.size > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleStageChecked() }}
+                title={`Stage ${selectedFileChecks.size} selected`}
+                style={{
+                  background: 'rgba(63, 185, 80, 0.15)',
+                  border: '1px solid rgba(63, 185, 80, 0.3)',
+                  cursor: 'pointer',
+                  padding: '1px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 3,
+                  color: '#3fb950',
+                  marginRight: 4,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  gap: 3,
+                }}
+                className="source-control-action-btn"
+              >
+                <CheckSquare size={11} />
+                Stage {selectedFileChecks.size}
+              </button>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); handleStageAll() }}
               title="Stage All"
@@ -1960,13 +2222,14 @@ export default function SourceControlPanel() {
                     borderBottom: !isLast ? '1px solid rgba(255,255,255,0.03)' : 'none',
                   }}
                 >
-                  {/* Hash pill + Message row */}
+                  {/* Hash pill + Tags + Branch labels + Message row */}
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 6,
+                      gap: 4,
                       marginBottom: 3,
+                      flexWrap: 'wrap',
                     }}
                   >
                     <span
@@ -1985,6 +2248,51 @@ export default function SourceControlPanel() {
                     >
                       {entry.hash}
                     </span>
+                    {/* Tags on this commit */}
+                    {tags.filter(t => t.hash.startsWith(entry.hash) || (entry.fullHash && t.hash.startsWith(entry.fullHash?.substring(0, 7)))).map(t => (
+                      <span
+                        key={t.name}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: '#d29922',
+                          background: 'rgba(210, 153, 34, 0.12)',
+                          padding: '1px 6px',
+                          borderRadius: 8,
+                          border: '1px solid rgba(210, 153, 34, 0.25)',
+                          flexShrink: 0,
+                        }}
+                        title={`Tag: ${t.name}`}
+                      >
+                        <Tag size={8} />
+                        {t.name}
+                      </span>
+                    ))}
+                    {/* Branch label if this is HEAD */}
+                    {idx === 0 && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: getBranchColor(branch),
+                          background: `${getBranchColor(branch)}18`,
+                          padding: '1px 6px',
+                          borderRadius: 8,
+                          border: `1px solid ${getBranchColor(branch)}40`,
+                          flexShrink: 0,
+                        }}
+                        title={`HEAD -> ${branch}`}
+                      >
+                        <GitBranch size={8} />
+                        {branch}
+                      </span>
+                    )}
                     <span
                       style={{
                         fontSize: 12,
@@ -1994,11 +2302,36 @@ export default function SourceControlPanel() {
                         whiteSpace: 'nowrap',
                         flex: 1,
                         fontWeight: 500,
+                        minWidth: 0,
                       }}
                       title={entry.message}
                     >
                       {entry.message}
                     </span>
+                    {/* Cherry-pick action */}
+                    {idx > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCherryPick(entry.fullHash || entry.hash) }}
+                        title="Cherry-pick this commit"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: 3,
+                          color: 'var(--text-disabled, #545d68)',
+                          flexShrink: 0,
+                          opacity: 0,
+                          transition: 'opacity 0.15s',
+                        }}
+                        className="source-control-action-btn source-control-cherry-pick"
+                      >
+                        <Copy size={11} />
+                      </button>
+                    )}
                   </div>
 
                   {/* Author avatar + name + Date row */}
@@ -2377,6 +2710,92 @@ export default function SourceControlPanel() {
           </span>
         )}
 
+        {/* Merge branch button */}
+        <div ref={mergePickerRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => { setShowMergePicker(!showMergePicker); if (!showMergePicker) fetchBranches() }}
+            title="Merge Branch"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 2,
+              borderRadius: 3,
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            className="source-control-action-btn"
+          >
+            <GitMerge size={12} />
+          </button>
+          {showMergePicker && (
+            <div style={{
+              position: 'absolute',
+              right: 0,
+              top: '100%',
+              marginTop: 4,
+              width: 200,
+              maxHeight: 200,
+              overflowY: 'auto',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+              zIndex: 55,
+              padding: 4,
+            }}>
+              <div style={{ padding: '3px 8px', fontSize: 10, fontWeight: 600, color: 'var(--text-disabled, #545d68)', textTransform: 'uppercase' }}>
+                Merge into {branch}
+              </div>
+              {branches.filter(b => !b.current).map(b => (
+                <div
+                  key={b.name}
+                  onClick={() => handleMergeBranch(b.name)}
+                  className="source-control-file-item"
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    borderRadius: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <GitMerge size={11} style={{ opacity: 0.6, color: getBranchColor(b.name) }} />
+                  {b.name}
+                </div>
+              ))}
+              {branches.filter(b => !b.current).length === 0 && (
+                <div style={{ padding: '6px 8px', fontSize: 11, color: 'var(--text-disabled)' }}>No other branches</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Rebase indicator */}
+        {isRebasing && (
+          <span
+            title="Rebase in progress"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: 10,
+              fontWeight: 600,
+              color: '#d29922',
+              background: 'rgba(210, 153, 34, 0.15)',
+              padding: '1px 6px',
+              borderRadius: 8,
+              border: '1px solid rgba(210, 153, 34, 0.3)',
+            }}
+          >
+            <RotateCw size={9} />
+            REBASE
+          </span>
+        )}
+
         {/* Branch picker dropdown */}
         {showBranchPicker && (
           <div style={{
@@ -2384,7 +2803,7 @@ export default function SourceControlPanel() {
             left: 12,
             right: 12,
             top: '100%',
-            maxHeight: 200,
+            maxHeight: 250,
             overflowY: 'auto',
             background: 'var(--bg-secondary)',
             border: '1px solid var(--border)',
@@ -2396,7 +2815,6 @@ export default function SourceControlPanel() {
             {branches.map((b) => (
               <div
                 key={b.name}
-                onClick={() => handleSwitchBranch(b.name)}
                 className="source-control-file-item"
                 style={{
                   padding: '5px 10px',
@@ -2410,9 +2828,77 @@ export default function SourceControlPanel() {
                   fontWeight: b.current ? 600 : 400,
                 }}
               >
-                <GitBranch size={12} style={{ opacity: 0.6 }} />
-                {b.name}
-                {b.current && <Check size={12} style={{ marginLeft: 'auto', color: 'var(--accent-green, #3fb950)' }} />}
+                <GitBranch size={12} style={{ color: getBranchColor(b.name), opacity: 0.8 }} />
+                {/* Color-coded branch label */}
+                <span
+                  onClick={() => handleSwitchBranch(b.name)}
+                  style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {b.name}
+                </span>
+                {b.current && <Check size={12} style={{ color: 'var(--accent-green, #3fb950)', flexShrink: 0 }} />}
+                {/* Delete branch button (not for current branch) */}
+                {!b.current && (
+                  <>
+                    {showDeleteConfirm === b.name ? (
+                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleDeleteBranch(b.name)}
+                          style={{
+                            background: 'rgba(248, 81, 73, 0.2)',
+                            border: '1px solid rgba(248, 81, 73, 0.4)',
+                            cursor: 'pointer',
+                            padding: '1px 5px',
+                            fontSize: 9,
+                            fontWeight: 600,
+                            borderRadius: 3,
+                            color: '#f85149',
+                          }}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(null)}
+                          style={{
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            padding: '1px 5px',
+                            fontSize: 9,
+                            borderRadius: 3,
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(b.name) }}
+                        title="Delete branch"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          borderRadius: 3,
+                          color: 'var(--text-disabled, #545d68)',
+                          flexShrink: 0,
+                        }}
+                        className="source-control-action-btn"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -2615,6 +3101,9 @@ export default function SourceControlPanel() {
         }
         .source-control-commit-item:hover {
           background: var(--bg-hover, rgba(255,255,255,0.05)) !important;
+        }
+        .source-control-commit-item:hover .source-control-cherry-pick {
+          opacity: 1 !important;
         }
         .source-control-tab-btn:hover {
           color: var(--text-primary) !important;
