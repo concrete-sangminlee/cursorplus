@@ -3,7 +3,7 @@ import { useFileStore } from '@/store/files'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
 import { useOutputStore } from '@/store/output'
-import { GitBranch, Check, Plus, Minus, RotateCw, FileText, Trash2, ChevronRight, ChevronDown, X, Clock, GitCommit, User, ArrowUp, ArrowDown, Download, Archive, Plus as PlusIcon, AlertTriangle, Package, Play, XCircle, Tag, GitMerge, CherryIcon, Copy, Bookmark, BookmarkPlus, Square, CheckSquare, List } from 'lucide-react'
+import { GitBranch, Check, Plus, Minus, RotateCw, FileText, Trash2, ChevronRight, ChevronDown, X, Clock, GitCommit, User, ArrowUp, ArrowDown, Download, Archive, Plus as PlusIcon, AlertTriangle, Package, Play, XCircle, Tag, GitMerge, Copy, Bookmark, BookmarkPlus, Square, CheckSquare, List } from 'lucide-react'
 
 interface GitFile {
   path: string
@@ -172,7 +172,8 @@ export default function SourceControlPanel() {
   const [inlineDiffs, setInlineDiffs] = useState<Record<string, string>>({})
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [loadingInlineDiffs, setLoadingInlineDiffs] = useState<Set<string>>(new Set())
-  const [hunkSelections] = useState<Record<string, Set<number>>>({})
+  // hunkSelections reserved for future granular hunk staging
+  const [_hunkSelections] = useState<Record<string, Set<number>>>({}); void _hunkSelections
 
   // Branch management enhancements
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
