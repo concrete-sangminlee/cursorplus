@@ -989,77 +989,34 @@ export default function GitTimelinePanel() {
   }, [loading, hasMore, loadCommits])
 
   // ── Keyboard navigation ──
+  const navigateTo = useCallback((idx: number) => {
+    if (idx < 0 || idx >= filteredCommits.length) return
+    setFocusedIndex(idx)
+    setSelectedHash(filteredCommits[idx].hash)
+    rowRefs.current.get(filteredCommits[idx].hash)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [filteredCommits])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const len = filteredCommits.length
     if (len === 0) return
+    const inRange = focusedIndex >= 0 && focusedIndex < len
+    const currentHash = inRange ? filteredCommits[focusedIndex].hash : null
 
     switch (e.key) {
-      case 'j':
-      case 'ArrowDown': {
-        e.preventDefault()
-        const next = Math.min(focusedIndex + 1, len - 1)
-        setFocusedIndex(next)
-        setSelectedHash(filteredCommits[next].hash)
-        const row = rowRefs.current.get(filteredCommits[next].hash)
-        row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      case 'j': case 'ArrowDown': e.preventDefault(); navigateTo(Math.min(focusedIndex + 1, len - 1)); break
+      case 'k': case 'ArrowUp': e.preventDefault(); navigateTo(Math.max(focusedIndex - 1, 0)); break
+      case 'Enter': e.preventDefault(); if (currentHash) handleToggleExpand(currentHash); break
+      case 'c': if (currentHash) handleCopyHash(currentHash); break
+      case 'd': if (currentHash) handleViewDiff(currentHash); break
+      case 'Home': e.preventDefault(); navigateTo(0); break
+      case 'End': e.preventDefault(); navigateTo(len - 1); break
+      case 'Escape':
+        if (expandedHash) setExpandedHash(null)
+        else if (compareMode) { setCompareMode(false); setCompare({ commitA: null, commitB: null }) }
+        else if (contextMenu) setContextMenu(null)
         break
-      }
-      case 'k':
-      case 'ArrowUp': {
-        e.preventDefault()
-        const prev = Math.max(focusedIndex - 1, 0)
-        setFocusedIndex(prev)
-        setSelectedHash(filteredCommits[prev].hash)
-        const row = rowRefs.current.get(filteredCommits[prev].hash)
-        row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-        break
-      }
-      case 'Enter': {
-        e.preventDefault()
-        if (focusedIndex >= 0 && focusedIndex < len) {
-          handleToggleExpand(filteredCommits[focusedIndex].hash)
-        }
-        break
-      }
-      case 'c': {
-        if (focusedIndex >= 0 && focusedIndex < len) {
-          handleCopyHash(filteredCommits[focusedIndex].hash)
-        }
-        break
-      }
-      case 'd': {
-        if (focusedIndex >= 0 && focusedIndex < len) {
-          handleViewDiff(filteredCommits[focusedIndex].hash)
-        }
-        break
-      }
-      case 'Escape': {
-        if (expandedHash) {
-          setExpandedHash(null)
-        } else if (compareMode) {
-          setCompareMode(false)
-          setCompare({ commitA: null, commitB: null })
-        } else if (contextMenu) {
-          setContextMenu(null)
-        }
-        break
-      }
-      case 'Home': {
-        e.preventDefault()
-        setFocusedIndex(0)
-        setSelectedHash(filteredCommits[0].hash)
-        rowRefs.current.get(filteredCommits[0].hash)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-        break
-      }
-      case 'End': {
-        e.preventDefault()
-        setFocusedIndex(len - 1)
-        setSelectedHash(filteredCommits[len - 1].hash)
-        rowRefs.current.get(filteredCommits[len - 1].hash)?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-        break
-      }
     }
-  }, [focusedIndex, filteredCommits, expandedHash, compareMode, contextMenu, handleToggleExpand, handleCopyHash, handleViewDiff])
+  }, [focusedIndex, filteredCommits, expandedHash, compareMode, contextMenu, navigateTo, handleToggleExpand, handleCopyHash, handleViewDiff])
 
   // Close context menu on click elsewhere
   useEffect(() => {
@@ -1091,100 +1048,26 @@ export default function GitTimelinePanel() {
 
   // ── Graph SVG rendering ──
   const renderGraphCell = useCallback((node: GraphNode, rowHeight: number) => {
-    const cellWidth = graphWidth
-    const colSpacing = 20
-    const nodeX = node.column * colSpacing + 14
-    const midY = rowHeight / 2
-
+    const S = 20, ox = 14, midY = rowHeight / 2
+    const nodeX = node.column * S + ox
     return (
-      <svg
-        width={cellWidth}
-        height={rowHeight}
-        style={{ display: 'block', flexShrink: 0 }}
-      >
-        {/* Connection lines */}
+      <svg width={graphWidth} height={rowHeight} style={{ display: 'block', flexShrink: 0 }}>
         {node.connections.map((conn, ci) => {
-          const fromX = conn.fromCol * colSpacing + 14
-          const toX = conn.toCol * colSpacing + 14
-
+          const fx = conn.fromCol * S + ox, tx = conn.toCol * S + ox
           if (conn.type === 'straight') {
-            return (
-              <line
-                key={ci}
-                x1={fromX}
-                y1={0}
-                x2={toX}
-                y2={rowHeight}
-                stroke={conn.color}
-                strokeWidth={2}
-                strokeOpacity={0.6}
-              />
-            )
+            return <line key={ci} x1={fx} y1={0} x2={tx} y2={rowHeight} stroke={conn.color} strokeWidth={2} strokeOpacity={0.6} />
           }
-
-          if (conn.type === 'merge-in') {
-            const pathD = `M ${fromX} ${midY} C ${fromX} ${midY + 12}, ${toX} ${midY + 4}, ${toX} ${rowHeight}`
-            return (
-              <path
-                key={ci}
-                d={pathD}
-                fill="none"
-                stroke={conn.color}
-                strokeWidth={2}
-                strokeOpacity={0.5}
-              />
-            )
-          }
-
-          if (conn.type === 'branch-out') {
-            const pathD = `M ${fromX} 0 C ${fromX} ${midY - 4}, ${toX} ${midY - 12}, ${toX} ${midY}`
-            return (
-              <path
-                key={ci}
-                d={pathD}
-                fill="none"
-                stroke={conn.color}
-                strokeWidth={2}
-                strokeOpacity={0.5}
-              />
-            )
-          }
-
-          return null
+          const d = conn.type === 'merge-in'
+            ? `M ${fx} ${midY} C ${fx} ${midY + 12}, ${tx} ${midY + 4}, ${tx} ${rowHeight}`
+            : `M ${fx} 0 C ${fx} ${midY - 4}, ${tx} ${midY - 12}, ${tx} ${midY}`
+          return <path key={ci} d={d} fill="none" stroke={conn.color} strokeWidth={2} strokeOpacity={0.5} />
         })}
-
-        {/* Node circle */}
-        {node.isNode && (
-          <>
-            {node.isMerge ? (
-              <>
-                <circle
-                  cx={nodeX}
-                  cy={midY}
-                  r={6}
-                  fill="none"
-                  stroke={node.color}
-                  strokeWidth={2}
-                />
-                <circle
-                  cx={nodeX}
-                  cy={midY}
-                  r={3}
-                  fill={node.color}
-                />
-              </>
-            ) : (
-              <circle
-                cx={nodeX}
-                cy={midY}
-                r={5}
-                fill={node.color}
-                stroke="var(--vscode-sideBar-background, #1e1e2e)"
-                strokeWidth={2}
-              />
-            )}
-          </>
-        )}
+        {node.isNode && node.isMerge ? (
+          <><circle cx={nodeX} cy={midY} r={6} fill="none" stroke={node.color} strokeWidth={2} />
+            <circle cx={nodeX} cy={midY} r={3} fill={node.color} /></>
+        ) : node.isNode ? (
+          <circle cx={nodeX} cy={midY} r={5} fill={node.color} stroke="var(--vscode-sideBar-background, #1e1e2e)" strokeWidth={2} />
+        ) : null}
       </svg>
     )
   }, [graphWidth])
@@ -1223,30 +1106,17 @@ export default function GitTimelinePanel() {
         {/* Commit metadata */}
         <div style={styles.detailSection}>
           <div style={styles.detailLabel}>Details</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <span style={{ color: '#8b949e', minWidth: '60px' }}>Commit</span>
-              <span style={{ fontFamily: '"Cascadia Code", "Fira Code", monospace', color: '#58a6ff' }}>
-                {commit.hash}
-              </span>
+          {[
+            ['Commit', commit.hash, true],
+            ['Author', `${commit.author} <${commit.authorEmail}>`],
+            ['Date', formatFullDate(commit.date)],
+            ...(commit.parents.length > 0 ? [['Parents', commit.parents.map(p => p.substring(0, 7)).join(', '), true]] : []),
+          ].map(([label, value, mono], i) => (
+            <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '11px', marginBottom: '2px' }}>
+              <span style={{ color: '#8b949e', minWidth: '60px' }}>{label as string}</span>
+              <span style={mono ? { fontFamily: '"Cascadia Code", monospace', color: '#58a6ff' } : undefined}>{value as string}</span>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <span style={{ color: '#8b949e', minWidth: '60px' }}>Author</span>
-              <span>{commit.author} &lt;{commit.authorEmail}&gt;</span>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <span style={{ color: '#8b949e', minWidth: '60px' }}>Date</span>
-              <span>{formatFullDate(commit.date)}</span>
-            </div>
-            {commit.parents.length > 0 && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <span style={{ color: '#8b949e', minWidth: '60px' }}>Parents</span>
-                <span style={{ fontFamily: '"Cascadia Code", "Fira Code", monospace' }}>
-                  {commit.parents.map(p => p.substring(0, 7)).join(', ')}
-                </span>
-              </div>
-            )}
-          </div>
+          ))}
         </div>
 
         {/* Changed files */}
@@ -1613,23 +1483,12 @@ export default function GitTimelinePanel() {
           {/* Author filter */}
           <div style={styles.filterRow}>
             <User size={12} style={{ color: '#8b949e', flexShrink: 0 }} />
-            <select
-              style={{
-                ...styles.filterInput,
-                cursor: 'pointer',
-                appearance: 'none' as const,
-                paddingRight: '24px',
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 8px center',
-              }}
+            <select style={{ ...styles.filterInput, cursor: 'pointer' }}
               value={filters.author}
               onChange={e => setFilters(prev => ({ ...prev, author: e.target.value }))}
             >
               <option value="">All authors</option>
-              {uniqueAuthors.map(a => (
-                <option key={a} value={a}>{a}</option>
-              ))}
+              {uniqueAuthors.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
 
@@ -1699,53 +1558,21 @@ export default function GitTimelinePanel() {
       {compareMode && (
         <div style={styles.compareBar}>
           <ArrowRightLeft size={12} style={{ color: '#58a6ff' }} />
-          <span style={{ color: '#58a6ff', fontWeight: 500 }}>Compare mode</span>
-          <span style={{ color: '#8b949e' }}>|</span>
+          <span style={{ color: '#58a6ff', fontWeight: 500 }}>Compare</span>
           <span style={{ color: '#8b949e' }}>
-            {!compare.commitA
-              ? 'Select first commit (A)'
-              : !compare.commitB
-                ? 'Select second commit (B)'
-                : 'Ready to compare'}
+            {!compare.commitA ? 'Select commit A' : !compare.commitB ? 'Select commit B' : 'Ready'}
           </span>
-          {compare.commitA && (
-            <>
-              <span style={styles.compareBadge}>
-                A: {compare.commitA.substring(0, 7)}
-              </span>
-            </>
-          )}
-          {compare.commitB && (
-            <>
-              <span style={styles.compareBadge}>
-                B: {compare.commitB.substring(0, 7)}
-              </span>
-            </>
-          )}
+          {compare.commitA && <span style={styles.compareBadge}>A: {compare.commitA.substring(0, 7)}</span>}
+          {compare.commitB && <span style={styles.compareBadge}>B: {compare.commitB.substring(0, 7)}</span>}
           {compare.commitA && compare.commitB && (
-            <button
-              style={{
-                ...styles.actionButton,
-                backgroundColor: 'rgba(88,166,255,0.1)',
-                color: '#58a6ff',
-                borderColor: 'rgba(88,166,255,0.3)',
-              }}
-              onClick={handleCompare}
-            >
-              <Eye size={11} /> View Diff
+            <button style={{ ...styles.actionButton, backgroundColor: 'rgba(88,166,255,0.1)', color: '#58a6ff' }} onClick={handleCompare}>
+              <Eye size={11} /> Diff
             </button>
           )}
           <div style={{ flex: 1 }} />
-          <button
-            style={{ ...styles.iconButton(false), width: '20px', height: '20px' }}
-            onClick={() => {
-              setCompareMode(false)
-              setCompare({ commitA: null, commitB: null })
-            }}
-            title="Exit compare mode"
-          >
-            <X size={12} />
-          </button>
+          <button style={{ ...styles.iconButton(false), width: '20px', height: '20px' }}
+            onClick={() => { setCompareMode(false); setCompare({ commitA: null, commitB: null }) }}
+          ><X size={12} /></button>
         </div>
       )}
 
@@ -1759,29 +1586,9 @@ export default function GitTimelinePanel() {
           <div style={styles.emptyState}>
             <GitCommit size={32} style={{ opacity: 0.3 }} />
             <span style={{ fontSize: '13px', fontWeight: 500 }}>No commits found</span>
-            <span style={{ fontSize: '11px', opacity: 0.7, textAlign: 'center' }}>
-              {searchHighlight || filters.author || filters.dateFrom || filters.dateTo
-                ? 'Try adjusting your filters'
-                : viewMode === 'file'
-                  ? 'No history available for this file'
-                  : 'This repository has no commits yet'}
+            <span style={{ fontSize: '11px', opacity: 0.7 }}>
+              {searchHighlight || filters.author ? 'Try adjusting your filters' : 'No history available'}
             </span>
-            {(searchHighlight || filters.author) && (
-              <button
-                style={{
-                  ...styles.actionButton,
-                  marginTop: '8px',
-                  color: '#58a6ff',
-                  borderColor: 'rgba(88,166,255,0.3)',
-                }}
-                onClick={() => {
-                  setFilters({ author: '', dateFrom: '', dateTo: '', messageSearch: '' })
-                  setSearchHighlight('')
-                }}
-              >
-                <X size={11} /> Clear Filters
-              </button>
-            )}
           </div>
         ) : (
           <div ref={listRef} role="rowgroup">
@@ -1872,69 +1679,25 @@ export default function GitTimelinePanel() {
 
       {/* ── Status bar ── */}
       <div style={styles.statusBarBottom}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>
-            {filteredCommits.length} commit{filteredCommits.length !== 1 ? 's' : ''}
-            {searchHighlight && ` (filtered)`}
-          </span>
-          {viewMode === 'file' && activeFile && (
-            <>
-              <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <FileText size={10} />
-                {activeFile.split('/').pop()}
-              </span>
-            </>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {selectedHash && (
-            <span style={{ fontFamily: '"Cascadia Code", "Fira Code", monospace' }}>
-              {selectedHash.substring(0, 7)}
-            </span>
-          )}
-          <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
-          <span>Sort: {sortOrder}</span>
-          {hasMore && (
-            <>
-              <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
-              <span style={{ color: '#d29922' }}>More available</span>
-            </>
-          )}
-        </div>
+        <span>
+          {filteredCommits.length} commit{filteredCommits.length !== 1 ? 's' : ''}
+          {searchHighlight && ' (filtered)'}
+          {viewMode === 'file' && activeFile && ` \u00b7 ${activeFile.split('/').pop()}`}
+        </span>
+        <span>
+          {selectedHash && `${selectedHash.substring(0, 7)} \u00b7 `}
+          Sort: {sortOrder}{hasMore && ' \u00b7 More available'}
+        </span>
       </div>
 
-      {/* ── CSS Keyframes (injected once) ── */}
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        div[role="grid"]:focus {
-          outline: none;
-        }
-        div[role="grid"] *::-webkit-scrollbar {
-          width: 6px;
-          height: 6px;
-        }
-        div[role="grid"] *::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        div[role="grid"] *::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.12);
-          border-radius: 3px;
-        }
-        div[role="grid"] *::-webkit-scrollbar-thumb:hover {
-          background: rgba(255,255,255,0.2);
-        }
-        select option {
-          background: var(--vscode-dropdown-background, #252536);
-          color: var(--vscode-dropdown-foreground, #e1e4e8);
-        }
-        input[type="date"]::-webkit-calendar-picker-indicator {
-          filter: invert(0.7);
-          cursor: pointer;
-        }
+        @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        div[role="grid"]:focus { outline: none }
+        div[role="grid"] *::-webkit-scrollbar { width: 6px; height: 6px }
+        div[role="grid"] *::-webkit-scrollbar-track { background: transparent }
+        div[role="grid"] *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px }
+        select option { background: #252536; color: #e1e4e8 }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer }
       `}</style>
     </div>
   )

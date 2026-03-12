@@ -2,11 +2,10 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   Search, FileText, ChevronRight, ChevronDown, Copy, X,
   ChevronsDownUp, ChevronsUpDown, Pin, PinOff, Trash2,
-  ArrowUp, ArrowDown, Eye, Filter, Loader2, Layers,
-  BookOpen, PenLine, Phone, PhoneOutgoing, PhoneIncoming,
-  CornerDownRight, CornerUpLeft, RefreshCw, MoreVertical,
-  ExternalLink, MapPin, Hash, FolderOpen, Minus, Plus,
-  ArrowRight, CheckSquare, Square, List, GitBranch,
+  Eye, Filter, Loader2, Layers,
+  BookOpen, PenLine, PhoneOutgoing, PhoneIncoming,
+  CornerDownRight, CornerUpLeft, RefreshCw,
+  ExternalLink, MapPin, FolderOpen, Plus, GitBranch,
 } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'

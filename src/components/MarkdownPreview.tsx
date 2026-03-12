@@ -1,130 +1,13 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 interface MarkdownPreviewProps {
   content: string
   style?: React.CSSProperties
+  customCSS?: string
+  onNavigate?: (path: string) => void
 }
-
-// ---------- Syntax Highlighting ----------
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function highlightCode(code: string, lang: string): string {
-  const jsKeywords = /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|yield|static|get|set|null|undefined|true|false|void|delete|super)\b/g
-  const pyKeywords = /\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|raise|with|yield|lambda|pass|break|continue|and|or|not|in|is|None|True|False|self|global|nonlocal|assert|del|print)\b/g
-  const tsKeywords = /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|yield|static|get|set|null|undefined|true|false|void|delete|super|interface|type|enum|implements|namespace|abstract|declare|readonly|private|protected|public|as|keyof|infer|never|unknown|any)\b/g
-  const goKeywords = /\b(func|return|if|else|for|range|switch|case|break|continue|var|const|type|struct|interface|map|chan|go|defer|select|package|import|nil|true|false|make|len|cap|append|copy|delete|new|panic|recover)\b/g
-  const rustKeywords = /\b(fn|let|mut|return|if|else|for|while|loop|match|break|continue|struct|enum|impl|trait|pub|use|mod|crate|self|super|where|async|await|move|ref|type|const|static|unsafe|extern|true|false|None|Some|Ok|Err|Self|dyn|Box|Vec|String|Option|Result)\b/g
-  const cssKeywords = /\b(color|background|margin|padding|border|display|position|width|height|font|text|align|flex|grid|top|left|right|bottom|overflow|opacity|z-index|transform|transition|animation|none|auto|inherit|initial|solid|dashed|dotted|relative|absolute|fixed|sticky|block|inline|content|important)\b/g
-  const htmlKeywords = /\b(div|span|button|input|form|table|thead|tbody|tr|td|th|ul|ol|li|a|p|h1|h2|h3|h4|h5|h6|img|section|article|header|footer|nav|main|aside|pre|code|strong|em|label|select|option|textarea)\b/g
-  const shellKeywords = /\b(echo|cd|ls|mkdir|rm|cp|mv|cat|grep|sed|awk|find|chmod|chown|sudo|apt|yum|brew|npm|yarn|pip|git|docker|curl|wget|export|source|alias|if|then|else|fi|for|do|done|while|case|esac|function|return|exit)\b/g
-  const sqlKeywords = /\b(SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|IN|IS|NULL|LIKE|ORDER|BY|GROUP|HAVING|LIMIT|OFFSET|AS|DISTINCT|UNION|ALL|SET|VALUES|INTO|COUNT|SUM|AVG|MIN|MAX|BETWEEN|EXISTS|CASE|WHEN|THEN|ELSE|END)\b/gi
-  const javaKeywords = /\b(public|private|protected|static|final|abstract|class|interface|extends|implements|return|if|else|for|while|do|switch|case|break|continue|new|this|super|try|catch|finally|throw|throws|void|int|long|double|float|boolean|char|byte|short|String|null|true|false|import|package|instanceof|synchronized|volatile|transient|native|enum|assert)\b/g
-  const cppKeywords = /\b(int|long|double|float|char|void|bool|auto|const|static|extern|register|volatile|unsigned|signed|short|struct|union|enum|class|public|private|protected|virtual|override|friend|inline|template|typename|namespace|using|new|delete|return|if|else|for|while|do|switch|case|break|continue|goto|throw|try|catch|nullptr|true|false|sizeof|typedef|include|define|ifdef|ifndef|endif|pragma)\b/g
-
-  let keywords: RegExp
-  const langLower = lang.toLowerCase()
-  if (['js', 'javascript', 'jsx'].includes(langLower)) keywords = jsKeywords
-  else if (['ts', 'typescript', 'tsx'].includes(langLower)) keywords = tsKeywords
-  else if (['py', 'python'].includes(langLower)) keywords = pyKeywords
-  else if (['go', 'golang'].includes(langLower)) keywords = goKeywords
-  else if (['rs', 'rust'].includes(langLower)) keywords = rustKeywords
-  else if (['css', 'scss', 'less'].includes(langLower)) keywords = cssKeywords
-  else if (['html', 'xml', 'svg', 'vue'].includes(langLower)) keywords = htmlKeywords
-  else if (['sh', 'bash', 'shell', 'zsh'].includes(langLower)) keywords = shellKeywords
-  else if (['sql', 'mysql', 'postgres', 'sqlite'].includes(langLower)) keywords = sqlKeywords
-  else if (['java', 'kotlin'].includes(langLower)) keywords = javaKeywords
-  else if (['c', 'cpp', 'c++', 'cc', 'h', 'hpp'].includes(langLower)) keywords = cppKeywords
-  else keywords = jsKeywords
-
-  let highlighted = code
-
-  // Protect strings first
-  const strings: string[] = []
-  highlighted = highlighted.replace(/(["'`])(?:(?!\1|\\).|\\.)*?\1/g, (match) => {
-    strings.push(match)
-    return `__STR_${strings.length - 1}__`
-  })
-
-  // Protect comments
-  const comments: string[] = []
-  highlighted = highlighted.replace(/\/\/.*$/gm, (match) => {
-    comments.push(match)
-    return `__CMT_${comments.length - 1}__`
-  })
-  highlighted = highlighted.replace(/\/\*[\s\S]*?\*\//g, (match) => {
-    comments.push(match)
-    return `__CMT_${comments.length - 1}__`
-  })
-  highlighted = highlighted.replace(/#.*$/gm, (match) => {
-    if (['py', 'python', 'sh', 'bash', 'shell', 'zsh', 'yaml', 'yml', 'toml', 'ruby', 'rb'].includes(langLower)) {
-      comments.push(match)
-      return `__CMT_${comments.length - 1}__`
-    }
-    return match
-  })
-  // SQL comments
-  highlighted = highlighted.replace(/--.*$/gm, (match) => {
-    if (['sql', 'mysql', 'postgres', 'sqlite'].includes(langLower)) {
-      comments.push(match)
-      return `__CMT_${comments.length - 1}__`
-    }
-    return match
-  })
-
-  // Decorators / annotations
-  highlighted = highlighted.replace(/@\w+/g, '<span class="md-hl-decorator">$&</span>')
-
-  // Numbers
-  highlighted = highlighted.replace(/\b(0x[0-9a-fA-F]+|\d+\.?\d*(?:e[+-]?\d+)?)\b/g, '<span class="md-hl-number">$1</span>')
-
-  // Keywords
-  highlighted = highlighted.replace(keywords, '<span class="md-hl-keyword">$&</span>')
-
-  // Function calls: word followed by (
-  highlighted = highlighted.replace(/\b([a-zA-Z_]\w*)\s*(?=\()/g, (match, name) => {
-    if (match.includes('md-hl-')) return match
-    return `<span class="md-hl-function">${name}</span>`
-  })
-
-  // Restore comments with highlighting
-  comments.forEach((c, i) => {
-    highlighted = highlighted.replace(`__CMT_${i}__`, `<span class="md-hl-comment">${c}</span>`)
-  })
-
-  // Restore strings with highlighting
-  strings.forEach((s, i) => {
-    highlighted = highlighted.replace(`__STR_${i}__`, `<span class="md-hl-string">${s}</span>`)
-  })
-
-  return highlighted
-}
-
-// ---------- Mermaid Diagram Type Detection ----------
-
-function detectMermaidType(code: string): string {
-  const trimmed = code.trim().toLowerCase()
-  if (trimmed.startsWith('graph') || trimmed.startsWith('flowchart')) return 'Flowchart'
-  if (trimmed.startsWith('sequencediagram')) return 'Sequence Diagram'
-  if (trimmed.startsWith('classdiagram')) return 'Class Diagram'
-  if (trimmed.startsWith('statediagram')) return 'State Diagram'
-  if (trimmed.startsWith('erdiagram')) return 'Entity Relationship Diagram'
-  if (trimmed.startsWith('gantt')) return 'Gantt Chart'
-  if (trimmed.startsWith('pie')) return 'Pie Chart'
-  if (trimmed.startsWith('journey')) return 'User Journey'
-  if (trimmed.startsWith('gitgraph')) return 'Git Graph'
-  if (trimmed.startsWith('mindmap')) return 'Mind Map'
-  if (trimmed.startsWith('timeline')) return 'Timeline'
-  if (trimmed.startsWith('quadrantchart')) return 'Quadrant Chart'
-  if (trimmed.startsWith('sankey')) return 'Sankey Diagram'
-  if (trimmed.startsWith('xychart')) return 'XY Chart'
-  if (trimmed.startsWith('block')) return 'Block Diagram'
-  return 'Diagram'
-}
-
-// ---------- Markdown Parser ----------
 
 interface TocEntry {
   level: number
@@ -132,70 +15,312 @@ interface TocEntry {
   id: string
 }
 
-function extractToc(md: string): TocEntry[] {
-  const entries: TocEntry[] = []
-  const lines = md.split('\n')
+interface FrontmatterData {
+  [key: string]: string
+}
+
+type ViewMode = 'preview' | 'source' | 'split'
+
+// ─── Utility: HTML escaping ──────────────────────────────────────────────────
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// ─── Syntax Highlighting ─────────────────────────────────────────────────────
+
+function highlightCode(code: string, lang: string): string {
+  const jsKeywords = /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|yield|static|get|set|null|undefined|true|false|void|delete|super)\b/g
+  const pyKeywords = /\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|raise|with|yield|lambda|pass|break|continue|and|or|not|in|is|None|True|False|self|global|nonlocal|assert|del|print)\b/g
+  const tsKeywords = /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|this|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|yield|static|get|set|null|undefined|true|false|void|delete|super|interface|type|enum|implements|namespace|abstract|declare|readonly|private|protected|public|as|keyof|infer|never|unknown|any)\b/g
+  const goKeywords = /\b(func|return|if|else|for|range|switch|case|break|continue|var|const|type|struct|interface|map|chan|go|defer|select|package|import|nil|true|false|make|len|cap|append|copy|delete|new|panic|recover)\b/g
+  const rustKeywords = /\b(fn|let|mut|return|if|else|for|while|loop|match|break|continue|struct|enum|impl|trait|pub|use|mod|crate|self|super|where|async|await|move|ref|type|const|static|unsafe|extern|true|false|None|Some|Ok|Err|Self|dyn|Box|Vec|String|Option|Result)\b/g
+  const javaKeywords = /\b(public|private|protected|static|final|abstract|class|interface|extends|implements|new|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|throws|import|package|void|int|long|double|float|boolean|char|byte|short|null|true|false|this|super|instanceof|synchronized|volatile|transient|native|enum)\b/g
+  const cKeywords = /\b(int|long|short|char|float|double|void|unsigned|signed|const|static|extern|auto|register|volatile|return|if|else|for|while|do|switch|case|break|continue|struct|union|enum|typedef|sizeof|NULL|true|false|include|define|ifdef|ifndef|endif|pragma)\b/g
+  const cssKeywords = /\b(color|background|margin|padding|border|display|position|width|height|font|text|align|flex|grid|overflow|transition|transform|animation|opacity|z-index|top|left|right|bottom|none|auto|inherit|initial|important)\b/g
+  const sqlKeywords = /\b(SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|NULL|IN|BETWEEN|LIKE|ORDER|BY|GROUP|HAVING|LIMIT|OFFSET|UNION|AS|INTO|VALUES|SET|COUNT|SUM|AVG|MAX|MIN|DISTINCT)\b/gi
+  const shellKeywords = /\b(echo|cd|ls|mkdir|rm|cp|mv|cat|grep|sed|awk|find|chmod|chown|sudo|apt|yum|npm|yarn|pip|git|docker|curl|wget|export|source|alias|if|then|else|fi|for|do|done|while|case|esac|function|return|exit)\b/g
+
+  let keywords: RegExp
+  const l = lang.toLowerCase()
+  switch (l) {
+    case 'javascript': case 'js': case 'jsx': keywords = jsKeywords; break
+    case 'typescript': case 'ts': case 'tsx': keywords = tsKeywords; break
+    case 'python': case 'py': keywords = pyKeywords; break
+    case 'go': case 'golang': keywords = goKeywords; break
+    case 'rust': case 'rs': keywords = rustKeywords; break
+    case 'java': case 'kotlin': keywords = javaKeywords; break
+    case 'c': case 'cpp': case 'c++': case 'h': keywords = cKeywords; break
+    case 'css': case 'scss': case 'less': keywords = cssKeywords; break
+    case 'sql': keywords = sqlKeywords; break
+    case 'bash': case 'sh': case 'shell': case 'zsh': keywords = shellKeywords; break
+    default: keywords = jsKeywords
+  }
+
+  let escaped = escapeHtml(code)
+
+  // Strings (double then single)
+  escaped = escaped.replace(/(["'])(?:(?=(\\?))\2.)*?\1/g, '<span class="md-hl-string">$&</span>')
+  // Multi-line comments
+  escaped = escaped.replace(/\/\*[\s\S]*?\*\//g, '<span class="md-hl-comment">$&</span>')
+  // Single-line comments
+  escaped = escaped.replace(/(\/\/.*$|#(?!include|define|ifdef|ifndef|endif|pragma).*$)/gm, '<span class="md-hl-comment">$&</span>')
+  // Numbers
+  escaped = escaped.replace(/\b(\d+\.?\d*(?:e[+-]?\d+)?|0x[0-9a-f]+|0b[01]+|0o[0-7]+)\b/gi, '<span class="md-hl-number">$&</span>')
+  // Decorators / annotations
+  escaped = escaped.replace(/@\w+/g, '<span class="md-hl-decorator">$&</span>')
+  // Keywords
+  escaped = escaped.replace(keywords, '<span class="md-hl-keyword">$&</span>')
+  // Function calls (word followed by opening paren)
+  escaped = escaped.replace(/\b([a-zA-Z_]\w*)\s*(?=\()/g, '<span class="md-hl-function">$1</span>')
+
+  return escaped
+}
+
+// ─── Frontmatter Parsing ─────────────────────────────────────────────────────
+
+function parseFrontmatter(content: string): { frontmatter: FrontmatterData | null; body: string } {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n/)
+  if (!match) return { frontmatter: null, body: content }
+
+  const data: FrontmatterData = {}
+  const lines = match[1].split('\n')
   for (const line of lines) {
-    const match = line.match(/^(#{1,6})\s+(.+)$/)
-    if (match) {
-      const text = match[2].replace(/[*_`~\[\]]/g, '')
-      const id = 'heading-' + text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      entries.push({ level: match[1].length, text, id })
+    const kv = line.match(/^(\w[\w\s-]*):\s*(.*)$/)
+    if (kv) {
+      data[kv[1].trim()] = kv[2].trim()
+    }
+  }
+  return { frontmatter: data, body: content.slice(match[0].length) }
+}
+
+// ─── Table of Contents Extraction ────────────────────────────────────────────
+
+function extractToc(content: string): TocEntry[] {
+  const entries: TocEntry[] = []
+  // Strip frontmatter first
+  const body = content.replace(/^---\n[\s\S]*?\n---\n/, '')
+  const lines = body.split('\n')
+  for (const line of lines) {
+    const m = line.match(/^(#{1,6})\s+(.+)$/)
+    if (m) {
+      const level = m[1].length
+      const text = m[2].replace(/[*_`~\[\]]/g, '')
+      const id = 'heading-' + text.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '')
+      entries.push({ level, text, id })
     }
   }
   return entries
 }
 
-function parseMarkdown(md: string): string {
-  let html = md
+// ─── Mermaid Diagram Renderer (SVG-based) ────────────────────────────────────
 
-  // Escape HTML
-  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+function renderMermaidSvg(code: string): string {
+  const trimmed = code.trim()
+  const type = trimmed.split(/[\s\n]/)[0]?.toLowerCase() || ''
 
-  // Collect footnote definitions [^id]: text
+  // Parse nodes and edges from common diagram types
+  if (type === 'graph' || type === 'flowchart') {
+    return renderFlowchartSvg(trimmed)
+  }
+  if (type === 'sequencediagram' || trimmed.startsWith('sequenceDiagram')) {
+    return renderSequenceSvg(trimmed)
+  }
+  if (type === 'pie') {
+    return renderPieSvg(trimmed)
+  }
+
+  // Fallback: styled code display
+  return `<div class="md-mermaid-placeholder"><div class="md-mermaid-header"><span class="md-mermaid-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>Mermaid Diagram<span class="md-mermaid-badge">${escapeHtml(type || 'diagram')}</span></div><pre class="md-mermaid-code"><code>${escapeHtml(code)}</code></pre></div>`
+}
+
+function renderFlowchartSvg(code: string): string {
+  // Parse simple nodes like A[Text] --> B[Text]
+  const nodeMap = new Map<string, { label: string; x: number; y: number }>()
+  const edges: Array<{ from: string; to: string; label?: string }> = []
+  const nodeRegex = /(\w+)\s*[\[({]([^}\])]+)[\])}]/g
+  const edgeRegex = /(\w+)\s*(?:-->|==>|-.->|--[>|])\s*(?:\|([^|]*)\|)?\s*(\w+)/g
+  let m: RegExpExecArray | null
+
+  while ((m = nodeRegex.exec(code)) !== null) {
+    if (!nodeMap.has(m[1])) {
+      nodeMap.set(m[1], { label: m[2], x: 0, y: 0 })
+    }
+  }
+  while ((m = edgeRegex.exec(code)) !== null) {
+    edges.push({ from: m[1], to: m[3], label: m[2] })
+    if (!nodeMap.has(m[1])) nodeMap.set(m[1], { label: m[1], x: 0, y: 0 })
+    if (!nodeMap.has(m[3])) nodeMap.set(m[3], { label: m[3], x: 0, y: 0 })
+  }
+
+  // Layout nodes in a grid
+  const nodes = Array.from(nodeMap.entries())
+  const cols = Math.max(2, Math.ceil(Math.sqrt(nodes.length)))
+  nodes.forEach(([, node], i) => {
+    node.x = 60 + (i % cols) * 180
+    node.y = 40 + Math.floor(i / cols) * 100
+  })
+
+  const width = 60 + cols * 180
+  const height = 40 + Math.ceil(nodes.length / cols) * 100 + 40
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="max-width:100%;height:auto">`
+  svg += '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--accent-blue, #388bfd)"/></marker></defs>'
+
+  // Draw edges
+  for (const edge of edges) {
+    const fromNode = nodeMap.get(edge.from)
+    const toNode = nodeMap.get(edge.to)
+    if (fromNode && toNode) {
+      svg += `<line x1="${fromNode.x + 60}" y1="${fromNode.y + 18}" x2="${toNode.x}" y2="${toNode.y + 18}" stroke="var(--accent-blue, #388bfd)" stroke-width="1.5" marker-end="url(#arrowhead)" opacity="0.7"/>`
+      if (edge.label) {
+        const mx = (fromNode.x + 60 + toNode.x) / 2
+        const my = (fromNode.y + toNode.y) / 2 + 14
+        svg += `<text x="${mx}" y="${my}" fill="var(--text-muted)" font-size="10" text-anchor="middle">${escapeHtml(edge.label)}</text>`
+      }
+    }
+  }
+
+  // Draw nodes
+  for (const [, node] of nodes) {
+    svg += `<rect x="${node.x}" y="${node.y}" width="120" height="36" rx="6" fill="var(--bg-tertiary, #2d2d30)" stroke="var(--accent-blue, #388bfd)" stroke-width="1.5"/>`
+    svg += `<text x="${node.x + 60}" y="${node.y + 22}" fill="var(--text-primary, #ccc)" font-size="12" text-anchor="middle" font-family="sans-serif">${escapeHtml(node.label)}</text>`
+  }
+
+  svg += '</svg>'
+  return `<div class="md-mermaid-rendered">${svg}</div>`
+}
+
+function renderSequenceSvg(code: string): string {
+  const participants: string[] = []
+  const messages: Array<{ from: string; to: string; text: string; dashed: boolean }> = []
+  const lines = code.split('\n')
+
+  for (const line of lines) {
+    const pMatch = line.match(/participant\s+(\w+)/)
+    if (pMatch && !participants.includes(pMatch[1])) participants.push(pMatch[1])
+    const mMatch = line.match(/(\w+)\s*(->>|-->>|->|-->)\s*(\w+)\s*:\s*(.+)/)
+    if (mMatch) {
+      if (!participants.includes(mMatch[1])) participants.push(mMatch[1])
+      if (!participants.includes(mMatch[3])) participants.push(mMatch[3])
+      messages.push({ from: mMatch[1], to: mMatch[3], text: mMatch[4].trim(), dashed: mMatch[2].includes('--') })
+    }
+  }
+
+  if (participants.length === 0) return renderMermaidSvg(code)
+
+  const colW = 160
+  const width = participants.length * colW + 40
+  const height = 80 + messages.length * 50 + 40
+  const getX = (p: string) => 20 + participants.indexOf(p) * colW + colW / 2
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="max-width:100%;height:auto">`
+  svg += '<defs><marker id="seq-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--accent-blue, #388bfd)"/></marker></defs>'
+
+  // Participant boxes and lifelines
+  for (const p of participants) {
+    const x = getX(p)
+    svg += `<rect x="${x - 40}" y="10" width="80" height="30" rx="4" fill="var(--bg-tertiary)" stroke="var(--border)" stroke-width="1"/>`
+    svg += `<text x="${x}" y="30" fill="var(--text-primary)" font-size="12" text-anchor="middle" font-family="sans-serif">${escapeHtml(p)}</text>`
+    svg += `<line x1="${x}" y1="40" x2="${x}" y2="${height - 10}" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>`
+  }
+
+  // Messages
+  messages.forEach((msg, i) => {
+    const y = 70 + i * 50
+    const x1 = getX(msg.from)
+    const x2 = getX(msg.to)
+    const dash = msg.dashed ? ' stroke-dasharray="6,3"' : ''
+    svg += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="var(--accent-blue, #388bfd)" stroke-width="1.5"${dash} marker-end="url(#seq-arrow)"/>`
+    const tx = (x1 + x2) / 2
+    svg += `<text x="${tx}" y="${y - 6}" fill="var(--text-secondary)" font-size="11" text-anchor="middle" font-family="sans-serif">${escapeHtml(msg.text)}</text>`
+  })
+
+  svg += '</svg>'
+  return `<div class="md-mermaid-rendered">${svg}</div>`
+}
+
+function renderPieSvg(code: string): string {
+  const entries: Array<{ label: string; value: number }> = []
+  const lines = code.split('\n')
+  let title = 'Chart'
+  for (const line of lines) {
+    const tMatch = line.match(/title\s+(.+)/)
+    if (tMatch) title = tMatch[1].trim()
+    const dMatch = line.match(/"([^"]+)"\s*:\s*(\d+\.?\d*)/)
+    if (dMatch) entries.push({ label: dMatch[1], value: parseFloat(dMatch[2]) })
+  }
+
+  if (entries.length === 0) return renderMermaidSvg(code)
+
+  const total = entries.reduce((s, e) => s + e.value, 0)
+  const colors = ['#388bfd', '#f97583', '#56d364', '#e3b341', '#bc8cff', '#79c0ff', '#ff9a00', '#3fb950']
+  const cx = 120, cy = 120, r = 90
+  let angle = 0
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 260" style="max-width:100%;height:auto">`
+  svg += `<text x="180" y="20" fill="var(--text-primary)" font-size="14" text-anchor="middle" font-weight="600" font-family="sans-serif">${escapeHtml(title)}</text>`
+
+  entries.forEach((entry, i) => {
+    const slice = (entry.value / total) * Math.PI * 2
+    const x1 = cx + r * Math.cos(angle)
+    const y1 = cy + r * Math.sin(angle) + 30
+    const x2 = cx + r * Math.cos(angle + slice)
+    const y2 = cy + r * Math.sin(angle + slice) + 30
+    const large = slice > Math.PI ? 1 : 0
+    svg += `<path d="M${cx},${cy + 30} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${colors[i % colors.length]}" opacity="0.85"/>`
+    angle += slice
+  })
+
+  // Legend
+  entries.forEach((entry, i) => {
+    const ly = 30 + i * 20
+    svg += `<rect x="250" y="${ly}" width="12" height="12" rx="2" fill="${colors[i % colors.length]}"/>`
+    svg += `<text x="268" y="${ly + 10}" fill="var(--text-secondary)" font-size="11" font-family="sans-serif">${escapeHtml(entry.label)} (${Math.round(entry.value / total * 100)}%)</text>`
+  })
+
+  svg += '</svg>'
+  return `<div class="md-mermaid-rendered">${svg}</div>`
+}
+
+// ─── Markdown Parser ─────────────────────────────────────────────────────────
+
+function parseMarkdown(content: string): string {
+  let html = content
+
+  // Collect footnote definitions
   const footnotes: Record<string, string> = {}
   html = html.replace(/^\[\^(\w+)\]:\s+(.+)$/gm, (_, id, text) => {
     footnotes[id] = text
     return `__FOOTNOTE_DEF_${id}__`
   })
 
-  // Mermaid code blocks - detect diagram type
-  html = html.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
-    const diagramType = detectMermaidType(code.trim())
-    return `<div class="md-mermaid-placeholder"><div class="md-mermaid-header"><span class="md-mermaid-icon">&#9672;</span> Mermaid ${diagramType}<span class="md-mermaid-badge">${diagramType}</span></div><pre class="md-mermaid-code"><code>${code.trim()}</code></pre></div>`
-  })
-
-  // Math code blocks ```math
-  html = html.replace(/```math\n([\s\S]*?)```/g, (_, code) => {
-    return `<div class="md-math-block"><div class="md-math-header"><span class="md-math-icon">&#8721;</span> LaTeX Math</div><pre class="md-math-content"><code>${code.trim()}</code></pre></div>`
-  })
-
-  // Code blocks with syntax highlighting, copy button, language label, and line numbers
+  // Fenced code blocks (with mermaid handling)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const trimmed = code.trim()
-    const highlighted = lang ? highlightCode(trimmed, lang) : trimmed
-    const langLabel = lang ? `<span class="md-code-lang">${lang}</span>` : ''
-    const copyBtn = `<button class="md-code-copy" title="Copy code"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg><span class="md-copy-text">Copy</span></button>`
-    // Add line numbers
+    const trimmedCode = code.replace(/\n$/, '')
+    if (lang.toLowerCase() === 'mermaid') {
+      return renderMermaidSvg(trimmedCode)
+    }
+    const highlighted = highlightCode(trimmedCode, lang || 'text')
     const lines = highlighted.split('\n')
-    const lineNumbered = lines.map((line, i) =>
-      `<span class="md-code-line"><span class="md-code-ln">${i + 1}</span>${line}</span>`
+    const numberedLines = lines.map((line, i) =>
+      `<span class="md-code-line"><span class="md-code-ln">${i + 1}</span>${line || ' '}</span>`
     ).join('\n')
-    return `<div class="md-code-wrapper"><div class="md-code-header">${langLabel}${copyBtn}</div><pre class="md-code-block"><code class="language-${lang}">${lineNumbered}</code></pre></div>`
+    return `<div class="md-code-wrapper"><div class="md-code-header"><span class="md-code-lang">${escapeHtml(lang || 'text')}</span><button class="md-code-copy" type="button"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg><span class="md-copy-text">Copy</span></button></div><pre class="md-code-block"><code>${numberedLines}</code></pre></div>`
   })
 
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+  // Inline code (before other inline transformations)
+  html = html.replace(/`([^`\n]+)`/g, '<code class="md-inline-code">$1</code>')
 
-  // Headers with IDs for TOC linking
-  html = html.replace(/^######\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return `<h6 class="md-h6" id="${id}">${t}</h6>` })
-  html = html.replace(/^#####\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return `<h5 class="md-h5" id="${id}">${t}</h5>` })
-  html = html.replace(/^####\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return `<h4 class="md-h4" id="${id}">${t}</h4>` })
-  html = html.replace(/^###\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return `<h3 class="md-h3" id="${id}">${t}</h3>` })
-  html = html.replace(/^##\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return `<h2 class="md-h2" id="${id}">${t}</h2>` })
-  html = html.replace(/^#\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return `<h1 class="md-h1" id="${id}">${t}</h1>` })
+  // Headings (ATX style, h1-h6) with anchors
+  html = html.replace(/^######\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, ''); return `<h6 class="md-h6" id="${id}">${t}</h6>` })
+  html = html.replace(/^#####\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, ''); return `<h5 class="md-h5" id="${id}">${t}</h5>` })
+  html = html.replace(/^####\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, ''); return `<h4 class="md-h4" id="${id}">${t}</h4>` })
+  html = html.replace(/^###\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, ''); return `<h3 class="md-h3" id="${id}">${t}</h3>` })
+  html = html.replace(/^##\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, ''); return `<h2 class="md-h2" id="${id}">${t}</h2>` })
+  html = html.replace(/^#\s+(.+)$/gm, (_, t) => { const id = 'heading-' + t.replace(/[*_`~\[\]]/g, '').toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, ''); return `<h1 class="md-h1" id="${id}">${t}</h1>` })
 
-  // Display math blocks $$...$$ (multiline)
+  // Display math $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
     return `<div class="md-math-block"><div class="md-math-header"><span class="md-math-icon">&#8721;</span> LaTeX Math</div><pre class="md-math-content"><code>${math.trim()}</code></pre></div>`
   })
@@ -212,16 +337,22 @@ function parseMarkdown(md: string): string {
   // Highlight ==text==
   html = html.replace(/==(.+?)==/g, '<mark class="md-mark">$1</mark>')
 
-  // Images with placeholder
+  // Images with lazy loading
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
-    return `<div class="md-image-container"><img src="${src}" alt="${alt}" class="md-image" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="md-image-placeholder" style="display:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>${alt || 'Image'}</span></div></div>`
+    return `<div class="md-image-container"><img src="${src}" alt="${alt}" class="md-image" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="md-image-placeholder" style="display:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>${alt || 'Image'}</span></div></div>`
   })
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link" title="$2">$1</a>')
+  // Links with data attribute for click handling
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
+    const isExternal = /^https?:\/\//.test(href)
+    return `<a href="${href}" class="md-link" data-link-type="${isExternal ? 'external' : 'internal'}" title="${href}">${text}</a>`
+  })
 
   // Autolinks
-  html = html.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, '<a href="$1" class="md-link">$1</a>')
+  html = html.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, '<a href="$1" class="md-link" data-link-type="external">$1</a>')
+
+  // Bare URLs in text (not inside tags)
+  html = html.replace(/(?<![="'])(https?:\/\/[^\s<)"']+)/g, '<a href="$1" class="md-link" data-link-type="external">$1</a>')
 
   // Footnote references [^id]
   html = html.replace(/\[\^(\w+)\]/g, (_, id) => {
@@ -229,6 +360,7 @@ function parseMarkdown(md: string): string {
   })
 
   // Blockquotes (handle nested with >>)
+  html = html.replace(/^&gt;\s?&gt;\s+(.+)$/gm, '<blockquote class="md-blockquote"><blockquote class="md-blockquote"><p>$1</p></blockquote></blockquote>')
   html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote class="md-blockquote"><p>$1</p></blockquote>')
   html = html.replace(/<\/blockquote>\n<blockquote class="md-blockquote">/g, '')
 
@@ -258,7 +390,6 @@ function parseMarkdown(md: string): string {
   // Tables with alignment support and striped rows
   const tableRegex = /^\|(.+)\|\n\|([-| :]+)\|\n((?:\|.+\|\n?)*)/gm
   html = html.replace(tableRegex, (_, header, separator, rows) => {
-    // Parse alignment from separator row
     const aligns = separator.split('|').map((s: string) => {
       s = s.trim()
       if (s.startsWith(':') && s.endsWith(':')) return 'center'
@@ -297,16 +428,28 @@ function parseMarkdown(md: string): string {
   return html
 }
 
-// ---------- HTML Export ----------
+// ─── HTML Export Generator ───────────────────────────────────────────────────
 
-function generateExportHtml(content: string, styles: string): string {
-  const body = parseMarkdown(content)
+function generateExportHtml(content: string, styles: string, customCSS: string): string {
+  const { frontmatter, body } = parseFrontmatter(content)
+  const parsed = parseMarkdown(body)
+
+  let fmHtml = ''
+  if (frontmatter) {
+    const entries = Object.entries(frontmatter)
+    fmHtml = '<div class="md-frontmatter"><div class="md-frontmatter-title">Document Metadata</div><table class="md-frontmatter-table">'
+    for (const [k, v] of entries) {
+      fmHtml += `<tr><td class="md-fm-key">${escapeHtml(k)}</td><td class="md-fm-value">${escapeHtml(v)}</td></tr>`
+    }
+    fmHtml += '</table></div>'
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Markdown Export</title>
+<title>${frontmatter?.title ? escapeHtml(frontmatter.title) : 'Markdown Export'}</title>
 <style>
 :root {
   --bg-primary: #1e1e1e;
@@ -330,19 +473,24 @@ body {
   padding: 24px 32px;
 }
 ${styles}
+${customCSS}
+@media print {
+  body { background: white; color: #1a1a1a; }
+  .md-code-copy { display: none !important; }
+  .md-code-wrapper { border-color: #ddd; }
+  .md-blockquote { border-left-color: #999; background: #f5f5f5; }
+  a { color: #0969da; }
+}
 </style>
 </head>
 <body class="markdown-preview">
-${body}
+${fmHtml}
+${parsed}
 </body>
 </html>`
 }
 
-// ---------- View Mode Types ----------
-
-type ViewMode = 'preview' | 'source' | 'split'
-
-// ---------- Toolbar Icon Components ----------
+// ─── Toolbar Icon ────────────────────────────────────────────────────────────
 
 function ToolbarIcon({ d, size = 14 }: { d: string; size?: number }) {
   return (
@@ -352,7 +500,7 @@ function ToolbarIcon({ d, size = 14 }: { d: string; size?: number }) {
   )
 }
 
-// ---------- Table of Contents Dropdown ----------
+// ─── Table of Contents Dropdown ──────────────────────────────────────────────
 
 function TocDropdown({ entries, onSelect }: { entries: TocEntry[]; onSelect: (id: string) => void }) {
   const [open, setOpen] = useState(false)
@@ -406,33 +554,230 @@ function TocDropdown({ entries, onSelect }: { entries: TocEntry[]; onSelect: (id
   )
 }
 
-// ---------- Main Component ----------
+// ─── Search Bar Component ────────────────────────────────────────────────────
 
-export default function MarkdownPreview({ content, style }: MarkdownPreviewProps) {
+function SearchBar({
+  previewRef,
+  onClose,
+}: {
+  previewRef: React.RefObject<HTMLDivElement | null>
+  onClose: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [matchCount, setMatchCount] = useState(0)
+  const [currentMatch, setCurrentMatch] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const clearHighlights = useCallback(() => {
+    if (!previewRef.current) return
+    const marks = previewRef.current.querySelectorAll('mark.md-search-highlight')
+    marks.forEach(mark => {
+      const parent = mark.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
+        parent.normalize()
+      }
+    })
+  }, [previewRef])
+
+  const performSearch = useCallback((searchText: string) => {
+    clearHighlights()
+    if (!previewRef.current || !searchText.trim()) {
+      setMatchCount(0)
+      setCurrentMatch(0)
+      return
+    }
+
+    const walker = document.createTreeWalker(
+      previewRef.current,
+      NodeFilter.SHOW_TEXT,
+      null
+    )
+
+    const textNodes: Text[] = []
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      textNodes.push(node as Text)
+    }
+
+    let count = 0
+    const lowerSearch = searchText.toLowerCase()
+
+    for (const textNode of textNodes) {
+      const text = textNode.textContent || ''
+      const lower = text.toLowerCase()
+      let idx = lower.indexOf(lowerSearch)
+      if (idx === -1) continue
+
+      const fragment = document.createDocumentFragment()
+      let lastIdx = 0
+
+      while (idx !== -1) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIdx, idx)))
+        const mark = document.createElement('mark')
+        mark.className = 'md-search-highlight'
+        mark.setAttribute('data-match-index', String(count))
+        mark.textContent = text.slice(idx, idx + searchText.length)
+        fragment.appendChild(mark)
+        count++
+        lastIdx = idx + searchText.length
+        idx = lower.indexOf(lowerSearch, lastIdx)
+      }
+      fragment.appendChild(document.createTextNode(text.slice(lastIdx)))
+      textNode.parentNode?.replaceChild(fragment, textNode)
+    }
+
+    setMatchCount(count)
+    if (count > 0) {
+      setCurrentMatch(1)
+      scrollToMatch(0)
+    } else {
+      setCurrentMatch(0)
+    }
+  }, [previewRef, clearHighlights])
+
+  const scrollToMatch = useCallback((index: number) => {
+    if (!previewRef.current) return
+    const marks = previewRef.current.querySelectorAll('mark.md-search-highlight')
+    marks.forEach(m => (m as HTMLElement).style.background = 'rgba(255,213,79,0.35)')
+    const target = marks[index] as HTMLElement
+    if (target) {
+      target.style.background = 'rgba(255,140,0,0.7)'
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [previewRef])
+
+  const goNext = useCallback(() => {
+    if (matchCount === 0) return
+    const next = currentMatch >= matchCount ? 1 : currentMatch + 1
+    setCurrentMatch(next)
+    scrollToMatch(next - 1)
+  }, [currentMatch, matchCount, scrollToMatch])
+
+  const goPrev = useCallback(() => {
+    if (matchCount === 0) return
+    const prev = currentMatch <= 1 ? matchCount : currentMatch - 1
+    setCurrentMatch(prev)
+    scrollToMatch(prev - 1)
+  }, [currentMatch, matchCount, scrollToMatch])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.shiftKey ? goPrev() : goNext()
+    }
+    if (e.key === 'Escape') {
+      clearHighlights()
+      onClose()
+    }
+  }, [goNext, goPrev, clearHighlights, onClose])
+
+  useEffect(() => {
+    return () => { clearHighlights() }
+  }, [clearHighlights])
+
+  return (
+    <div className="md-search-bar">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--text-muted)" style={{ flexShrink: 0 }}>
+        <path d="M11.5 7a4.499 4.499 0 11-8.998 0A4.499 4.499 0 0111.5 7zm-.82 4.74a6 6 0 111.06-1.06l3.04 3.04a.75.75 0 11-1.06 1.06l-3.04-3.04z" />
+      </svg>
+      <input
+        ref={inputRef}
+        className="md-search-input"
+        type="text"
+        placeholder="Search in preview..."
+        value={query}
+        onChange={e => {
+          setQuery(e.target.value)
+          performSearch(e.target.value)
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      {matchCount > 0 && (
+        <span className="md-search-count">{currentMatch}/{matchCount}</span>
+      )}
+      <button className="md-search-nav-btn" onClick={goPrev} title="Previous match" disabled={matchCount === 0}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.22 9.78a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 0l4.25 4.25a.75.75 0 01-1.06 1.06L8 6.06 4.28 9.78a.75.75 0 01-1.06 0z"/></svg>
+      </button>
+      <button className="md-search-nav-btn" onClick={goNext} title="Next match" disabled={matchCount === 0}>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M12.78 6.22a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06 0L3.22 7.28a.75.75 0 011.06-1.06L8 9.94l3.72-3.72a.75.75 0 011.06 0z"/></svg>
+      </button>
+      <button className="md-search-nav-btn" onClick={() => { clearHighlights(); onClose() }} title="Close search">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
+      </button>
+    </div>
+  )
+}
+
+// ─── Frontmatter Display Component ──────────────────────────────────────────
+
+function FrontmatterPanel({ data }: { data: FrontmatterData }) {
+  const [collapsed, setCollapsed] = useState(false)
+  const entries = Object.entries(data)
+  if (entries.length === 0) return null
+
+  return (
+    <div className="md-frontmatter">
+      <button className="md-frontmatter-toggle" onClick={() => setCollapsed(!collapsed)}>
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}>
+          <path d="M12.78 6.22a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06 0L3.22 7.28a.75.75 0 011.06-1.06L8 9.94l3.72-3.72a.75.75 0 011.06 0z"/>
+        </svg>
+        <span className="md-frontmatter-title">YAML Frontmatter</span>
+        <span className="md-frontmatter-count">{entries.length} fields</span>
+      </button>
+      {!collapsed && (
+        <table className="md-frontmatter-table">
+          <tbody>
+            {entries.map(([key, value]) => (
+              <tr key={key}>
+                <td className="md-fm-key">{key}</td>
+                <td className="md-fm-value">{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
+export default function MarkdownPreview({ content, style, customCSS = '', onNavigate }: MarkdownPreviewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('preview')
   const [scrollSync, setScrollSync] = useState(true)
+  const [showSearch, setShowSearch] = useState(false)
+  const [zoom, setZoom] = useState(100)
   const previewRef = useRef<HTMLDivElement>(null)
   const sourceRef = useRef<HTMLTextAreaElement>(null)
   const isSyncing = useRef(false)
 
-  const html = useMemo(() => parseMarkdown(content), [content])
+  // Parse frontmatter and body
+  const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content])
+  const html = useMemo(() => parseMarkdown(body), [body])
   const toc = useMemo(() => extractToc(content), [content])
 
   // Word and character count
   const stats = useMemo(() => {
-    const text = content.replace(/[#*`~\[\]()>|_-]/g, '')
+    const text = body.replace(/[#*`~\[\]()>|_-]/g, '')
     const words = text.trim().split(/\s+/).filter(w => w.length > 0).length
     const chars = content.length
     const lines = content.split('\n').length
     const readTime = Math.max(1, Math.ceil(words / 200))
     return { words, chars, lines, readTime }
-  }, [content])
+  }, [content, body])
 
-  // Handle copy button clicks via event delegation
+  // Handle copy button clicks and link clicks via event delegation
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement
+
+    // Copy code button
     const copyBtn = target.closest('.md-code-copy') as HTMLElement | null
     if (copyBtn) {
+      e.preventDefault()
       const wrapper = copyBtn.closest('.md-code-wrapper')
       const codeEl = wrapper?.querySelector('code')
       if (codeEl) {
@@ -444,10 +789,32 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
           }
         })
       }
+      return
     }
-  }, [])
 
-  // Scroll sync handler
+    // Link click handling
+    const link = target.closest('a.md-link') as HTMLAnchorElement | null
+    if (link) {
+      e.preventDefault()
+      const href = link.getAttribute('href') || ''
+      const linkType = link.getAttribute('data-link-type')
+
+      if (linkType === 'external') {
+        window.open(href, '_blank', 'noopener,noreferrer')
+      } else if (href.startsWith('#')) {
+        // Anchor link - scroll to heading
+        const targetEl = previewRef.current?.querySelector(href)
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      } else if (onNavigate) {
+        onNavigate(href)
+      }
+      return
+    }
+  }, [onNavigate])
+
+  // Scroll sync handlers
   const handlePreviewScroll = useCallback(() => {
     if (!scrollSync || isSyncing.current || !sourceRef.current || !previewRef.current) return
     isSyncing.current = true
@@ -478,34 +845,65 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
     }
   }, [])
 
+  // Zoom controls
+  const zoomIn = useCallback(() => setZoom(z => Math.min(200, z + 10)), [])
+  const zoomOut = useCallback(() => setZoom(z => Math.max(50, z - 10)), [])
+  const zoomReset = useCallback(() => setZoom(100), [])
+
   // Export as HTML
   const handleExport = useCallback(() => {
-    const htmlContent = generateExportHtml(content, markdownBodyStyles)
+    const htmlContent = generateExportHtml(content, markdownBodyStyles, customCSS)
     const blob = new Blob([htmlContent], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'document.html'
+    a.download = frontmatter?.title ? `${frontmatter.title}.html` : 'document.html'
     a.click()
     URL.revokeObjectURL(url)
-  }, [content])
+  }, [content, customCSS, frontmatter])
 
   // Print
   const handlePrint = useCallback(() => {
-    const htmlContent = generateExportHtml(content, markdownBodyStyles)
+    const htmlContent = generateExportHtml(content, markdownBodyStyles, customCSS)
     const win = window.open('', '_blank')
     if (win) {
       win.document.write(htmlContent)
       win.document.close()
       setTimeout(() => win.print(), 250)
     }
-  }, [content])
+  }, [content, customCSS])
 
   // Refresh (force re-render)
   const [, setRefreshKey] = useState(0)
   const handleRefresh = useCallback(() => {
     setRefreshKey(k => k + 1)
   }, [])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        if (viewMode === 'preview' || viewMode === 'split') {
+          e.preventDefault()
+          setShowSearch(true)
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '=') {
+        e.preventDefault()
+        zoomIn()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault()
+        zoomOut()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault()
+        zoomReset()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [viewMode, zoomIn, zoomOut, zoomReset])
 
   return (
     <div
@@ -565,6 +963,17 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
           )}
 
           <TocDropdown entries={toc} onSelect={handleTocSelect} />
+
+          {/* Search toggle */}
+          {(viewMode === 'preview' || viewMode === 'split') && (
+            <button
+              className={`md-toolbar-btn ${showSearch ? 'md-btn-active' : ''}`}
+              onClick={() => setShowSearch(!showSearch)}
+              title="Search in preview (Ctrl+F)"
+            >
+              <ToolbarIcon d="M11.5 7a4.499 4.499 0 11-8.998 0A4.499 4.499 0 0111.5 7zm-.82 4.74a6 6 0 111.06-1.06l3.04 3.04a.75.75 0 11-1.06 1.06l-3.04-3.04z" />
+            </button>
+          )}
         </div>
 
         <div className="md-toolbar-group">
@@ -572,6 +981,25 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
           <span className="md-toolbar-stats">
             {stats.words} words &middot; {stats.lines} lines &middot; ~{stats.readTime} min read
           </span>
+
+          <div className="md-toolbar-divider" />
+
+          {/* Zoom controls */}
+          <div className="md-zoom-controls">
+            <button className="md-toolbar-btn" onClick={zoomOut} title="Zoom out (Ctrl+-)">
+              <ToolbarIcon d="M2 7.75A.75.75 0 012.75 7h10.5a.75.75 0 010 1.5H2.75A.75.75 0 012 7.75z" />
+            </button>
+            <button
+              className="md-zoom-label"
+              onClick={zoomReset}
+              title="Reset zoom (Ctrl+0)"
+            >
+              {zoom}%
+            </button>
+            <button className="md-toolbar-btn" onClick={zoomIn} title="Zoom in (Ctrl+=)">
+              <ToolbarIcon d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z" />
+            </button>
+          </div>
 
           <div className="md-toolbar-divider" />
 
@@ -591,6 +1019,11 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
           </button>
         </div>
       </div>
+
+      {/* Search Bar */}
+      {showSearch && (viewMode === 'preview' || viewMode === 'split') && (
+        <SearchBar previewRef={previewRef} onClose={() => setShowSearch(false)} />
+      )}
 
       {/* Content Area */}
       <div className="md-content-area" style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
@@ -631,14 +1064,21 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
                 padding: '24px 32px',
                 color: 'var(--text-primary)',
                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                fontSize: 14,
+                fontSize: 14 * (zoom / 100),
                 lineHeight: 1.7,
                 maxWidth: viewMode === 'split' ? '100%' : 900,
+                transformOrigin: 'top left',
               }}
               onClick={handleClick}
               onScroll={handlePreviewScroll}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
+            >
+              {/* Frontmatter display */}
+              {frontmatter && <FrontmatterPanel data={frontmatter} />}
+              {/* Rendered markdown */}
+              <div dangerouslySetInnerHTML={{ __html: html }} />
+              {/* Custom CSS injection */}
+              {customCSS && <style dangerouslySetInnerHTML={{ __html: customCSS }} />}
+            </div>
           </div>
         )}
       </div>
@@ -646,7 +1086,7 @@ export default function MarkdownPreview({ content, style }: MarkdownPreviewProps
   )
 }
 
-// ---------- Body Styles (used in export and preview) ----------
+// ─── Body Styles (used in export and preview) ────────────────────────────────
 
 const markdownBodyStyles = `
 /* Headings - GitHub style */
@@ -790,10 +1230,23 @@ const markdownBodyStyles = `
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 0.15s ease;
+  cursor: pointer;
 }
 .markdown-preview .md-link:hover {
   text-decoration: underline;
   border-bottom-color: var(--accent-blue, #388bfd);
+}
+.markdown-preview .md-link[data-link-type="external"]::after {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 3px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 16 16' fill='%23388bfd'%3E%3Cpath d='M3.75 2h3.5a.75.75 0 010 1.5h-3.5a.25.25 0 00-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25v-3.5a.75.75 0 011.5 0v3.5A1.75 1.75 0 0112.25 14h-8.5A1.75 1.75 0 012 12.25v-8.5C2 2.784 2.784 2 3.75 2zm6.854-1h4.146a.25.25 0 01.25.25v4.146a.25.25 0 01-.427.177L13.03 4.03 9.28 7.78a.751.751 0 01-1.042-.018.751.751 0 01-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0110.604 1z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  vertical-align: middle;
+  opacity: 0.6;
 }
 
 /* Horizontal rules */
@@ -961,7 +1414,18 @@ const markdownBodyStyles = `
   border: 1px solid rgba(110,118,129,0.1);
 }
 
-/* Mermaid placeholder */
+/* Mermaid rendered diagrams */
+.markdown-preview .md-mermaid-rendered {
+  margin: 16px 0;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  overflow-x: auto;
+  text-align: center;
+}
+
+/* Mermaid placeholder fallback */
 .markdown-preview .md-mermaid-placeholder {
   margin: 16px 0;
   border-radius: 8px;
@@ -1006,6 +1470,69 @@ const markdownBodyStyles = `
   overflow-y: auto;
 }
 
+/* Frontmatter panel */
+.markdown-preview .md-frontmatter {
+  margin: 0 0 20px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+.markdown-preview .md-frontmatter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: rgba(255,255,255,0.03);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.markdown-preview .md-frontmatter-toggle:hover {
+  background: rgba(255,255,255,0.06);
+}
+.markdown-preview .md-frontmatter-title {
+  font-weight: 600;
+}
+.markdown-preview .md-frontmatter-count {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(88,166,255,0.12);
+  color: var(--accent-blue, #388bfd);
+}
+.markdown-preview .md-frontmatter-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.markdown-preview .md-fm-key {
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-blue, #79c0ff);
+  font-weight: 500;
+  white-space: nowrap;
+  width: 1%;
+  border-bottom: 1px solid rgba(62,62,66,0.5);
+  vertical-align: top;
+}
+.markdown-preview .md-fm-value {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(62,62,66,0.5);
+  word-break: break-word;
+}
+
 /* Footnotes */
 .markdown-preview .md-footnotes {
   margin-top: 32px;
@@ -1035,6 +1562,14 @@ const markdownBodyStyles = `
 }
 .markdown-preview .md-footnote-backref:hover { text-decoration: underline; }
 
+/* Search highlight */
+.markdown-preview mark.md-search-highlight {
+  background: rgba(255,213,79,0.35);
+  color: inherit;
+  padding: 1px 0;
+  border-radius: 2px;
+}
+
 /* General typography */
 .markdown-preview strong { font-weight: 600; }
 .markdown-preview em { font-style: italic; }
@@ -1046,7 +1581,7 @@ const markdownBodyStyles = `
 .markdown-preview::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 `
 
-// ---------- Exported Styles ----------
+// ─── Exported Styles ─────────────────────────────────────────────────────────
 
 export const markdownPreviewStyles = `
 ${markdownBodyStyles}
@@ -1141,6 +1676,90 @@ ${markdownBodyStyles}
   color: var(--text-primary);
   background: rgba(255,255,255,0.08);
   font-weight: 500;
+}
+
+/* Zoom controls */
+.md-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.md-zoom-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: 3px 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  min-width: 36px;
+  text-align: center;
+  transition: color 0.12s;
+}
+.md-zoom-label:hover {
+  color: var(--text-primary);
+}
+
+/* Search bar */
+.md-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.md-search-input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 120px;
+  max-width: 300px;
+  transition: border-color 0.15s;
+}
+.md-search-input:focus {
+  border-color: var(--accent-blue, #388bfd);
+}
+.md-search-input::placeholder {
+  color: var(--text-muted);
+}
+.md-search-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 32px;
+  text-align: center;
+}
+.md-search-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.md-search-nav-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
+  border-color: var(--border);
+}
+.md-search-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* TOC dropdown */
@@ -1266,12 +1885,44 @@ ${markdownBodyStyles}
 /* Print styles */
 @media print {
   .md-toolbar { display: none !important; }
-  .markdown-preview { max-width: 100% !important; }
-  .md-code-copy { display: none !important; }
+  .md-search-bar { display: none !important; }
+  .markdown-preview { max-width: 100% !important; font-size: 12pt !important; }
+  .markdown-preview .md-code-copy { display: none !important; }
+  .markdown-preview .md-frontmatter-toggle { background: #f5f5f5 !important; color: #333 !important; }
+  .markdown-preview .md-frontmatter { border-color: #ddd !important; }
+  .markdown-preview .md-code-wrapper { border-color: #ddd !important; break-inside: avoid; }
+  .markdown-preview .md-table-wrapper { break-inside: avoid; }
+  .markdown-preview .md-image { break-inside: avoid; max-width: 100% !important; }
+  .markdown-preview .md-blockquote { border-left-color: #999 !important; background: #f9f9f9 !important; }
+  .markdown-preview .md-mermaid-rendered { break-inside: avoid; }
+  .markdown-preview .md-h1, .markdown-preview .md-h2, .markdown-preview .md-h3 { break-after: avoid; }
 }
 
 /* Selection styling */
 .markdown-preview ::selection {
   background: rgba(56,139,253,0.3);
 }
+
+/* Light theme overrides (when body/root has data-theme="light") */
+[data-theme="light"] .markdown-preview .md-code-wrapper { background: #f6f8fa; }
+[data-theme="light"] .markdown-preview .md-code-copy:hover { background: rgba(0,0,0,0.06); }
+[data-theme="light"] .markdown-preview .md-code-line:hover { background: rgba(0,0,0,0.03); }
+[data-theme="light"] .markdown-preview .md-blockquote { background: rgba(88,166,255,0.06); }
+[data-theme="light"] .markdown-preview .md-inline-code { background: rgba(175,184,193,0.2); border-color: rgba(175,184,193,0.2); }
+[data-theme="light"] .markdown-preview .md-tr-striped { background: rgba(0,0,0,0.02); }
+[data-theme="light"] .markdown-preview .md-table tr:hover td { background: rgba(0,0,0,0.04); }
+[data-theme="light"] .markdown-preview .md-math-block { background: #f6f8fa; }
+[data-theme="light"] .markdown-preview .md-mermaid-rendered { background: #f6f8fa; }
+[data-theme="light"] .markdown-preview .md-frontmatter { background: #f6f8fa; }
+[data-theme="light"] .markdown-preview .md-mark { background: rgba(255,213,79,0.4); }
+[data-theme="light"] .markdown-preview .md-image { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+[data-theme="light"] .markdown-preview .md-image:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+[data-theme="light"] .md-search-input { background: #fff; }
+[data-theme="light"] .md-toolbar { background: #f0f0f0; }
+[data-theme="light"] .md-toolbar-segmented { background: #e8e8e8; }
+[data-theme="light"] .md-toolbar-seg-btn:hover { background: rgba(0,0,0,0.04); }
+[data-theme="light"] .md-toolbar-seg-btn.md-seg-active { background: rgba(0,0,0,0.08); }
+[data-theme="light"] .md-toolbar-btn:hover { background: rgba(0,0,0,0.06); }
+[data-theme="light"] .md-toc-dropdown { background: #f0f0f0; }
+[data-theme="light"] .md-toc-item:hover { background: rgba(0,0,0,0.06); }
 `

@@ -609,84 +609,151 @@ export default function SplitView({
     [collapsed, expandPane, collapsePane]
   )
 
+  // ---------------------------------------------------------------------------
   // Drag handlers — use refs for performance-critical operations
+  // We create an invisible overlay during drag to capture all mouse events
+  // regardless of what element the cursor is over.
+  // ---------------------------------------------------------------------------
+
   const createOverlay = useCallback(() => {
-    const o = document.createElement('div')
-    Object.assign(o.style, { position: 'fixed', inset: '0', zIndex: '9999',
-      cursor: isH ? 'col-resize' : 'row-resize', background: 'transparent' })
-    document.body.appendChild(o); overlayRef.current = o; return o
+    const overlay = document.createElement('div')
+    overlay.style.position = 'fixed'
+    overlay.style.inset = '0'
+    overlay.style.zIndex = '9999'
+    overlay.style.cursor = isH ? 'col-resize' : 'row-resize'
+    overlay.style.background = 'transparent'
+    document.body.appendChild(overlay)
+    overlayRef.current = overlay
+    return overlay
   }, [isH])
 
   const removeOverlay = useCallback(() => {
-    if (overlayRef.current) { overlayRef.current.remove(); overlayRef.current = null }
+    if (overlayRef.current) {
+      overlayRef.current.remove()
+      overlayRef.current = null
+    }
   }, [])
+
+  /**
+   * Core resize logic shared by mouse and touch drag.
+   * Given a pixel delta from the drag start, computes new pane sizes
+   * with snap point detection and collapse threshold checks.
+   */
+  const processDragDelta = useCallback((totalPixelDelta: number, cleanup: () => void) => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+
+    rafRef.current = requestAnimationFrame(() => {
+      if (!dragState.current) return
+
+      const bi = dragState.current.gutterIndex
+      const ai = bi + 1
+      const { startSizes, containerSize: cs } = dragState.current
+      const startBeforePercent = startSizes[bi]
+      const deltaPercent = (totalPixelDelta / cs) * 100
+      let newBeforePercent = startBeforePercent + deltaPercent
+
+      // Check collapse threshold: if a pane is dragged far enough past
+      // its minimum, collapse it entirely
+      if (collapsible) {
+        const newBeforePx = (newBeforePercent / 100) * cs
+        if (newBeforePx < paneConstraints[bi].minSize - COLLAPSE_THRESHOLD_PX && !collapsed[bi]) {
+          collapsePane(bi)
+          cleanup()
+          return
+        }
+        const afterPx = ((startSizes[ai] - deltaPercent) / 100) * cs
+        if (afterPx < paneConstraints[ai].minSize - COLLAPSE_THRESHOLD_PX && !collapsed[ai]) {
+          collapsePane(ai)
+          cleanup()
+          return
+        }
+      }
+
+      // Try snapping the 'before' pane to a nearby snap point
+      const { snapped, didSnap } = trySnap(newBeforePercent)
+      if (didSnap) newBeforePercent = snapped
+
+      // Also try snapping the 'after' pane
+      const pairTotal = startSizes[bi] + startSizes[ai]
+      let newAfterPercent = pairTotal - newBeforePercent
+      const { snapped: snappedAfter, didSnap: didSnapAfter } = trySnap(newAfterPercent)
+      if (didSnapAfter) {
+        newAfterPercent = snappedAfter
+        newBeforePercent = pairTotal - newAfterPercent
+      }
+
+      // Build new sizes array from start sizes, preserving other panes
+      const pixelDelta = ((newBeforePercent - startBeforePercent) / 100) * cs
+      const newSizes = applyResize(dragState.current.gutterIndex, pixelDelta, startSizes)
+      setSizes(newSizes)
+    })
+  }, [applyResize, trySnap, collapsible, collapsed, collapsePane, paneConstraints])
 
   const handleDragStart = useCallback((gutterIndex: number, clientPos: number) => {
     const containerSize = getContainerSize()
-    dragState.current = { active: true, gutterIndex, startPos: clientPos, startSizes: [...sizes], containerSize }
+    dragState.current = {
+      active: true,
+      gutterIndex,
+      startPos: clientPos,
+      startSizes: [...sizes],
+      containerSize,
+    }
 
     const overlay = createOverlay()
     document.body.style.cursor = isH ? 'col-resize' : 'row-resize'
     document.body.style.userSelect = 'none'
 
-    const onMouseMove = (e: MouseEvent) => {
-      if (!dragState.current?.active) return
-      const currentPos = isH ? e.clientX : e.clientY
-      const totalPixelDelta = currentPos - dragState.current.startPos
-
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-      rafRef.current = requestAnimationFrame(() => {
-        if (!dragState.current) return
-        const bi = dragState.current.gutterIndex, ai = bi + 1
-        const { startSizes, containerSize: cs } = dragState.current
-        const startBP = startSizes[bi]
-        const deltaP = (totalPixelDelta / cs) * 100
-        let newBP = startBP + deltaP
-
-        // Check collapse threshold
-        if (collapsible) {
-          const newBPx = (newBP / 100) * cs
-          if (newBPx < paneConstraints[bi].minSize - COLLAPSE_THRESHOLD_PX && !collapsed[bi]) {
-            collapsePane(bi); cleanup(); return
-          }
-          const aPx = ((startSizes[ai] - deltaP) / 100) * cs
-          if (aPx < paneConstraints[ai].minSize - COLLAPSE_THRESHOLD_PX && !collapsed[ai]) {
-            collapsePane(ai); cleanup(); return
-          }
-        }
-
-        // Snap before pane
-        const { snapped, didSnap } = trySnap(newBP)
-        if (didSnap) newBP = snapped
-
-        // Snap after pane
-        const pairTotal = startSizes[bi] + startSizes[ai]
-        let newAP = pairTotal - newBP
-        const { snapped: sa, didSnap: dsa } = trySnap(newAP)
-        if (dsa) { newAP = sa; newBP = pairTotal - newAP }
-
-        const pixDelta = ((newBP - startBP) / 100) * cs
-        setSizes(applyResize(dragState.current.gutterIndex, pixDelta, startSizes))
-      })
-    }
-
+    // Shared cleanup for both mouse and touch
     const cleanup = () => {
       overlay.removeEventListener('mousemove', onMouseMove)
       overlay.removeEventListener('mouseup', onMouseUp)
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
-      document.body.style.cursor = ''; document.body.style.userSelect = ''
-      removeOverlay(); dragState.current = null
-      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+      document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('touchend', onTouchEnd)
+      document.removeEventListener('touchcancel', onTouchEnd)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      removeOverlay()
+      dragState.current = null
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
     }
-    const onMouseUp = () => cleanup()
 
+    // Mouse move handler
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragState.current?.active) return
+      const currentPos = isH ? e.clientX : e.clientY
+      processDragDelta(currentPos - dragState.current.startPos, cleanup)
+    }
+
+    // Touch move handler — same logic, different event shape
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragState.current?.active || e.touches.length !== 1) return
+      const touch = e.touches[0]
+      const currentPos = isH ? touch.clientX : touch.clientY
+      const delta = currentPos - dragState.current.startPos
+      // Only start processing once past the move threshold
+      if (Math.abs(delta) >= TOUCH_MOVE_THRESHOLD) {
+        e.preventDefault()
+        processDragDelta(delta, cleanup)
+      }
+    }
+
+    const onMouseUp = () => cleanup()
+    const onTouchEnd = () => cleanup()
+
+    // Attach listeners to both overlay and document for reliability
     overlay.addEventListener('mousemove', onMouseMove)
     overlay.addEventListener('mouseup', onMouseUp)
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-  }, [sizes, isH, getContainerSize, createOverlay, removeOverlay, applyResize,
-      trySnap, collapsible, collapsed, collapsePane, paneConstraints])
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+    document.addEventListener('touchend', onTouchEnd)
+    document.addEventListener('touchcancel', onTouchEnd)
+  }, [sizes, isH, getContainerSize, createOverlay, removeOverlay, processDragDelta])
 
   // Double-click reset to 50/50
   const handleDoubleClick = useCallback((_gutterIndex: number) => {
