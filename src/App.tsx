@@ -872,6 +872,8 @@ export default function App() {
       {/* Global drop overlay for OS file/folder drag */}
       {globalDragOver && (
         <div
+          role="presentation"
+          aria-hidden="true"
           style={{
             position: 'fixed',
             inset: 0,
@@ -934,6 +936,9 @@ export default function App() {
 
       {/* Title Bar - hidden in zen mode with smooth transition */}
       <div
+        role="banner"
+        aria-label="Title Bar"
+        aria-hidden={zenMode}
         style={{
           overflow: 'hidden',
           maxHeight: zenMode ? 0 : 38,
@@ -948,7 +953,8 @@ export default function App() {
         {/* Activity Bar - hidden in zen mode */}
         <div
           role="navigation"
-          aria-label="Activity Bar"
+          aria-label="Activity Bar - Switch between views"
+          aria-hidden={zenMode}
           style={{
             overflow: 'hidden',
             maxWidth: zenMode ? 0 : 48,
@@ -966,16 +972,17 @@ export default function App() {
                 setActiveView(v)
               }
             }}
-            onSettingsClick={() => setSettingsOpen(true)}
+            onSettingsClick={() => openModal(setSettingsOpen)}
           />
         </div>
 
-        {/* Side Panel */}
+        {/* Side Panel - complementary landmark with dynamic label based on active view */}
         {sidebarVisible && !zenMode && (
           <>
             <div
               role="complementary"
-              aria-label="Side Panel"
+              aria-label={`Side Panel - ${activeView.charAt(0).toUpperCase() + activeView.slice(1)}`}
+              aria-expanded={sidebarVisible}
               style={{
                 width: sidePanelWidth,
                 display: 'flex',
@@ -1016,8 +1023,8 @@ export default function App() {
           />
         )}
 
-        {/* Center */}
-        <div role="main" id="editor-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Center - main content area (editor, breadcrumbs, bottom panel) */}
+        <div role="main" aria-label="Editor content" id="editor-main" tabIndex={-1} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Breadcrumbs - only shown when a file is open and not in diff view */}
           {!diffView && <BreadcrumbsWrapper />}
           <div className={zenMode ? 'zen-editor-container' : undefined} style={{ flex: 1, overflow: 'hidden' }}>
@@ -1045,7 +1052,12 @@ export default function App() {
                 onCollapse={() => setBottomVisible(false)}
                 onReset={() => setBottomPanelHeight(DEFAULT_BOTTOM_PANEL_HEIGHT)}
               />
-              <div style={{ height: bottomPanelHeight }}>
+              <div
+                role="region"
+                aria-label="Terminal and Output Panel"
+                aria-expanded={bottomVisible}
+                style={{ height: bottomPanelHeight }}
+              >
                 <BottomPanel />
               </div>
             </>
@@ -1071,7 +1083,7 @@ export default function App() {
               onCollapse={() => setChatVisible(false)}
               onReset={() => setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH)}
             />
-            <div role="complementary" aria-label="Chat Panel" style={{ width: rightPanelWidth }}>
+            <div role="complementary" aria-label="AI Chat Panel" aria-expanded={chatVisible} style={{ width: rightPanelWidth }}>
               <Suspense fallback={<PanelFallback />}>
                 <ChatPanel />
               </Suspense>

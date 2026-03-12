@@ -17,7 +17,37 @@ const providers = [
   { key: 'nvidia', label: 'NVIDIA NIM (build.nvidia.com)', placeholder: 'nvapi-...', color: '#76b900' },
   { key: 'kimi', label: 'Moonshot (Kimi)', placeholder: 'sk-...', color: '#f78166' },
   { key: 'gemini', label: 'Google (Gemini)', placeholder: 'AIza...', color: '#58a6ff' },
+  { key: 'custom', label: 'Custom Provider', placeholder: 'your-api-key...', color: '#8b949e' },
 ]
+
+const AI_MODELS: Record<string, { value: string; label: string }[]> = {
+  anthropic: [
+    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+    { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
+    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+  ],
+  openai: [
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { value: 'o3-mini', label: 'o3-mini' },
+  ],
+  nvidia: [
+    { value: 'meta/llama-3.1-405b-instruct', label: 'Llama 3.1 405B' },
+    { value: 'meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B' },
+  ],
+  kimi: [
+    { value: 'moonshot-v1-128k', label: 'Moonshot v1 128K' },
+    { value: 'moonshot-v1-32k', label: 'Moonshot v1 32K' },
+  ],
+  gemini: [
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+  ],
+  custom: [
+    { value: 'custom', label: 'Custom Model' },
+  ],
+}
 
 const DEFAULT_SYSTEM_PROMPT = 'You are Orion AI by Bebut, an expert coding assistant integrated into a code editor IDE. You help with code analysis, debugging, feature implementation, and code explanations. Be concise and helpful. Use markdown formatting for code blocks. Respond in the same language the user uses.'
 const DEFAULT_USER_TEMPLATE = '{message}'
@@ -25,9 +55,22 @@ const DEFAULT_USER_TEMPLATE = '{message}'
 type CategoryId = 'general' | 'editor' | 'ai' | 'theme' | 'terminal' | 'shortcuts' | 'profiles'
 
 type AutoSaveMode = 'off' | 'afterDelay' | 'onFocusChange' | 'onWindowChange'
+type StartupBehavior = 'welcomeTab' | 'lastSession' | 'empty'
+type WindowTitleFormat = 'default' | 'filePath' | 'fileName' | 'folderName'
 
 type EditorCursorStyle = 'line' | 'block' | 'underline' | 'line-thin' | 'block-outline' | 'underline-thin'
+type CursorBlinking = 'blink' | 'smooth' | 'expand' | 'solid' | 'phase'
+type WordWrapMode = 'off' | 'on' | 'wordWrapColumn' | 'bounded'
+type LineNumbersMode = 'on' | 'off' | 'relative' | 'interval'
+type MinimapSide = 'right' | 'left'
 type RenderWhitespace = 'none' | 'boundary' | 'selection' | 'trailing' | 'all'
+
+interface GeneralSettings {
+  startupBehavior: StartupBehavior
+  windowTitleFormat: WindowTitleFormat
+  confirmBeforeClose: boolean
+  telemetryEnabled: boolean
+}
 
 interface EditorSettings {
   fontSize: number
@@ -36,17 +79,40 @@ interface EditorSettings {
   fontLigatures: boolean
   letterSpacing: number
   cursorStyle: EditorCursorStyle
+  cursorBlinking: CursorBlinking
   renderWhitespace: RenderWhitespace
-  wordWrap: boolean
+  wordWrap: boolean // kept for backward compat
+  wordWrapMode: WordWrapMode
+  wordWrapColumn: number
+  insertSpaces: boolean
   minimap: boolean
+  minimapSide: MinimapSide
+  minimapMaxColumn: number
   autoSave: boolean // kept for backward compat
   autoSaveMode: AutoSaveMode
   autoSaveDelay: number
   tabSize: number
-  lineNumbers: boolean
+  lineNumbers: boolean // kept for backward compat
+  lineNumbersMode: LineNumbersMode
   bracketPairColorization: boolean
   stickyScroll: boolean
+  smoothScrolling: boolean
   formatOnSave: boolean
+  formatOnPaste: boolean
+  trimTrailingWhitespace: boolean
+  insertFinalNewline: boolean
+  rulers: number[]
+}
+
+interface AISettings {
+  activeProvider: string
+  selectedModels: Record<string, string>
+  temperature: number
+  maxTokens: number
+  ghostTextEnabled: boolean
+  completionDelay: number
+  customModelName: string
+  customEndpointUrl: string
 }
 
 const FONT_FAMILIES = [
@@ -63,10 +129,34 @@ const FONT_FAMILIES = [
 ]
 
 interface TerminalSettings {
+  defaultShell: string
+  fontFamily: string
   fontSize: number
   cursorStyle: 'block' | 'bar' | 'underline'
   scrollback: number
 }
+
+const TERMINAL_SHELLS = [
+  { value: 'default', label: 'System Default' },
+  { value: 'powershell', label: 'PowerShell' },
+  { value: 'cmd', label: 'Command Prompt' },
+  { value: 'bash', label: 'Git Bash' },
+  { value: 'wsl', label: 'WSL' },
+  { value: 'zsh', label: 'Zsh' },
+]
+
+const TERMINAL_FONTS = [
+  'Cascadia Code',
+  'Cascadia Mono',
+  'Consolas',
+  'Courier New',
+  'Fira Code',
+  'JetBrains Mono',
+  'Menlo',
+  'Monaco',
+  'Source Code Pro',
+  'Ubuntu Mono',
+]
 
 /* ---- Toggle Component ---- */
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) => (
@@ -216,16 +306,42 @@ export default function SettingsModal({ open, onClose }: Props) {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [userTemplate, setUserTemplate] = useState('')
   const [saved, setSaved] = useState(false)
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
+    startupBehavior: 'welcomeTab',
+    windowTitleFormat: 'default',
+    confirmBeforeClose: true,
+    telemetryEnabled: false,
+  })
   const [editorSettings, setEditorSettings] = useState<EditorSettings>({
     fontSize: 14, fontFamily: 'Cascadia Code', lineHeight: 1.5, fontLigatures: true,
-    letterSpacing: 0, cursorStyle: 'line', renderWhitespace: 'selection',
-    wordWrap: false, minimap: true, autoSave: true,
-    autoSaveMode: 'afterDelay', autoSaveDelay: 1000, tabSize: 2, lineNumbers: true,
-    bracketPairColorization: true, stickyScroll: true, formatOnSave: false,
+    letterSpacing: 0, cursorStyle: 'line', cursorBlinking: 'blink',
+    renderWhitespace: 'selection',
+    wordWrap: false, wordWrapMode: 'off', wordWrapColumn: 80,
+    insertSpaces: true,
+    minimap: true, minimapSide: 'right', minimapMaxColumn: 120,
+    autoSave: true,
+    autoSaveMode: 'afterDelay', autoSaveDelay: 1000, tabSize: 2,
+    lineNumbers: true, lineNumbersMode: 'on',
+    bracketPairColorization: true, stickyScroll: true, smoothScrolling: true,
+    formatOnSave: false, formatOnPaste: false,
+    trimTrailingWhitespace: true, insertFinalNewline: true,
+    rulers: [],
+  })
+  const [aiSettings, setAiSettings] = useState<AISettings>({
+    activeProvider: 'anthropic',
+    selectedModels: { anthropic: 'claude-sonnet-4-20250514', openai: 'gpt-4o', nvidia: 'meta/llama-3.1-405b-instruct', kimi: 'moonshot-v1-128k', gemini: 'gemini-2.0-flash', custom: 'custom' },
+    temperature: 0.7,
+    maxTokens: 4096,
+    ghostTextEnabled: true,
+    completionDelay: 300,
+    customModelName: '',
+    customEndpointUrl: '',
   })
   const [terminalSettings, setTerminalSettings] = useState<TerminalSettings>({
+    defaultShell: 'default', fontFamily: 'Cascadia Code',
     fontSize: 13, cursorStyle: 'block', scrollback: 1000,
   })
+  const [newRuler, setNewRuler] = useState('')
 
   // Workspace settings
   const rootPath = useFileStore((s) => s.rootPath)
@@ -248,6 +364,8 @@ export default function SettingsModal({ open, onClose }: Props) {
           setSystemPrompt(p.systemPrompt || '')
           setUserTemplate(p.userPromptTemplate || '')
         }
+        const storedGeneral = localStorage.getItem('orion-general-settings')
+        if (storedGeneral) setGeneralSettings(prev => ({ ...prev, ...JSON.parse(storedGeneral) }))
         const storedEditor = localStorage.getItem('orion-editor-settings')
         if (storedEditor) {
           const parsed = JSON.parse(storedEditor)
@@ -255,8 +373,18 @@ export default function SettingsModal({ open, onClose }: Props) {
           if (parsed.autoSave !== undefined && !parsed.autoSaveMode) {
             parsed.autoSaveMode = parsed.autoSave ? 'afterDelay' : 'off'
           }
+          // Migrate old boolean wordWrap to wordWrapMode
+          if (parsed.wordWrap !== undefined && !parsed.wordWrapMode) {
+            parsed.wordWrapMode = parsed.wordWrap ? 'on' : 'off'
+          }
+          // Migrate old boolean lineNumbers to lineNumbersMode
+          if (parsed.lineNumbers !== undefined && !parsed.lineNumbersMode) {
+            parsed.lineNumbersMode = parsed.lineNumbers ? 'on' : 'off'
+          }
           setEditorSettings(prev => ({ ...prev, ...parsed }))
         }
+        const storedAi = localStorage.getItem('orion-ai-settings')
+        if (storedAi) setAiSettings(prev => ({ ...prev, ...JSON.parse(storedAi) }))
         const storedTerminal = localStorage.getItem('orion-terminal-settings')
         if (storedTerminal) setTerminalSettings(prev => ({ ...prev, ...JSON.parse(storedTerminal) }))
       } catch {}
@@ -287,10 +415,14 @@ export default function SettingsModal({ open, onClose }: Props) {
     localStorage.setItem('orion-prompts', JSON.stringify(prompts))
     await window.api?.omoSetPrompts(prompts)
 
+    localStorage.setItem('orion-general-settings', JSON.stringify(generalSettings))
     localStorage.setItem('orion-editor-settings', JSON.stringify(editorSettings))
+    localStorage.setItem('orion-ai-settings', JSON.stringify(aiSettings))
     localStorage.setItem('orion-terminal-settings', JSON.stringify(terminalSettings))
-    // Dispatch editor config update event
+    // Dispatch config update events
+    window.dispatchEvent(new CustomEvent('orion:general-config', { detail: generalSettings }))
     window.dispatchEvent(new CustomEvent('orion:editor-config', { detail: editorSettings }))
+    window.dispatchEvent(new CustomEvent('orion:ai-config', { detail: aiSettings }))
     window.dispatchEvent(new CustomEvent('orion:terminal-config', { detail: terminalSettings }))
 
     setSaved(true)
@@ -388,6 +520,74 @@ export default function SettingsModal({ open, onClose }: Props) {
             {/* ---- GENERAL ---- */}
             {activeCategory === 'general' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <SectionHeader title="Application" />
+
+                <SettingRow label="Startup Behavior" description="What to show when Orion starts">
+                  <SelectDropdown
+                    value={generalSettings.startupBehavior}
+                    onChange={(v) => setGeneralSettings(s => ({ ...s, startupBehavior: v as StartupBehavior }))}
+                    options={[
+                      { value: 'welcomeTab', label: 'Welcome Tab' },
+                      { value: 'lastSession', label: 'Restore Last Session' },
+                      { value: 'empty', label: 'Empty Editor' },
+                    ]}
+                  />
+                </SettingRow>
+
+                <SettingRow label="Window Title Format" description="Controls the format of the window title bar">
+                  <SelectDropdown
+                    value={generalSettings.windowTitleFormat}
+                    onChange={(v) => setGeneralSettings(s => ({ ...s, windowTitleFormat: v as WindowTitleFormat }))}
+                    options={[
+                      { value: 'default', label: 'Default' },
+                      { value: 'filePath', label: 'Full File Path' },
+                      { value: 'fileName', label: 'File Name Only' },
+                      { value: 'folderName', label: 'Folder Name' },
+                    ]}
+                  />
+                </SettingRow>
+
+                <SettingRow label="Confirm Before Close" description="Show confirmation dialog when closing with unsaved changes">
+                  <Toggle checked={generalSettings.confirmBeforeClose} onChange={(v) => setGeneralSettings(s => ({ ...s, confirmBeforeClose: v }))} />
+                </SettingRow>
+
+                <SettingRow label="Telemetry" description="Allow anonymous usage data collection to improve Orion">
+                  <Toggle checked={generalSettings.telemetryEnabled} onChange={(v) => setGeneralSettings(s => ({ ...s, telemetryEnabled: v }))} />
+                </SettingRow>
+
+                <SectionHeader title="Auto Save" />
+
+                <SettingRow label="Auto Save Mode" description="Controls when files are automatically saved">
+                  <SelectDropdown
+                    value={editorSettings.autoSaveMode}
+                    onChange={(v) => {
+                      const mode = v as AutoSaveMode
+                      setEditorSettings(s => ({ ...s, autoSaveMode: mode, autoSave: mode !== 'off' }))
+                    }}
+                    options={[
+                      { value: 'off', label: 'Off' },
+                      { value: 'afterDelay', label: 'After Delay' },
+                      { value: 'onFocusChange', label: 'On Focus Change' },
+                      { value: 'onWindowChange', label: 'On Window Change' },
+                    ]}
+                  />
+                </SettingRow>
+
+                {editorSettings.autoSaveMode === 'afterDelay' && (
+                  <SettingRow label="Auto Save Delay" description="Delay before auto-saving after the last edit">
+                    <SelectDropdown
+                      value={String(editorSettings.autoSaveDelay)}
+                      onChange={(v) => setEditorSettings(s => ({ ...s, autoSaveDelay: parseInt(v, 10) }))}
+                      options={[
+                        { value: '1000', label: '1 second' },
+                        { value: '5000', label: '5 seconds' },
+                        { value: '10000', label: '10 seconds' },
+                        { value: '30000', label: '30 seconds' },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+
                 <SectionHeader title="Workspace" />
                 <SettingRow label="Workspace Folder" description={rootPath || 'No folder open'}>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
