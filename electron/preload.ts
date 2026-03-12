@@ -40,7 +40,8 @@ const api = {
   gitFileDiff: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_FILE_DIFF, cwd, filePath),
 
   // Terminal
-  termCreate: (id: string) => ipcRenderer.invoke(IPC.TERM_CREATE, id),
+  termCreate: (id: string, shellOptions?: { shellPath?: string; shellArgs?: string[] }) =>
+    ipcRenderer.invoke(IPC.TERM_CREATE, id, shellOptions),
   termWrite: (id: string, data: string) => ipcRenderer.send(IPC.TERM_WRITE, id, data),
   termResize: (id: string, cols: number, rows: number) => ipcRenderer.send(IPC.TERM_RESIZE, id, cols, rows),
   termKill: (id: string) => ipcRenderer.send(IPC.TERM_KILL, id),

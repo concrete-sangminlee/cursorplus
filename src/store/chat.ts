@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessage, ChatMode } from '@shared/types'
+import { useChatHistoryStore } from './chatHistory'
 
 interface ChatStore {
   messages: ChatMessage[]
@@ -15,9 +16,15 @@ interface ChatStore {
   setStreaming: (streaming: boolean) => void
   clearMessages: () => void
   setOllamaStatus: (available: boolean, models: string[]) => void
+  loadMessages: (messages: ChatMessage[]) => void
 }
 
-export const useChatStore = create<ChatStore>((set) => ({
+/** Sync current messages to the active conversation in chatHistory store. */
+function syncToHistory(messages: ChatMessage[]) {
+  useChatHistoryStore.getState().syncMessages(messages)
+}
+
+export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   mode: 'agent',
   selectedModel: 'Ollama',
@@ -25,8 +32,13 @@ export const useChatStore = create<ChatStore>((set) => ({
   ollamaAvailable: false,
   ollamaModels: [],
 
-  addMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
+  addMessage: (message) => {
+    set((state) => {
+      const updated = [...state.messages, message]
+      syncToHistory(updated)
+      return { messages: updated }
+    })
+  },
 
   updateLastAssistant: (chunk) =>
     set((state) => {
@@ -37,12 +49,21 @@ export const useChatStore = create<ChatStore>((set) => ({
           break
         }
       }
+      syncToHistory(msgs)
       return { messages: msgs }
     }),
 
   setMode: (mode) => set({ mode }),
   setModel: (model) => set({ selectedModel: model }),
   setStreaming: (streaming) => set({ isStreaming: streaming }),
-  clearMessages: () => set({ messages: [] }),
-  setOllamaStatus: (available, models) => set({ ollamaAvailable: available, ollamaModels: models }),
+
+  clearMessages: () => {
+    set({ messages: [] })
+    syncToHistory([])
+  },
+
+  setOllamaStatus: (available, models) =>
+    set({ ollamaAvailable: available, ollamaModels: models }),
+
+  loadMessages: (messages) => set({ messages }),
 }))

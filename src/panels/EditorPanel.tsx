@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
-import Editor, { type Monaco } from '@monaco-editor/react'
+import Editor, { DiffEditor as MonacoDiffEditorComponent, type Monaco } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
@@ -15,7 +15,7 @@ import {
   Search, Settings, GitBranch, Columns, Sparkles,
   FileText, ZoomIn, ZoomOut, Maximize2, Minimize2,
   Image as ImageIcon, Folder, File, Hash, Box, Braces, Type as TypeIcon,
-  Upload,
+  Upload, Rows2, Link2, Link2Off, X, GitCompare,
 } from 'lucide-react'
 import { useEditorStore as useBreadcrumbEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
@@ -86,10 +86,22 @@ export default function EditorPanel() {
   const colorDecorationsRef = useRef<string[]>([])
   const rootPath = useFileStore((s) => s.rootPath)
 
-  // Split editor state
-  const [splitMode, setSplitMode] = useState<'single' | 'split'>('single')
+  // Split editor state: supports horizontal (side by side) and vertical (top/bottom)
+  const [splitMode, setSplitMode] = useState<'single' | 'horizontal' | 'vertical'>('single')
   const [splitFilePath, setSplitFilePath] = useState<string | null>(null)
   const splitFile = splitFilePath ? openFiles.find((f) => f.path === splitFilePath) : null
+  // Editor group management: track files in each group
+  const [group1Files, setGroup1Files] = useState<string[]>([])
+  const [group2Files, setGroup2Files] = useState<string[]>([])
+  // Sync scroll between split editors
+  const [syncScrollEnabled, setSyncScrollEnabled] = useState(false)
+  const splitEditorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
+  const isSyncingScroll = useRef(false)
+  // Diff editor state
+  const [diffEditorMode, setDiffEditorMode] = useState(false)
+  const [diffOriginalPath, setDiffOriginalPath] = useState<string | null>(null)
+  const [diffModifiedPath, setDiffModifiedPath] = useState<string | null>(null)
+  const [diffFilePickerOpen, setDiffFilePickerOpen] = useState(false)
 
   // Drag-and-drop state for OS file drops
   const [isDragOver, setIsDragOver] = useState(false)
@@ -1240,17 +1252,48 @@ export default function EditorPanel() {
       }
     }
 
+    // Set indentation handler (from StatusBar indentation selector)
+    const setIndentHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail && editorRef.current) {
+        const { useSpaces, size } = detail as { useSpaces: boolean; size: number }
+        editorRef.current.getModel()?.updateOptions({
+          tabSize: size,
+          insertSpaces: useSpaces,
+        })
+        editorRef.current.updateOptions({
+          tabSize: size,
+          insertSpaces: useSpaces,
+        })
+      }
+    }
+
+    // Set EOL handler (from StatusBar EOL selector)
+    const setEolHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail && editorRef.current && monacoRef.current) {
+        const eolValue = detail.eol === 'CRLF'
+          ? monacoRef.current.editor.EndOfLineSequence.CRLF
+          : monacoRef.current.editor.EndOfLineSequence.LF
+        editorRef.current.getModel()?.pushEOL(eolValue)
+      }
+    }
+
     Object.entries(handlers).forEach(([event, handler]) => {
       window.addEventListener(event, handler)
     })
     window.addEventListener('orion:go-to-line', goToLineHandler)
     window.addEventListener('orion:set-language', setLanguageHandler)
+    window.addEventListener('orion:set-indent', setIndentHandler)
+    window.addEventListener('orion:set-eol', setEolHandler)
     return () => {
       Object.entries(handlers).forEach(([event, handler]) => {
         window.removeEventListener(event, handler)
       })
       window.removeEventListener('orion:go-to-line', goToLineHandler)
       window.removeEventListener('orion:set-language', setLanguageHandler)
+      window.removeEventListener('orion:set-indent', setIndentHandler)
+      window.removeEventListener('orion:set-eol', setEolHandler)
     }
   }, [activeFilePath, activeFile, closeFile, closeAllFiles, markSaved, addToast])
 
@@ -1473,89 +1516,179 @@ export default function EditorPanel() {
   )
 }
 
-function Breadcrumbs({ path, saving }: { path: string; saving: boolean }) {
+/* ── Symbol extraction for breadcrumb ── */
+interface BreadcrumbSymbol { name: string; kind: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const'; line: number; endLine: number }
+
+function extractBreadcrumbSymbols(content: string, language: string): BreadcrumbSymbol[] {
+  const symbols: BreadcrumbSymbol[] = []
+  const lines = content.split('\n')
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim(); const lineNum = idx + 1
+    let match = trimmed.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w+)/)
+    if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum, endLine: lineNum }); return }
+    match = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\(|<)/)
+    if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum, endLine: lineNum }); return }
+    match = trimmed.match(/^(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/)
+    if (match) { symbols.push({ name: match[1], kind: 'class', line: lineNum, endLine: lineNum }); return }
+    match = trimmed.match(/^(?:export\s+)?interface\s+(\w+)/)
+    if (match) { symbols.push({ name: match[1], kind: 'interface', line: lineNum, endLine: lineNum }); return }
+    match = trimmed.match(/^(?:export\s+)?type\s+(\w+)\s*=/)
+    if (match) { symbols.push({ name: match[1], kind: 'type', line: lineNum, endLine: lineNum }); return }
+    match = trimmed.match(/^(?:export\s+)?enum\s+(\w+)/)
+    if (match) { symbols.push({ name: match[1], kind: 'class', line: lineNum, endLine: lineNum }); return }
+    if (language === 'python') {
+      match = trimmed.match(/^def\s+(\w+)/); if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum, endLine: lineNum }); return }
+      match = trimmed.match(/^class\s+(\w+)/); if (match) { symbols.push({ name: match[1], kind: 'class', line: lineNum, endLine: lineNum }); return }
+    }
+  })
+  for (let i = 0; i < symbols.length; i++) { symbols[i].endLine = i + 1 < symbols.length ? symbols[i + 1].line - 1 : lines.length }
+  return symbols
+}
+function findSymbolAtLine(symbols: BreadcrumbSymbol[], line: number): BreadcrumbSymbol | null {
+  for (let i = symbols.length - 1; i >= 0; i--) { if (line >= symbols[i].line && line <= symbols[i].endLine) return symbols[i] }
+  return null
+}
+const symbolKindIcons: Record<string, typeof Hash> = { function: Hash, class: Box, interface: Braces, type: TypeIcon, variable: Hash, const: Hash }
+const symbolKindColors: Record<string, string> = { function: '#dcdcaa', class: '#4ec9b0', interface: '#4ec9b0', type: '#4ec9b0', variable: '#9cdcfe', const: '#4fc1ff' }
+
+/* ── BreadcrumbDropdown ── */
+interface DirEntry { name: string; path: string; type: 'file' | 'directory' }
+function BreadcrumbDropdown({ dirPath, anchorRect, onClose, onNavigateFolder }: { dirPath: string; anchorRect: { left: number; top: number; bottom: number }; onClose: () => void; onNavigateFolder: (p: string) => void }) {
+  const [entries, setEntries] = useState<DirEntry[]>([]); const [loading, setLoading] = useState(true); const [currentDir, setCurrentDir] = useState(dirPath)
+  const dropdownRef = useRef<HTMLDivElement>(null); const { openFile } = useBreadcrumbEditorStore()
+  useEffect(() => {
+    setLoading(true)
+    window.api.readDir(currentDir).then((tree: any[]) => {
+      const items: DirEntry[] = (tree || []).map((n: any) => ({ name: n.name, path: n.path, type: n.type as 'file' | 'directory' }))
+      items.sort((a, b) => { if (a.type !== b.type) return a.type === 'directory' ? -1 : 1; return a.name.localeCompare(b.name) })
+      setEntries(items); setLoading(false)
+    }).catch(() => { setEntries([]); setLoading(false) })
+  }, [currentDir])
+  useEffect(() => { const h = (e: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) onClose() }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [onClose])
+  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }; document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h) }, [onClose])
+  const handleClickEntry = async (entry: DirEntry) => {
+    if (entry.type === 'directory') { setCurrentDir(entry.path); onNavigateFolder(entry.path) }
+    else { try { const r = await window.api.readFile(entry.path); openFile({ path: entry.path, name: entry.name, content: r.content, language: r.language, isModified: false, aiModified: false }); onClose() } catch { onClose() } }
+  }
+  const handleGoUp = () => { const p = currentDir.replace(/\\/g, '/').replace(/\/[^/]+$/, ''); if (p && p !== currentDir) setCurrentDir(p.replace(/\//g, currentDir.includes('\\') ? '\\' : '/')) }
+  return (
+    <div ref={dropdownRef} style={{ position: 'fixed', left: Math.min(anchorRect.left, window.innerWidth - 230), top: anchorRect.bottom + 2, width: 220, maxHeight: 280, overflowY: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border-bright)', borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', zIndex: 9999, padding: '4px 0', fontSize: 12 }}>
+      {currentDir !== dirPath && (<div role="button" tabIndex={0} onClick={handleGoUp} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleGoUp() } }} style={{ padding: '4px 10px', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 2 }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}><ChevronRight size={10} style={{ transform: 'rotate(180deg)' }} /> ..</div>)}
+      {loading ? (<div style={{ padding: '8px 10px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="anim-spin" /> Loading...</div>
+      ) : entries.length === 0 ? (<div style={{ padding: '8px 10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Empty directory</div>
+      ) : entries.map((entry) => (
+        <div key={entry.path} role="button" tabIndex={0} onClick={() => handleClickEntry(entry)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClickEntry(entry) } }} style={{ padding: '3px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)', transition: 'background 0.1s' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+          {entry.type === 'directory' ? <Folder size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} /> : <File size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</span>
+          {entry.type === 'directory' && <ChevronRight size={10} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+        </div>))}
+    </div>
+  )
+}
+
+/* ── SymbolDropdown ── */
+function SymbolDropdown({ symbols, anchorRect, onClose }: { symbols: BreadcrumbSymbol[]; anchorRect: { left: number; top: number; bottom: number }; onClose: () => void }) {
+  const dropdownRef = useRef<HTMLDivElement>(null); const [filter, setFilter] = useState(''); const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => { const h = (e: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) onClose() }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [onClose])
+  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }; document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h) }, [onClose])
+  const filtered = filter.trim() ? symbols.filter((s) => s.name.toLowerCase().includes(filter.toLowerCase())) : symbols
+  const goToLine = (line: number) => { window.dispatchEvent(new CustomEvent('orion:go-to-line', { detail: { line } })); onClose() }
+  return (
+    <div ref={dropdownRef} style={{ position: 'fixed', left: Math.min(anchorRect.left, window.innerWidth - 250), top: anchorRect.bottom + 2, width: 240, maxHeight: 320, background: 'var(--bg-secondary)', border: '1px solid var(--border-bright)', borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', zIndex: 9999, fontSize: 12, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-primary)', borderRadius: 4, border: '1px solid var(--border)', padding: '3px 6px' }}>
+          <Search size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input ref={inputRef} type="text" placeholder="Filter symbols..." value={filter} onChange={(e) => setFilter(e.target.value)} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: 11, fontFamily: 'inherit' }} />
+        </div>
+      </div>
+      <div style={{ overflowY: 'auto', padding: '4px 0', flex: 1 }}>
+        {filtered.length === 0 ? (<div style={{ padding: '8px 10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No symbols found</div>) : filtered.map((sym, i) => {
+          const Icon = symbolKindIcons[sym.kind] || Hash; const color = symbolKindColors[sym.kind] || 'var(--text-muted)'
+          return (<div key={`${sym.name}-${sym.line}-${i}`} role="button" tabIndex={0} onClick={() => goToLine(sym.line)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToLine(sym.line) } }} style={{ padding: '3px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)', transition: 'background 0.1s' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+            <Icon size={12} style={{ color, flexShrink: 0 }} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace" }}>{sym.name}</span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>:{sym.line}</span>
+          </div>)
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ── Enhanced Breadcrumbs ── */
+function Breadcrumbs({ path, saving, content, language }: { path: string; saving: boolean; content: string; language: string }) {
   const normalizedPath = path.replace(/\\/g, '/')
   const segments = normalizedPath.split('/').filter(Boolean)
   const fileName = segments.pop() || ''
   const dirSegments = segments.slice(-3)
-  // How many segments were truncated (for building the full directory path on click)
   const truncatedCount = Math.max(0, segments.length - 3)
-
-  const handleDirClick = (segmentIndex: number) => {
-    // Build the full directory path up to the clicked segment.
-    // segmentIndex is relative to dirSegments; map it back to the full segments array.
-    const fullIndex = truncatedCount + segmentIndex
-    const dirPath = segments.slice(0, fullIndex + 1).join('/')
-    // Prefix with / on Unix-style paths (the original path starts with /)
-    const prefix = normalizedPath.startsWith('/') ? '/' : ''
-    window.dispatchEvent(
-      new CustomEvent('orion:show-explorer', { detail: { directory: prefix + dirPath } })
-    )
+  const [openDropdownIndex, setOpenDropdownIndex] = useState<number | null>(null)
+  const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
+  const [dropdownDirPath, setDropdownDirPath] = useState<string | null>(null)
+  const [cursorLine, setCursorLine] = useState(1)
+  const [symbolDropdownOpen, setSymbolDropdownOpen] = useState(false)
+  const [symbolDropdownRect, setSymbolDropdownRect] = useState<{ left: number; top: number; bottom: number } | null>(null)
+  const allSymbols = useMemo(() => content ? extractBreadcrumbSymbols(content, language || 'typescript') : [], [content, language])
+  const currentSymbol = useMemo(() => findSymbolAtLine(allSymbols, cursorLine), [allSymbols, cursorLine])
+  useEffect(() => { const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.line) setCursorLine(d.line) }; window.addEventListener('orion:cursor-change', h); return () => window.removeEventListener('orion:cursor-change', h) }, [])
+  useEffect(() => { setOpenDropdownIndex(null); setSymbolDropdownOpen(false) }, [path])
+  const handleSegmentClick = (segmentIndex: number, e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect(); const fullIndex = truncatedCount + segmentIndex; const pathParts = segments.slice(0, fullIndex + 1)
+    let dirPath = normalizedPath.startsWith('/') ? '/' + pathParts.join('/') : pathParts.join('/'); if (path.includes('\\')) dirPath = dirPath.replace(/\//g, '\\')
+    if (openDropdownIndex === segmentIndex) { setOpenDropdownIndex(null) } else { setOpenDropdownIndex(segmentIndex); setDropdownRect({ left: rect.left, top: rect.top, bottom: rect.bottom }); setDropdownDirPath(dirPath) }
+    setSymbolDropdownOpen(false)
   }
+  const handleFileNameClick = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect(); let dirPath = normalizedPath.startsWith('/') ? '/' + segments.join('/') : segments.join('/'); if (path.includes('\\')) dirPath = dirPath.replace(/\//g, '\\')
+    if (openDropdownIndex === -1) { setOpenDropdownIndex(null) } else { setOpenDropdownIndex(-1); setDropdownRect({ left: rect.left, top: rect.top, bottom: rect.bottom }); setDropdownDirPath(dirPath) }
+    setSymbolDropdownOpen(false)
+  }
+  const handleSymbolClick = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (symbolDropdownOpen) { setSymbolDropdownOpen(false) } else { setSymbolDropdownOpen(true); setSymbolDropdownRect({ left: rect.left, top: rect.top, bottom: rect.bottom }) }
+    setOpenDropdownIndex(null)
+  }
+  const closeDropdown = useCallback(() => { setOpenDropdownIndex(null); setDropdownRect(null); setDropdownDirPath(null) }, [])
+  const closeSymbolDropdown = useCallback(() => { setSymbolDropdownOpen(false) }, [])
 
   return (
-    <div
-      className="flex-1 flex items-center overflow-x-auto"
-      style={{
-        height: 24,
-        background: 'var(--bg-primary)',
-        fontSize: 12,
-        color: 'var(--text-muted)',
-        padding: '0 12px',
-        gap: 2,
-      }}
-    >
-      {segments.length > 3 && (
-        <>
-          <span style={{ opacity: 0.5, flexShrink: 0 }}>...</span>
-          <ChevronRight size={10} style={{ opacity: 0.4, flexShrink: 0, margin: '0 1px' }} />
-        </>
-      )}
+    <div className="flex-1 flex items-center overflow-x-auto" style={{ height: 24, background: 'var(--bg-primary)', fontSize: 12, color: 'var(--text-muted)', padding: '0 12px', gap: 2, position: 'relative' }}>
+      {segments.length > 3 && (<><span style={{ opacity: 0.5, flexShrink: 0 }}>...</span><ChevronRight size={10} style={{ opacity: 0.4, flexShrink: 0, margin: '0 1px' }} /></>)}
       {dirSegments.map((seg, i) => (
         <span key={i} className="flex items-center" style={{ flexShrink: 0, gap: 2 }}>
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={() => handleDirClick(i)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDirClick(i) } }}
-            style={{
-              color: 'var(--text-muted)',
-              padding: '1px 3px',
-              borderRadius: 3,
-              cursor: 'pointer',
-              textDecoration: 'none',
-              transition: 'color 0.15s, text-decoration 0.15s, background 0.15s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--accent)'
-              e.currentTarget.style.textDecoration = 'underline'
-              e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--text-muted)'
-              e.currentTarget.style.textDecoration = 'none'
-              e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            {seg}
-          </span>
+          <span role="button" tabIndex={0} onClick={(e) => handleSegmentClick(i, e)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSegmentClick(i, e as any) } }}
+            style={{ color: openDropdownIndex === i ? 'var(--accent)' : 'var(--text-muted)', padding: '1px 3px', borderRadius: 3, cursor: 'pointer', textDecoration: 'none', transition: 'color 0.15s, text-decoration 0.15s, background 0.15s', background: openDropdownIndex === i ? 'rgba(255,255,255,0.05)' : 'transparent' }}
+            onMouseEnter={(e) => { if (openDropdownIndex !== i) { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' } }}
+            onMouseLeave={(e) => { if (openDropdownIndex !== i) { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.textDecoration = 'none'; e.currentTarget.style.background = 'transparent' } }}
+          >{seg}</span>
           <ChevronRight size={10} style={{ opacity: 0.4, flexShrink: 0 }} />
         </span>
       ))}
-      {/* File name segment - not clickable */}
-      <span style={{ color: 'var(--text-primary)', fontWeight: 500, flexShrink: 0 }}>
-        {fileName}
-      </span>
-
-      {saving && (
-        <span
-          className="ml-auto flex items-center gap-1"
-          style={{ fontSize: 10, color: 'var(--accent-green)', flexShrink: 0 }}
-        >
-          <Loader2 size={10} className="anim-spin" />
-          Saved
-        </span>
-      )}
+      <span role="button" tabIndex={0} onClick={handleFileNameClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleFileNameClick(e as any) } }}
+        style={{ color: openDropdownIndex === -1 ? 'var(--accent)' : 'var(--text-primary)', fontWeight: 500, flexShrink: 0, padding: '1px 3px', borderRadius: 3, cursor: 'pointer', transition: 'color 0.15s, background 0.15s', background: openDropdownIndex === -1 ? 'rgba(255,255,255,0.05)' : 'transparent' }}
+        onMouseEnter={(e) => { if (openDropdownIndex !== -1) { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' } }}
+        onMouseLeave={(e) => { if (openDropdownIndex !== -1) { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'transparent' } }}
+      >{fileName}</span>
+      {currentSymbol && (<>
+        <ChevronRight size={10} style={{ opacity: 0.4, flexShrink: 0, margin: '0 1px' }} />
+        <span role="button" tabIndex={0} onClick={handleSymbolClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSymbolClick(e as any) } }}
+          style={{ color: symbolDropdownOpen ? 'var(--accent)' : symbolKindColors[currentSymbol.kind] || 'var(--text-secondary)', flexShrink: 0, padding: '1px 4px', borderRadius: 3, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace", fontSize: 11, transition: 'color 0.15s, background 0.15s', background: symbolDropdownOpen ? 'rgba(255,255,255,0.05)' : 'transparent' }}
+          onMouseEnter={(e) => { if (!symbolDropdownOpen) { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' } }}
+          onMouseLeave={(e) => { if (!symbolDropdownOpen) { e.currentTarget.style.color = symbolKindColors[currentSymbol.kind] || 'var(--text-secondary)'; e.currentTarget.style.background = 'transparent' } }}
+        >{(() => { const Icon = symbolKindIcons[currentSymbol.kind] || Hash; return <Icon size={11} /> })()}{currentSymbol.name}</span>
+      </>)}
+      {!currentSymbol && allSymbols.length > 0 && (<>
+        <ChevronRight size={10} style={{ opacity: 0.4, flexShrink: 0, margin: '0 1px' }} />
+        <span role="button" tabIndex={0} onClick={handleSymbolClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSymbolClick(e as any) } }}
+          style={{ color: symbolDropdownOpen ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0, padding: '1px 4px', borderRadius: 3, cursor: 'pointer', fontSize: 11, fontStyle: 'italic', transition: 'color 0.15s, background 0.15s', background: symbolDropdownOpen ? 'rgba(255,255,255,0.05)' : 'transparent' }}
+          onMouseEnter={(e) => { if (!symbolDropdownOpen) { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' } }}
+          onMouseLeave={(e) => { if (!symbolDropdownOpen) { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' } }}
+        >symbols</span>
+      </>)}
+      {saving && (<span className="ml-auto flex items-center gap-1" style={{ fontSize: 10, color: 'var(--accent-green)', flexShrink: 0 }}><Loader2 size={10} className="anim-spin" /> Saved</span>)}
+      {openDropdownIndex !== null && dropdownRect && dropdownDirPath && (<BreadcrumbDropdown dirPath={dropdownDirPath} anchorRect={dropdownRect} onClose={closeDropdown} onNavigateFolder={(p) => { setDropdownDirPath(p) }} />)}
+      {symbolDropdownOpen && symbolDropdownRect && allSymbols.length > 0 && (<SymbolDropdown symbols={allSymbols} anchorRect={symbolDropdownRect} onClose={closeSymbolDropdown} />)}
     </div>
   )
 }

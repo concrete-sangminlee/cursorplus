@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAgentStore } from '@/store/agents'
 import { useEditorStore } from '@/store/editor'
 import { useChatStore } from '@/store/chat'
@@ -18,6 +18,9 @@ import {
   Terminal,
   ArrowUpDown,
   Bell,
+  Sparkles,
+  ChevronDown,
+  Check,
 } from 'lucide-react'
 
 interface Props {
@@ -56,12 +59,230 @@ function StatusItem({ children, style, onClick, title }: StatusItemProps) {
   )
 }
 
+// ── Dropdown component used by all selectors ──────────────────
+interface DropdownItem {
+  id: string
+  label: string
+  active?: boolean
+}
+
+interface StatusDropdownProps {
+  items: DropdownItem[]
+  onSelect: (id: string) => void
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  maxHeight?: number
+  searchable?: boolean
+}
+
+function StatusDropdown({ items, onSelect, onClose, anchorRef, maxHeight = 260, searchable = false }: StatusDropdownProps) {
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [filter, setFilter] = useState('')
+  const [hoveredIdx, setHoveredIdx] = useState(-1)
+
+  const filtered = filter
+    ? items.filter((i) => i.label.toLowerCase().includes(filter.toLowerCase()))
+    : items
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        anchorRef.current &&
+        !anchorRef.current.contains(e.target as Node)
+      ) {
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose, anchorRef])
+
+  // Close on Escape, navigate with arrows
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setHoveredIdx((p) => Math.min(p + 1, filtered.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setHoveredIdx((p) => Math.max(p - 1, 0))
+      } else if (e.key === 'Enter' && hoveredIdx >= 0 && hoveredIdx < filtered.length) {
+        e.preventDefault()
+        onSelect(filtered[hoveredIdx].id)
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose, onSelect, filtered, hoveredIdx])
+
+  // Focus search input when opened
+  useEffect(() => {
+    if (searchable) inputRef.current?.focus()
+  }, [searchable])
+
+  // Position above the anchor
+  const rect = anchorRef.current?.getBoundingClientRect()
+  const left = rect ? rect.left : 0
+  const bottom = rect ? window.innerHeight - rect.top + 2 : 24
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: 'fixed',
+        left: Math.max(0, Math.min(left, window.innerWidth - 200)),
+        bottom,
+        minWidth: 180,
+        maxWidth: 300,
+        maxHeight,
+        background: 'var(--bg-secondary, #1e1e2e)',
+        border: '1px solid var(--border, #333)',
+        borderRadius: 4,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        zIndex: 10000,
+        display: 'flex',
+        flexDirection: 'column',
+        fontSize: 12,
+        color: 'var(--text-primary, #ccc)',
+      }}
+    >
+      {searchable && (
+        <div style={{ padding: '4px 6px', borderBottom: '1px solid var(--border, #333)' }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={filter}
+            onChange={(e) => { setFilter(e.target.value); setHoveredIdx(0) }}
+            placeholder="Search..."
+            style={{
+              width: '100%',
+              background: 'var(--bg-primary, #111)',
+              border: '1px solid var(--border, #444)',
+              borderRadius: 3,
+              padding: '3px 6px',
+              fontSize: 11,
+              color: 'var(--text-primary, #ccc)',
+              outline: 'none',
+            }}
+          />
+        </div>
+      )}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {filtered.map((item, idx) => (
+          <div
+            key={item.id}
+            style={{
+              padding: '4px 8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: hoveredIdx === idx ? 'rgba(255,255,255,0.08)' : 'transparent',
+              color: item.active ? 'var(--accent, #58a6ff)' : undefined,
+            }}
+            onMouseEnter={() => setHoveredIdx(idx)}
+            onClick={() => { onSelect(item.id); onClose() }}
+          >
+            {item.active && <Check size={10} style={{ flexShrink: 0 }} />}
+            {!item.active && <span style={{ width: 10, flexShrink: 0 }} />}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.label}
+            </span>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: '8px', color: 'var(--text-muted)', textAlign: 'center' }}>
+            No results
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Constants ──────────────────
+const AVAILABLE_ENCODINGS = [
+  { id: 'utf-8', label: 'UTF-8' },
+  { id: 'utf-16le', label: 'UTF-16 LE' },
+  { id: 'utf-16be', label: 'UTF-16 BE' },
+  { id: 'ascii', label: 'ASCII' },
+  { id: 'iso-8859-1', label: 'ISO-8859-1' },
+]
+
+const INDENTATION_OPTIONS = [
+  { id: 'spaces-2', label: 'Spaces: 2' },
+  { id: 'spaces-4', label: 'Spaces: 4' },
+  { id: 'spaces-8', label: 'Spaces: 8' },
+  { id: 'tabs-2', label: 'Tab Size: 2' },
+  { id: 'tabs-4', label: 'Tab Size: 4' },
+  { id: 'tabs-8', label: 'Tab Size: 8' },
+]
+
+const MONACO_LANGUAGES = [
+  { id: 'plaintext', label: 'Plain Text' },
+  { id: 'typescript', label: 'TypeScript' },
+  { id: 'typescriptreact', label: 'TypeScript React' },
+  { id: 'javascript', label: 'JavaScript' },
+  { id: 'javascriptreact', label: 'JavaScript React' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+  { id: 'csharp', label: 'C#' },
+  { id: 'cpp', label: 'C++' },
+  { id: 'c', label: 'C' },
+  { id: 'go', label: 'Go' },
+  { id: 'rust', label: 'Rust' },
+  { id: 'ruby', label: 'Ruby' },
+  { id: 'php', label: 'PHP' },
+  { id: 'swift', label: 'Swift' },
+  { id: 'kotlin', label: 'Kotlin' },
+  { id: 'html', label: 'HTML' },
+  { id: 'css', label: 'CSS' },
+  { id: 'scss', label: 'SCSS' },
+  { id: 'less', label: 'Less' },
+  { id: 'json', label: 'JSON' },
+  { id: 'xml', label: 'XML' },
+  { id: 'yaml', label: 'YAML' },
+  { id: 'markdown', label: 'Markdown' },
+  { id: 'sql', label: 'SQL' },
+  { id: 'shell', label: 'Shell Script' },
+  { id: 'powershell', label: 'PowerShell' },
+  { id: 'dockerfile', label: 'Dockerfile' },
+  { id: 'graphql', label: 'GraphQL' },
+  { id: 'lua', label: 'Lua' },
+  { id: 'perl', label: 'Perl' },
+  { id: 'r', label: 'R' },
+  { id: 'objective-c', label: 'Objective-C' },
+  { id: 'bat', label: 'Batch' },
+  { id: 'ini', label: 'INI' },
+  { id: 'handlebars', label: 'Handlebars' },
+  { id: 'razor', label: 'Razor' },
+  { id: 'pug', label: 'Pug' },
+  { id: 'coffeescript', label: 'CoffeeScript' },
+  { id: 'fsharp', label: 'F#' },
+  { id: 'clojure', label: 'Clojure' },
+  { id: 'dart', label: 'Dart' },
+  { id: 'elixir', label: 'Elixir' },
+  { id: 'scheme', label: 'Scheme' },
+]
+
 interface GitInfo {
   isRepo: boolean
   branch: string
   files: { path: string; state: string }[]
   ahead: number
   behind: number
+}
+
+interface BranchInfo {
+  name: string
+  current: boolean
 }
 
 export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
@@ -82,6 +303,24 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
   const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 })
   const [selectionInfo, setSelectionInfo] = useState<{ chars: number; lines: number } | null>(null)
+
+  // Dropdown states
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
+  const [branches, setBranches] = useState<BranchInfo[]>([])
+  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false)
+  const [encodingDropdownOpen, setEncodingDropdownOpen] = useState(false)
+  const [indentDropdownOpen, setIndentDropdownOpen] = useState(false)
+  const [eolDropdownOpen, setEolDropdownOpen] = useState(false)
+  const [selectedEncoding, setSelectedEncoding] = useState('utf-8')
+  const [indentConfig, setIndentConfig] = useState({ useSpaces: true, size: 2 })
+  const [eolSequence, setEolSequence] = useState<'LF' | 'CRLF'>('LF')
+
+  // Refs for dropdown anchoring
+  const branchRef = useRef<HTMLDivElement>(null)
+  const languageRef = useRef<HTMLDivElement>(null)
+  const encodingRef = useRef<HTMLDivElement>(null)
+  const indentRef = useRef<HTMLDivElement>(null)
+  const eolRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!rootPath) return
@@ -173,7 +412,93 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
     return ext ? (extMap[ext] || 'Plain Text') : 'Plain Text'
   }
 
+  // Get the current language ID from the active file
+  const getCurrentLanguageId = (): string => {
+    if (activeFile?.language) return activeFile.language
+    if (!activeFile?.name) return 'plaintext'
+    const ext = activeFile.name.split('.').pop()?.toLowerCase()
+    const extToId: Record<string, string> = {
+      ts: 'typescript', tsx: 'typescriptreact',
+      js: 'javascript', jsx: 'javascriptreact',
+      py: 'python', rb: 'ruby', rs: 'rust', go: 'go',
+      java: 'java', kt: 'kotlin', swift: 'swift',
+      cpp: 'cpp', c: 'c', cs: 'csharp', php: 'php',
+      html: 'html', css: 'css', scss: 'scss', less: 'less',
+      json: 'json', md: 'markdown', yml: 'yaml', yaml: 'yaml',
+      xml: 'xml', sql: 'sql', sh: 'shell', ps1: 'powershell',
+    }
+    return ext ? (extToId[ext] || 'plaintext') : 'plaintext'
+  }
+
+  // ── Git branch actions ──────────────────
+  const handleBranchClick = useCallback(async () => {
+    if (!rootPath || !gitInfo?.isRepo) return
+    try {
+      const branchList = await window.api?.gitBranches(rootPath)
+      if (branchList) {
+        setBranches(branchList)
+        setBranchDropdownOpen(true)
+      }
+    } catch {}
+  }, [rootPath, gitInfo])
+
+  const handleBranchSelect = useCallback(async (branchName: string) => {
+    if (!rootPath) return
+    try {
+      await window.api?.gitCheckout(rootPath, branchName)
+      // Re-fetch git status after checkout
+      const info = await window.api?.gitStatus(rootPath)
+      if (info) setGitInfo(info)
+    } catch {}
+  }, [rootPath])
+
+  // ── Language mode action ──────────────────
+  const handleLanguageSelect = useCallback((languageId: string) => {
+    window.dispatchEvent(
+      new CustomEvent('orion:set-language', { detail: { languageId } })
+    )
+  }, [])
+
+  // ── Format document action ──────────────────
+  const handleFormat = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('orion:format-document'))
+  }, [])
+
+  // ── Indentation display ──────────────────
+  const indentLabel = indentConfig.useSpaces
+    ? `Spaces: ${indentConfig.size}`
+    : `Tab Size: ${indentConfig.size}`
+
+  const indentOptionId = `${indentConfig.useSpaces ? 'spaces' : 'tabs'}-${indentConfig.size}`
+
+  const handleIndentSelect = useCallback((id: string) => {
+    const [type, sizeStr] = id.split('-')
+    const size = parseInt(sizeStr, 10)
+    const useSpaces = type === 'spaces'
+    setIndentConfig({ useSpaces, size })
+    window.dispatchEvent(
+      new CustomEvent('orion:set-indent', { detail: { useSpaces, size } })
+    )
+  }, [])
+
+  // ── EOL action ──────────────────
+  const handleEolSelect = useCallback((id: string) => {
+    const eol = id as 'LF' | 'CRLF'
+    setEolSequence(eol)
+    window.dispatchEvent(
+      new CustomEvent('orion:set-eol', { detail: { eol } })
+    )
+  }, [])
+
   const changedFiles = gitInfo?.files?.length || 0
+
+  // Build ahead/behind label for branch display using arrow symbols
+  const aheadBehindLabel = gitInfo?.isRepo
+    ? [
+        gitInfo.ahead > 0 ? `\u2191${gitInfo.ahead}` : '',
+        gitInfo.behind > 0 ? `\u2193${gitInfo.behind}` : '',
+      ].filter(Boolean).join(' ')
+    : ''
 
   return (
     <footer
@@ -206,23 +531,50 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
           Orion
         </div>
 
-        {/* Branch info */}
-        <StatusItem title={gitInfo?.isRepo ? `Branch: ${gitInfo.branch}` : 'Not a git repository'}>
-          <GitBranch size={11} style={{ color: 'var(--text-secondary)' }} />
-          <span style={{ color: 'var(--text-secondary)' }}>
-            {gitInfo?.isRepo ? gitInfo.branch : 'No repo'}
-          </span>
-        </StatusItem>
+        {/* Branch info with click-to-switch */}
+        <div ref={branchRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+          <StatusItem
+            title={gitInfo?.isRepo ? `Branch: ${gitInfo.branch} (click to switch)` : 'Not a git repository'}
+            onClick={handleBranchClick}
+          >
+            <GitBranch size={11} style={{ color: 'var(--text-secondary)' }} />
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {gitInfo?.isRepo ? gitInfo.branch : 'No repo'}
+            </span>
+            {aheadBehindLabel && (
+              <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 2 }}>
+                {aheadBehindLabel}
+              </span>
+            )}
+            {gitInfo?.isRepo && <ChevronDown size={9} style={{ color: 'var(--text-muted)', marginLeft: 1 }} />}
+          </StatusItem>
+        </div>
+
+        {branchDropdownOpen && branchRef.current && (
+          <StatusDropdown
+            items={branches
+              .filter((b) => !b.name.startsWith('origin/'))
+              .map((b) => ({
+                id: b.name,
+                label: b.name,
+                active: b.name === gitInfo?.branch,
+              }))}
+            onSelect={handleBranchSelect}
+            onClose={() => setBranchDropdownOpen(false)}
+            anchorRef={branchRef}
+            searchable
+          />
+        )}
 
         {/* Sync indicator */}
-        <StatusItem title={gitInfo?.isRepo ? `${gitInfo.ahead || 0}↑ ${gitInfo.behind || 0}↓` : ''}>
+        <StatusItem title={gitInfo?.isRepo ? `${gitInfo.ahead || 0}\u2191 ${gitInfo.behind || 0}\u2193` : ''}>
           {gitInfo?.isRepo ? (
             <>
               <ArrowUpDown size={10} style={{ color: 'var(--text-muted)' }} />
               {(gitInfo.ahead > 0 || gitInfo.behind > 0) && (
                 <span style={{ fontSize: 10 }}>
-                  {gitInfo.ahead > 0 && `${gitInfo.ahead}↑`}
-                  {gitInfo.behind > 0 && ` ${gitInfo.behind}↓`}
+                  {gitInfo.ahead > 0 && `${gitInfo.ahead}\u2191`}
+                  {gitInfo.behind > 0 && ` ${gitInfo.behind}\u2193`}
                 </span>
               )}
             </>
@@ -279,6 +631,7 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
       <div className="flex items-center" style={{ height: '100%' }}>
         {activeFile && (
           <>
+            {/* Cursor position */}
             <StatusItem title={selectionInfo ? `${selectionInfo.chars} characters selected across ${selectionInfo.lines} line(s)` : `Line ${cursorPos.line}, Column ${cursorPos.column}`}>
               <span>
                 Ln {cursorPos.line}, Col {cursorPos.column}
@@ -289,19 +642,106 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
                 )}
               </span>
             </StatusItem>
-            <StatusItem>
-              <span>Spaces: 2</span>
-            </StatusItem>
-            <StatusItem title="End of line sequence">
-              <span>LF</span>
-            </StatusItem>
-            <StatusItem title="File encoding">
-              <span>UTF-8</span>
-            </StatusItem>
-            <StatusItem title={`Language: ${getLanguageLabel(activeFile.name, activeFile.language)}`}>
-              <span style={{ color: 'var(--text-secondary)' }}>
-                {getLanguageLabel(activeFile.name, activeFile.language)}
-              </span>
+
+            {/* Indentation indicator */}
+            <div ref={indentRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <StatusItem
+                title="Indentation settings (click to change)"
+                onClick={() => setIndentDropdownOpen((v) => !v)}
+              >
+                <span>{indentLabel}</span>
+                <ChevronDown size={9} style={{ color: 'var(--text-muted)' }} />
+              </StatusItem>
+            </div>
+
+            {indentDropdownOpen && indentRef.current && (
+              <StatusDropdown
+                items={INDENTATION_OPTIONS.map((o) => ({
+                  ...o,
+                  active: o.id === indentOptionId,
+                }))}
+                onSelect={handleIndentSelect}
+                onClose={() => setIndentDropdownOpen(false)}
+                anchorRef={indentRef}
+              />
+            )}
+
+            {/* End of line selector */}
+            <div ref={eolRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <StatusItem
+                title="End of line sequence (click to change)"
+                onClick={() => setEolDropdownOpen((v) => !v)}
+              >
+                <span>{eolSequence}</span>
+                <ChevronDown size={9} style={{ color: 'var(--text-muted)' }} />
+              </StatusItem>
+            </div>
+
+            {eolDropdownOpen && eolRef.current && (
+              <StatusDropdown
+                items={[
+                  { id: 'LF', label: 'LF (Unix)', active: eolSequence === 'LF' },
+                  { id: 'CRLF', label: 'CRLF (Windows)', active: eolSequence === 'CRLF' },
+                ]}
+                onSelect={handleEolSelect}
+                onClose={() => setEolDropdownOpen(false)}
+                anchorRef={eolRef}
+              />
+            )}
+
+            {/* File encoding selector */}
+            <div ref={encodingRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <StatusItem
+                title="File encoding (click to change)"
+                onClick={() => setEncodingDropdownOpen((v) => !v)}
+              >
+                <span>{AVAILABLE_ENCODINGS.find((e) => e.id === selectedEncoding)?.label || 'UTF-8'}</span>
+                <ChevronDown size={9} style={{ color: 'var(--text-muted)' }} />
+              </StatusItem>
+            </div>
+
+            {encodingDropdownOpen && encodingRef.current && (
+              <StatusDropdown
+                items={AVAILABLE_ENCODINGS.map((e) => ({
+                  ...e,
+                  active: e.id === selectedEncoding,
+                }))}
+                onSelect={(id) => setSelectedEncoding(id)}
+                onClose={() => setEncodingDropdownOpen(false)}
+                anchorRef={encodingRef}
+              />
+            )}
+
+            {/* Language mode selector */}
+            <div ref={languageRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <StatusItem
+                title={`Language: ${getLanguageLabel(activeFile.name, activeFile.language)} (click to change)`}
+                onClick={() => setLanguageDropdownOpen((v) => !v)}
+              >
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  {getLanguageLabel(activeFile.name, activeFile.language)}
+                </span>
+                <ChevronDown size={9} style={{ color: 'var(--text-muted)' }} />
+              </StatusItem>
+            </div>
+
+            {languageDropdownOpen && languageRef.current && (
+              <StatusDropdown
+                items={MONACO_LANGUAGES.map((l) => ({
+                  ...l,
+                  active: l.id === getCurrentLanguageId(),
+                }))}
+                onSelect={handleLanguageSelect}
+                onClose={() => setLanguageDropdownOpen(false)}
+                anchorRef={languageRef}
+                maxHeight={320}
+                searchable
+              />
+            )}
+
+            {/* Format document button */}
+            <StatusItem title="Format Document (Shift+Alt+F)" onClick={handleFormat}>
+              <Sparkles size={11} style={{ color: 'var(--text-muted)' }} />
             </StatusItem>
           </>
         )}

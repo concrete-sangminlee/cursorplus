@@ -1,12 +1,13 @@
 import type { IpcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/ipc-channels'
 import { createTerminal, writeToTerminal, resizeTerminal, killTerminal } from '../terminal/manager'
+import type { ShellOptions } from '../terminal/manager'
 
 export function registerTerminalHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
-  ipcMain.handle(IPC.TERM_CREATE, async (_event, id: string) => {
+  ipcMain.handle(IPC.TERM_CREATE, async (_event, id: string, shellOptions?: ShellOptions) => {
     return await createTerminal(id, (data) => {
       getWindow()?.webContents.send(IPC.TERM_DATA, id, data)
-    })
+    }, shellOptions)
   })
 
   ipcMain.on(IPC.TERM_WRITE, (_event, id: string, data: string) => {

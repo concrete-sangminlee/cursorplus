@@ -864,6 +864,8 @@ export default function FileExplorer() {
     const path = await window.api.openFolder()
     if (path) {
       setRootPath(path)
+      // Load workspace settings for the opened folder
+      await useWorkspaceStore.getState().loadWorkspaceSettings(path)
       const tree = await window.api.readDir(path)
       setFileTree(tree)
       window.api.watchStart(path)
@@ -1376,7 +1378,7 @@ export default function FileExplorer() {
         className="flex-1 overflow-y-auto py-0.5"
         onContextMenu={handleTreeContextMenu}
       >
-        {fileTree.length === 0 ? (
+        {filteredTree.length === 0 ? (
           <EmptyExplorer onOpenFolder={handleOpenFolder} />
         ) : (
           <>
@@ -1390,7 +1392,7 @@ export default function FileExplorer() {
                 onCancel={handleInlineCancel}
               />
             )}
-            {fileTree.map((node) => (
+            {filteredTree.map((node) => (
               <FileTreeNode
                 key={node.path}
                 node={node}

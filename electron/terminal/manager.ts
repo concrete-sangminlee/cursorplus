@@ -8,6 +8,11 @@ interface PtyProcess {
   kill: () => void
 }
 
+export interface ShellOptions {
+  shellPath?: string
+  shellArgs?: string[]
+}
+
 const terminals = new Map<string, PtyProcess>()
 let currentProjectPath: string | null = null
 
@@ -33,14 +38,16 @@ function loadNodePty() {
 
 export async function createTerminal(
   id: string,
-  onData: (data: string) => void
+  onData: (data: string) => void,
+  shellOptions?: ShellOptions
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const pty = loadNodePty()
 
-    const shell = detectShell()
+    const shell = shellOptions?.shellPath || detectShell()
+    const args = shellOptions?.shellArgs || []
     const cwd = currentProjectPath || os.homedir()
-    const term = pty.spawn(shell, [], {
+    const term = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,

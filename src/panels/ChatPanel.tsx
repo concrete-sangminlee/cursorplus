@@ -1,11 +1,13 @@
-import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react'
 import { useChatStore } from '@/store/chat'
+import { useChatHistoryStore, type Conversation } from '@/store/chatHistory'
 import { v4 as uuid } from 'uuid'
 import {
   Sparkles, Bot, User, Zap, MessageSquare,
   ArrowUp, Paperclip, AtSign, CheckCircle2, Loader2, Circle,
   ChevronDown, Copy, Check, Code, Lightbulb, Wrench, BookOpen,
-  Play, Trash2, FileCode, X,
+  Play, Trash2, FileCode, X, Plus, PanelLeftClose, PanelLeftOpen,
+  MoreHorizontal, Pencil,
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -878,6 +880,511 @@ function DropdownItem({
         <Check size={11} style={{ color: model.color, flexShrink: 0 }} />
       )}
     </button>
+  )
+}
+
+/* ── Relative date formatter for conversation list ─────── */
+
+function formatRelativeDate(ts: number): string {
+  const now = Date.now()
+  const diff = Math.floor((now - ts) / 1000)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  const days = Math.floor(diff / 86400)
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days}d ago`
+  if (days < 30) return `${Math.floor(days / 7)}w ago`
+  return new Date(ts).toLocaleDateString()
+}
+
+/* ── Conversation list sidebar ─────────────────────────── */
+
+function ConversationSidebar({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean
+  onToggle: () => void
+}) {
+  const {
+    conversations,
+    activeConversationId,
+    createConversation,
+    switchConversation,
+    deleteConversation,
+    renameConversation,
+  } = useChatHistoryStore()
+  const { loadMessages, clearMessages } = useChatStore()
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleNewChat = useCallback(() => {
+    createConversation()
+    clearMessages()
+  }, [createConversation, clearMessages])
+
+  const handleSwitch = useCallback(
+    (convo: Conversation) => {
+      if (convo.id === activeConversationId) return
+      switchConversation(convo.id)
+      loadMessages(convo.messages)
+    },
+    [activeConversationId, switchConversation, loadMessages],
+  )
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      const historyStore = useChatHistoryStore.getState()
+      deleteConversation(id)
+      setMenuOpenId(null)
+      // If we deleted the active one, load the next conversation's messages
+      if (id === activeConversationId) {
+        const remaining = historyStore.conversations.filter((c) => c.id !== id)
+        if (remaining.length > 0) {
+          loadMessages(remaining[0].messages)
+        } else {
+          clearMessages()
+        }
+      }
+    },
+    [activeConversationId, deleteConversation, loadMessages, clearMessages],
+  )
+
+  const handleRenameStart = useCallback(
+    (convo: Conversation) => {
+      setRenamingId(convo.id)
+      setRenameValue(convo.title)
+      setMenuOpenId(null)
+    },
+    [],
+  )
+
+  const handleRenameSubmit = useCallback(
+    (id: string) => {
+      const trimmed = renameValue.trim()
+      if (trimmed) {
+        renameConversation(id, trimmed)
+      }
+      setRenamingId(null)
+    },
+    [renameValue, renameConversation],
+  )
+
+  // Sorted by most recently updated
+  const sortedConversations = useMemo(
+    () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+    [conversations],
+  )
+
+  if (collapsed) {
+    return (
+      <div
+        style={{
+          width: 36,
+          flexShrink: 0,
+          borderRight: '1px solid var(--border)',
+          background: 'var(--bg-tertiary)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: 6,
+          gap: 4,
+        }}
+      >
+        <button
+          onClick={onToggle}
+          title="Show conversations"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+            e.currentTarget.style.color = 'var(--text-secondary)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = 'var(--text-muted)'
+          }}
+        >
+          <PanelLeftOpen size={14} />
+        </button>
+        <button
+          onClick={handleNewChat}
+          title="New chat"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(88,166,255,0.1)'
+            e.currentTarget.style.color = 'var(--accent)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = 'var(--text-muted)'
+          }}
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        width: 220,
+        flexShrink: 0,
+        borderRight: '1px solid var(--border)',
+        background: 'var(--bg-tertiary)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Sidebar header */}
+      <div
+        className="flex items-center px-2"
+        style={{
+          height: 38,
+          borderBottom: '1px solid var(--border)',
+          gap: 4,
+          flexShrink: 0,
+        }}
+      >
+        <button
+          onClick={onToggle}
+          title="Hide conversations"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+            e.currentTarget.style.color = 'var(--text-secondary)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = 'var(--text-muted)'
+          }}
+        >
+          <PanelLeftClose size={14} />
+        </button>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          History
+        </span>
+        <button
+          onClick={handleNewChat}
+          title="New chat"
+          className="flex items-center gap-1"
+          style={{
+            fontSize: 10,
+            padding: '3px 8px',
+            borderRadius: 5,
+            background: 'rgba(88,166,255,0.1)',
+            border: '1px solid rgba(88,166,255,0.2)',
+            color: 'var(--accent)',
+            fontWeight: 500,
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(88,166,255,0.18)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(88,166,255,0.1)'
+          }}
+        >
+          <Plus size={10} />
+          New
+        </button>
+      </div>
+
+      {/* Conversation list */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: 4,
+        }}
+      >
+        {sortedConversations.length === 0 ? (
+          <div
+            style={{
+              padding: '20px 12px',
+              textAlign: 'center',
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              lineHeight: 1.5,
+            }}
+          >
+            No conversations yet.
+            <br />
+            Start a new chat!
+          </div>
+        ) : (
+          sortedConversations.map((convo) => {
+            const isActive = convo.id === activeConversationId
+            const isRenaming = renamingId === convo.id
+
+            return (
+              <div
+                key={convo.id}
+                className="group"
+                style={{
+                  position: 'relative',
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  background: isActive ? 'rgba(88,166,255,0.08)' : 'transparent',
+                  border: isActive
+                    ? '1px solid rgba(88,166,255,0.15)'
+                    : '1px solid transparent',
+                  marginBottom: 2,
+                  transition: 'background 0.1s, border-color 0.1s',
+                }}
+                onClick={() => handleSwitch(convo)}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent'
+                  }
+                }}
+              >
+                {/* Title row */}
+                <div className="flex items-center gap-1" style={{ minHeight: 18 }}>
+                  {isRenaming ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => handleRenameSubmit(convo.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenameSubmit(convo.id)
+                        if (e.key === 'Escape') setRenamingId(null)
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        flex: 1,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: 'var(--text-primary)',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--accent)',
+                        borderRadius: 3,
+                        padding: '1px 4px',
+                        outline: 'none',
+                        minWidth: 0,
+                      }}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: 11,
+                        fontWeight: isActive ? 600 : 400,
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {convo.title}
+                    </span>
+                  )}
+
+                  {/* Hover actions */}
+                  {!isRenaming && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMenuOpenId(menuOpenId === convo.id ? null : convo.id)
+                      }}
+                      className="transition-opacity duration-75"
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 4,
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        opacity: menuOpenId === convo.id ? 1 : 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                        e.currentTarget.style.color = 'var(--text-secondary)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = 'var(--text-muted)'
+                      }}
+                    >
+                      <MoreHorizontal size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Meta row */}
+                <div
+                  className="flex items-center gap-2"
+                  style={{ marginTop: 2 }}
+                >
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {formatRelativeDate(convo.updatedAt)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {convo.messages.length} msg{convo.messages.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Context menu */}
+                {menuOpenId === convo.id && (
+                  <div
+                    ref={menuRef}
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 4,
+                      zIndex: 60,
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: 3,
+                      boxShadow: '0 6px 24px rgba(0,0,0,0.4)',
+                      minWidth: 120,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => handleRenameStart(convo)}
+                      className="flex items-center gap-2 w-full"
+                      style={{
+                        fontSize: 11,
+                        padding: '5px 8px',
+                        borderRadius: 4,
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                      }}
+                    >
+                      <Pencil size={11} />
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => handleDelete(convo.id)}
+                      className="flex items-center gap-2 w-full"
+                      style={{
+                        fontSize: 11,
+                        padding: '5px 8px',
+                        borderRadius: 4,
+                        background: 'transparent',
+                        color: '#f85149',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(248,81,73,0.08)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                      }}
+                    >
+                      <Trash2 size={11} />
+                      Delete
+                    </button>
+                  </div>
+                )}
+
+                {/* Make the hover "..." visible on group hover via CSS */}
+                <style>{`
+                  .group:hover button[class*="transition-opacity"] {
+                    opacity: 1 !important;
+                  }
+                `}</style>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
   )
 }
 
