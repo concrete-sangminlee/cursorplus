@@ -82,13 +82,24 @@ export function registerGitHandlers() {
     return await runGit(cwd, args)
   })
 
-  ipcMain.handle('git:log', async (_, cwd: string, count: number = 20) => {
-    const raw = await runGit(cwd, `log --oneline -${count} --format="%h|%s|%an|%ar"`)
+  ipcMain.handle('git:log', async (_, cwd: string, count: number = 50) => {
+    const raw = await runGit(cwd, `log --format="%H|%h|%s|%an|%ar" -${count}`)
     if (!raw) return []
     return raw.split('\n').filter(Boolean).map((line) => {
-      const [hash, message, author, date] = line.split('|')
-      return { hash, message, author, date }
+      const parts = line.split('|')
+      const fullHash = parts[0]
+      const hash = parts[1]
+      const author = parts[parts.length - 2]
+      const date = parts[parts.length - 1]
+      // Message may contain '|', so rejoin the middle parts
+      const message = parts.slice(2, parts.length - 2).join('|')
+      return { fullHash, hash, message, author, date }
     })
+  })
+
+  ipcMain.handle('git:show', async (_, cwd: string, hash: string) => {
+    const stat = await runGit(cwd, `show ${hash} --stat --format="%H|%h|%s|%an|%ar%n"`)
+    return stat
   })
 
   ipcMain.handle('git:stage', async (_, cwd: string, filePath: string) => {

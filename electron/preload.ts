@@ -30,6 +30,7 @@ const api = {
   gitCommit: (cwd: string, message: string) => ipcRenderer.invoke(IPC.GIT_COMMIT, cwd, message),
   gitDiscard: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_DISCARD, cwd, filePath),
   gitBranches: (cwd: string) => ipcRenderer.invoke(IPC.GIT_BRANCHES, cwd),
+  gitShow: (cwd: string, hash: string) => ipcRenderer.invoke(IPC.GIT_SHOW, cwd, hash),
 
   // Terminal
   termCreate: (id: string) => ipcRenderer.invoke(IPC.TERM_CREATE, id),

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X, Key, Check, Eye, EyeOff, MessageSquare, Sparkles, Code, Monitor } from 'lucide-react'
+import { X, Key, Check, Eye, EyeOff, MessageSquare, Sparkles, Code, Monitor, Palette } from 'lucide-react'
+import { useThemeStore } from '@/store/theme'
+import type { Theme } from '@/themes'
 
 interface Props {
   open: boolean
@@ -17,7 +19,7 @@ const providers = [
 const DEFAULT_SYSTEM_PROMPT = 'You are Orion AI by Bebut, an expert coding assistant integrated into a code editor IDE. You help with code analysis, debugging, feature implementation, and code explanations. Be concise and helpful. Use markdown formatting for code blocks. Respond in the same language the user uses.'
 const DEFAULT_USER_TEMPLATE = '{message}'
 
-type TabId = 'keys' | 'prompts' | 'editor'
+type TabId = 'keys' | 'prompts' | 'editor' | 'themes'
 
 interface EditorSettings {
   fontSize: number
@@ -86,6 +88,7 @@ export default function SettingsModal({ open, onClose }: Props) {
     { id: 'keys', label: 'API Keys', icon: <Key size={13} /> },
     { id: 'prompts', label: 'Prompts', icon: <MessageSquare size={13} /> },
     { id: 'editor', label: 'Editor', icon: <Code size={13} /> },
+    { id: 'themes', label: 'Themes', icon: <Palette size={13} /> },
   ]
 
   return (
@@ -358,6 +361,8 @@ export default function SettingsModal({ open, onClose }: Props) {
               </div>
             </div>
           )}
+
+          {activeTab === 'themes' && <ThemePicker />}
         </div>
 
         {/* Footer */}
@@ -389,6 +394,89 @@ export default function SettingsModal({ open, onClose }: Props) {
             {saved ? '\u2713 Saved' : 'Save'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------- */
+/*  Theme Picker sub-component (rendered in the Themes tab)    */
+/* ----------------------------------------------------------- */
+
+/** The six representative color keys shown as swatches on each card. */
+const SWATCH_KEYS = [
+  '--bg-primary',
+  '--bg-secondary',
+  '--accent',
+  '--accent-green',
+  '--accent-purple',
+  '--accent-orange',
+] as const
+
+function ThemePicker() {
+  const { themes: allThemes, activeThemeId, setTheme } = useThemeStore()
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+        Choose a color theme. The change is applied immediately.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {allThemes.map((theme) => {
+          const isActive = theme.id === activeThemeId
+          return (
+            <button
+              key={theme.id}
+              onClick={() => setTheme(theme.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '12px 14px',
+                background: isActive ? 'rgba(88,166,255,0.08)' : 'var(--bg-primary)',
+                border: isActive ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                borderRadius: 8,
+                cursor: 'pointer',
+                transition: 'background 0.15s, border-color 0.15s',
+                width: '100%',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.borderColor = 'var(--border-bright)'
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.borderColor = 'var(--border)'
+              }}
+            >
+              {/* Color swatches */}
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                {SWATCH_KEYS.map((key) => (
+                  <span
+                    key={key}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      background: theme.colors[key] || '#333',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Label */}
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>
+                {theme.name}
+              </span>
+
+              {/* Checkmark */}
+              {isActive && (
+                <Check size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

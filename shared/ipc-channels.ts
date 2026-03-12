@@ -22,6 +22,7 @@ export const IPC = {
   GIT_COMMIT: 'git:commit',
   GIT_DISCARD: 'git:discard',
   GIT_BRANCHES: 'git:branches',
+  GIT_SHOW: 'git:show',
 
   // Terminal
   TERM_CREATE: 'term:create',

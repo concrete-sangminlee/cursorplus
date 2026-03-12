@@ -139,6 +139,46 @@ export default function EditorPanel() {
       },
     })
 
+    // Multi-cursor: Ctrl+D - Select next occurrence of current selection
+    editor.addAction({
+      id: 'orion-add-selection-to-next-match',
+      label: 'Add Selection to Next Find Match',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD],
+      run: (ed) => {
+        ed.getAction('editor.action.addSelectionToNextFindMatch')?.run()
+      },
+    })
+
+    // Multi-cursor: Ctrl+Shift+L - Select all occurrences
+    editor.addAction({
+      id: 'orion-select-all-occurrences',
+      label: 'Select All Occurrences',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyL],
+      run: (ed) => {
+        ed.getAction('editor.action.selectHighlights')?.run()
+      },
+    })
+
+    // Multi-cursor: Ctrl+Alt+Up - Add cursor above
+    editor.addAction({
+      id: 'orion-add-cursor-above',
+      label: 'Add Cursor Above',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.UpArrow],
+      run: (ed) => {
+        ed.getAction('editor.action.insertCursorAbove')?.run()
+      },
+    })
+
+    // Multi-cursor: Ctrl+Alt+Down - Add cursor below
+    editor.addAction({
+      id: 'orion-add-cursor-below',
+      label: 'Add Cursor Below',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.DownArrow],
+      run: (ed) => {
+        ed.getAction('editor.action.insertCursorBelow')?.run()
+      },
+    })
+
     // Dispatch cursor position changes to status bar
     editor.onDidChangeCursorPosition((e) => {
       window.dispatchEvent(new CustomEvent('orion:cursor-change', {
@@ -317,6 +357,51 @@ export default function EditorPanel() {
             setTimeout(() => setSaving(false), 800)
           })
         }
+      },
+      // Multi-cursor & selection actions (from Command Palette)
+      'orion:add-selection-next-match': () => {
+        editorRef.current?.getAction('editor.action.addSelectionToNextFindMatch')?.run()
+      },
+      'orion:select-all-occurrences': () => {
+        editorRef.current?.getAction('editor.action.selectHighlights')?.run()
+      },
+      'orion:add-cursor-above': () => {
+        editorRef.current?.getAction('editor.action.insertCursorAbove')?.run()
+      },
+      'orion:add-cursor-below': () => {
+        editorRef.current?.getAction('editor.action.insertCursorBelow')?.run()
+      },
+      // Transform actions
+      'orion:transform-uppercase': () => {
+        editorRef.current?.getAction('editor.action.transformToUppercase')?.run()
+      },
+      'orion:transform-lowercase': () => {
+        editorRef.current?.getAction('editor.action.transformToLowercase')?.run()
+      },
+      // Sort lines
+      'orion:sort-lines-asc': () => {
+        editorRef.current?.getAction('editor.action.sortLinesAscending')?.run()
+      },
+      'orion:sort-lines-desc': () => {
+        editorRef.current?.getAction('editor.action.sortLinesDescending')?.run()
+      },
+      // Join lines
+      'orion:join-lines': () => {
+        editorRef.current?.getAction('editor.action.joinLines')?.run()
+      },
+      // Comment actions
+      'orion:toggle-line-comment': () => {
+        editorRef.current?.getAction('editor.action.commentLine')?.run()
+      },
+      'orion:toggle-block-comment': () => {
+        editorRef.current?.getAction('editor.action.blockComment')?.run()
+      },
+      // Folding actions
+      'orion:fold-all': () => {
+        editorRef.current?.getAction('editor.foldAll')?.run()
+      },
+      'orion:unfold-all': () => {
+        editorRef.current?.getAction('editor.unfoldAll')?.run()
       },
     }
 

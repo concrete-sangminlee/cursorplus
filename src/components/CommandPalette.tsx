@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, FileText, Settings, Terminal, FolderOpen, MessageSquare, Zap, ChevronRight, Columns, Eye, EyeOff, Type, Minus, Plus, GitBranch, Paintbrush, WrapText, Map, PanelLeft, PanelBottom, X, Save, RotateCcw, RotateCw, Scissors, Copy, Clipboard, Keyboard } from 'lucide-react'
+import { Search, FileText, Settings, Terminal, FolderOpen, MessageSquare, Zap, ChevronRight, Columns, Eye, EyeOff, Type, Minus, Plus, GitBranch, Paintbrush, WrapText, Map, PanelLeft, PanelBottom, X, Save, RotateCcw, RotateCw, Scissors, Copy, Clipboard, Keyboard, MousePointer, CaseSensitive, ArrowUpDown, ArrowDownUp, Merge, MessageSquareCode, Braces, ChevronsDownUp, ChevronsUpDown, Palette } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
+import { useThemeStore } from '@/store/theme'
 
 interface PaletteItem {
   id: string
@@ -33,13 +34,17 @@ function flattenFiles(nodes: any[], prefix = ''): { name: string; path: string }
 export default function CommandPalette({ open, onClose, onOpenSettings }: Props) {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [themeMode, setThemeMode] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const { openFile } = useEditorStore()
   const { fileTree } = useFileStore()
+  const { themes: allThemes, setTheme, activeThemeId } = useThemeStore()
 
-  const isFileMode = !query.startsWith('>')
-  const searchQuery = query.startsWith('>') ? query.slice(1).trim() : query.trim()
+  const isFileMode = !themeMode && !query.startsWith('>')
+  const searchQuery = themeMode
+    ? query.trim()
+    : query.startsWith('>') ? query.slice(1).trim() : query.trim()
 
   const dispatch = (event: string) => window.dispatchEvent(new CustomEvent(event))
 
@@ -73,14 +78,33 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
     { id: 'font-increase', label: 'Editor: Increase Font Size', category: 'command', icon: <Plus size={14} />, shortcut: 'Ctrl+=', action: () => { dispatch('orion:font-increase'); onClose() } },
     { id: 'font-decrease', label: 'Editor: Decrease Font Size', category: 'command', icon: <Minus size={14} />, shortcut: 'Ctrl+-', action: () => { dispatch('orion:font-decrease'); onClose() } },
     { id: 'font-reset', label: 'Editor: Reset Font Size', category: 'command', icon: <Type size={14} />, action: () => { dispatch('orion:font-reset'); onClose() } },
+    // Multi-cursor / Selection
+    { id: 'add-selection-next', label: 'Editor: Add Selection to Next Find Match', category: 'command', icon: <MousePointer size={14} />, shortcut: 'Ctrl+D', action: () => { dispatch('orion:add-selection-next-match'); onClose() } },
+    { id: 'select-all-occurrences', label: 'Editor: Select All Occurrences', category: 'command', icon: <MousePointer size={14} />, shortcut: 'Ctrl+Shift+L', action: () => { dispatch('orion:select-all-occurrences'); onClose() } },
+    { id: 'add-cursor-above', label: 'Editor: Add Cursor Above', category: 'command', icon: <MousePointer size={14} />, shortcut: 'Ctrl+Alt+Up', action: () => { dispatch('orion:add-cursor-above'); onClose() } },
+    { id: 'add-cursor-below', label: 'Editor: Add Cursor Below', category: 'command', icon: <MousePointer size={14} />, shortcut: 'Ctrl+Alt+Down', action: () => { dispatch('orion:add-cursor-below'); onClose() } },
+    // Transform
+    { id: 'transform-uppercase', label: 'Editor: Transform to Uppercase', category: 'command', icon: <CaseSensitive size={14} />, action: () => { dispatch('orion:transform-uppercase'); onClose() } },
+    { id: 'transform-lowercase', label: 'Editor: Transform to Lowercase', category: 'command', icon: <CaseSensitive size={14} />, action: () => { dispatch('orion:transform-lowercase'); onClose() } },
+    // Sort / Join
+    { id: 'sort-lines-asc', label: 'Editor: Sort Lines Ascending', category: 'command', icon: <ArrowUpDown size={14} />, action: () => { dispatch('orion:sort-lines-asc'); onClose() } },
+    { id: 'sort-lines-desc', label: 'Editor: Sort Lines Descending', category: 'command', icon: <ArrowDownUp size={14} />, action: () => { dispatch('orion:sort-lines-desc'); onClose() } },
+    { id: 'join-lines', label: 'Editor: Join Lines', category: 'command', icon: <Merge size={14} />, action: () => { dispatch('orion:join-lines'); onClose() } },
+    // Comments
+    { id: 'toggle-line-comment', label: 'Editor: Toggle Line Comment', category: 'command', icon: <MessageSquareCode size={14} />, shortcut: 'Ctrl+/', action: () => { dispatch('orion:toggle-line-comment'); onClose() } },
+    { id: 'toggle-block-comment', label: 'Editor: Toggle Block Comment', category: 'command', icon: <Braces size={14} />, shortcut: 'Ctrl+Shift+/', action: () => { dispatch('orion:toggle-block-comment'); onClose() } },
+    // Folding
+    { id: 'fold-all', label: 'Editor: Fold All', category: 'command', icon: <ChevronsDownUp size={14} />, shortcut: 'Ctrl+K Ctrl+0', action: () => { dispatch('orion:fold-all'); onClose() } },
+    { id: 'unfold-all', label: 'Editor: Unfold All', category: 'command', icon: <ChevronsUpDown size={14} />, shortcut: 'Ctrl+K Ctrl+J', action: () => { dispatch('orion:unfold-all'); onClose() } },
     // Terminal
     { id: 'terminal', label: 'Terminal: Create New Terminal', category: 'command', icon: <Terminal size={14} />, shortcut: 'Ctrl+`', action: () => { dispatch('orion:toggle-terminal'); onClose() } },
     // AI
     { id: 'inline-edit', label: 'AI: Inline Edit (Ctrl+K)', category: 'command', icon: <Zap size={14} />, shortcut: 'Ctrl+K', action: () => { dispatch('orion:inline-edit'); onClose() } },
     // Preferences
+    { id: 'color-theme', label: 'Preferences: Color Theme', category: 'command', icon: <Palette size={14} />, action: () => { setThemeMode(true); setQuery(''); setSelectedIndex(0) } },
     { id: 'settings', label: 'Preferences: Open Settings', category: 'command', icon: <Settings size={14} />, shortcut: 'Ctrl+,', action: () => { onClose(); onOpenSettings() } },
     { id: 'shortcuts', label: 'Preferences: Keyboard Shortcuts', category: 'command', icon: <Keyboard size={14} />, shortcut: 'Ctrl+K Ctrl+S', action: () => { onClose(); onOpenSettings() } },
-  ], [onClose, onOpenSettings])
+  ], [onClose, onOpenSettings, setThemeMode])
 
   const fileItems: PaletteItem[] = useMemo(() => {
     return flattenFiles(fileTree).map(f => ({
@@ -110,8 +134,19 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
     }))
   }, [fileTree, openFile, onClose])
 
+  // Theme picker items (shown in theme-mode)
+  const themeItems: PaletteItem[] = useMemo(() => {
+    return allThemes.map((t) => ({
+      id: `theme-${t.id}`,
+      label: `${t.name}${t.id === activeThemeId ? '  (active)' : ''}`,
+      category: 'command' as const,
+      icon: <Palette size={14} />,
+      action: () => { setTheme(t.id); onClose() },
+    }))
+  }, [allThemes, activeThemeId, setTheme, onClose])
+
   const items = useMemo(() => {
-    const source = isFileMode ? fileItems : commands
+    const source = themeMode ? themeItems : isFileMode ? fileItems : commands
     if (!searchQuery) return source.slice(0, 30)
     const lower = searchQuery.toLowerCase()
 
@@ -140,7 +175,7 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
       .sort((a, b) => b.score - a.score)
 
     return scored.map(s => s.item).slice(0, 30)
-  }, [isFileMode, searchQuery, fileItems, commands])
+  }, [themeMode, isFileMode, searchQuery, themeItems, fileItems, commands])
 
   useEffect(() => {
     if (open) {

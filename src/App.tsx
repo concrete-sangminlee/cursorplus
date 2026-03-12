@@ -15,6 +15,7 @@ import FileExplorer from './panels/FileExplorer'
 import SearchPanel from '@/panels/SearchPanel'
 import SourceControlPanel from '@/panels/SourceControlPanel'
 import OutlinePanel from '@/panels/OutlinePanel'
+import ExtensionsPanel from './panels/ExtensionsPanel'
 import EditorPanel from './panels/EditorPanel'
 import ChatPanel from './panels/ChatPanel'
 import BottomPanel from './panels/BottomPanel'
@@ -121,6 +122,7 @@ export default function App() {
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
       'orion:show-agents': () => { setSidebarVisible(true); setActiveView('agents') },
       'orion:show-outline': () => { setSidebarVisible(true); setActiveView('outline') },
+      'orion:show-extensions': () => { setSidebarVisible(true); setActiveView('extensions') },
     }
     Object.entries(handlers).forEach(([event, handler]) => {
       window.addEventListener(event, handler)
@@ -207,6 +209,13 @@ export default function App() {
         setActiveView('outline')
         return
       }
+      // Ctrl+Shift+X -> extensions
+      if (ctrl && e.shiftKey && e.key === 'X') {
+        e.preventDefault()
+        setSidebarVisible(true)
+        setActiveView('extensions')
+        return
+      }
       // Escape -> exit zen mode
       if (e.key === 'Escape' && zenMode) {
         e.preventDefault()
@@ -283,6 +292,7 @@ export default function App() {
               {activeView === 'explorer' && <FileExplorer />}
               {activeView === 'git' && <SourceControlPanel />}
               {activeView === 'outline' && <OutlinePanel />}
+              {activeView === 'extensions' && <ExtensionsPanel />}
             </div>
 
             <Resizer direction="horizontal" onResize={handleSideResize} />
