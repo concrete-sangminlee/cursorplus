@@ -1530,135 +1530,461 @@ export default function EditorPanel() {
       {activeFile && (
         <div className="shrink-0 flex items-center" style={{ borderBottom: '1px solid var(--border)' }}>
           <Breadcrumbs path={activeFile.path} saving={saving} content={activeFile.content} language={activeFile.language} />
-          {/* Split editor toggle */}
-          <button
-            onClick={handleSplitToggle}
-            title="Split Editor"
-            style={{
-              padding: '0 8px',
-              height: 26,
-              color: splitMode === 'split' ? 'var(--accent)' : 'var(--text-muted)',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { if (splitMode !== 'split') e.currentTarget.style.color = 'var(--text-secondary)' }}
-            onMouseLeave={(e) => { if (splitMode !== 'split') e.currentTarget.style.color = 'var(--text-muted)' }}
-          >
-            <Columns size={13} />
-          </button>
+          {/* Split editor buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: 2, paddingRight: 4 }}>
+            {/* Sync scroll toggle (only visible when split) */}
+            {splitMode !== 'single' && (
+              <button
+                onClick={handleToggleSyncScroll}
+                title={syncScrollEnabled ? 'Disable Sync Scroll' : 'Enable Sync Scroll'}
+                style={{
+                  padding: '0 6px',
+                  height: 22,
+                  color: syncScrollEnabled ? 'var(--accent)' : 'var(--text-muted)',
+                  background: syncScrollEnabled ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  border: 'none',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexShrink: 0,
+                  gap: 3,
+                  fontSize: 10,
+                }}
+                onMouseEnter={(e) => { if (!syncScrollEnabled) e.currentTarget.style.color = 'var(--text-secondary)' }}
+                onMouseLeave={(e) => { if (!syncScrollEnabled) e.currentTarget.style.color = 'var(--text-muted)' }}
+              >
+                {syncScrollEnabled ? <Link2 size={11} /> : <Link2Off size={11} />}
+              </button>
+            )}
+            {/* Compare files button */}
+            <button
+              onClick={handleCompareFiles}
+              title="Compare Active File With..."
+              style={{
+                padding: '0 6px',
+                height: 22,
+                color: diffEditorMode ? 'var(--accent)' : 'var(--text-muted)',
+                background: diffEditorMode ? 'rgba(255,255,255,0.06)' : 'transparent',
+                border: 'none',
+                borderRadius: 3,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { if (!diffEditorMode) e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={(e) => { if (!diffEditorMode) e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
+              <GitCompare size={12} />
+            </button>
+            {/* Split right button */}
+            <button
+              onClick={handleSplitRight}
+              title="Split Editor Right (Ctrl+\)"
+              style={{
+                padding: '0 6px',
+                height: 22,
+                color: splitMode === 'horizontal' ? 'var(--accent)' : 'var(--text-muted)',
+                background: splitMode === 'horizontal' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                border: 'none',
+                borderRadius: 3,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { if (splitMode !== 'horizontal') e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={(e) => { if (splitMode !== 'horizontal') e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
+              <Columns size={12} />
+            </button>
+            {/* Split down button */}
+            <button
+              onClick={handleSplitDown}
+              title="Split Editor Down"
+              style={{
+                padding: '0 6px',
+                height: 22,
+                color: splitMode === 'vertical' ? 'var(--accent)' : 'var(--text-muted)',
+                background: splitMode === 'vertical' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                border: 'none',
+                borderRadius: 3,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { if (splitMode !== 'vertical') e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={(e) => { if (splitMode !== 'vertical') e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
+              <Rows2 size={12} />
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden" style={{ display: 'flex' }}>
+      {/* Diff file picker overlay */}
+      {diffFilePickerOpen && (
+        <DiffFilePicker
+          openFiles={openFiles}
+          currentPath={diffOriginalPath}
+          onSelect={handleSelectDiffFile}
+          onClose={() => setDiffFilePickerOpen(false)}
+        />
+      )}
+
+      <div className="flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: splitMode === 'vertical' ? 'column' : 'row' }}>
         {activeFile ? (
           <>
-            {/* Primary editor or image preview */}
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-              {isImageFile(activeFile.path) ? (
-                <ImagePreview filePath={activeFile.path} />
-              ) : (
-                <>
-                  <Editor
+            {/* Diff editor mode */}
+            {diffEditorMode && diffOriginalPath && diffModifiedPath ? (
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {/* Diff editor header */}
+                <div style={{
+                  height: 28,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 12px',
+                  borderBottom: '1px solid var(--border)',
+                  fontSize: 11,
+                  color: 'var(--text-secondary)',
+                  background: 'var(--bg-tertiary)',
+                  gap: 8,
+                }}>
+                  <GitCompare size={12} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {diffOriginalPath.replace(/\\/g, '/').split('/').pop()}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', opacity: 0.5 }}>vs</span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                    {diffModifiedPath.replace(/\\/g, '/').split('/').pop()}
+                  </span>
+                  <button
+                    onClick={handleCloseDiffEditor}
+                    title="Close Diff View"
+                    style={{
+                      marginLeft: 'auto',
+                      width: 20,
+                      height: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 3,
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      background: 'transparent',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <MonacoDiffEditorComponent
                     theme={currentMonacoTheme}
                     language={activeFile.language}
-                    value={activeFile.content}
-                    onChange={handleChange}
-                    onMount={handleEditorMount}
+                    original={openFiles.find(f => f.path === diffOriginalPath)?.content || ''}
+                    modified={openFiles.find(f => f.path === diffModifiedPath)?.content || ''}
                     loading={<EditorLoading />}
-                    options={editorOptions}
-                  />
-                  {/* Inline Edit Overlay */}
-                  {inlineEditVisible && (
-                    <InlineEdit
-                      visible={inlineEditVisible}
-                      onClose={() => setInlineEditVisible(false)}
-                      onSubmit={handleInlineEditSubmit}
-                      isProcessing={inlineProcessing}
-                      selectedText={inlineEditText}
-                      position={inlineEditPos}
-                    />
-                  )}
-                  {/* Inline Diff Preview Overlay */}
-                  {diffVisible && (
-                    <InlineDiff
-                      visible={diffVisible}
-                      originalCode={diffOriginalCode}
-                      suggestedCode={diffSuggestedCode}
-                      language={activeFile.language}
-                      onAccept={handleDiffAccept}
-                      onReject={handleDiffReject}
-                      position={diffPos}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Split editor */}
-            {splitMode === 'split' && splitFile && (
-              <>
-                <div style={{ width: 1, background: 'var(--border)', flexShrink: 0 }} />
-                <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-                  {/* Split file tab */}
-                  <div style={{
-                    height: 26,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 12px',
-                    borderBottom: '1px solid var(--border)',
-                    fontSize: 11,
-                    color: 'var(--text-secondary)',
-                    background: 'var(--bg-tertiary)',
-                    gap: 6,
-                  }}>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                      {splitFile.name}
-                    </span>
-                    {/* Switch split file dropdown */}
-                    <select
-                      value={splitFilePath || ''}
-                      onChange={(e) => setSplitFilePath(e.target.value)}
-                      style={{
-                        marginLeft: 'auto',
-                        fontSize: 10,
-                        color: 'var(--text-muted)',
-                        background: 'var(--bg-primary)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 3,
-                        padding: '1px 4px',
-                        outline: 'none',
-                      }}
-                    >
-                      {openFiles.map((f) => (
-                        <option key={f.path} value={f.path}>{f.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <Editor
-                    theme={currentMonacoTheme}
-                    language={splitFile.language}
-                    value={splitFile.content}
-                    onChange={(val) => {
-                      if (splitFilePath && val !== undefined) {
-                        updateFileContent(splitFilePath, val)
-                      }
-                    }}
                     options={{
                       ...editorOptions,
+                      readOnly: true,
+                      renderSideBySide: true,
+                      enableSplitViewResizing: true,
+                      renderOverviewRuler: true,
                       minimap: { enabled: false },
                     }}
                   />
                 </div>
+              </div>
+            ) : (
+              <>
+                {/* Primary editor or image preview */}
+                <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                  {isImageFile(activeFile.path) ? (
+                    <ImagePreview filePath={activeFile.path} />
+                  ) : (
+                    <>
+                      <Editor
+                        theme={currentMonacoTheme}
+                        language={activeFile.language}
+                        value={activeFile.content}
+                        onChange={handleChange}
+                        onMount={handleEditorMount}
+                        loading={<EditorLoading />}
+                        options={editorOptions}
+                      />
+                      {/* Inline Edit Overlay */}
+                      {inlineEditVisible && (
+                        <InlineEdit
+                          visible={inlineEditVisible}
+                          onClose={() => setInlineEditVisible(false)}
+                          onSubmit={handleInlineEditSubmit}
+                          isProcessing={inlineProcessing}
+                          selectedText={inlineEditText}
+                          position={inlineEditPos}
+                        />
+                      )}
+                      {/* Inline Diff Preview Overlay */}
+                      {diffVisible && (
+                        <InlineDiff
+                          visible={diffVisible}
+                          originalCode={diffOriginalCode}
+                          suggestedCode={diffSuggestedCode}
+                          language={activeFile.language}
+                          onAccept={handleDiffAccept}
+                          onReject={handleDiffReject}
+                          position={diffPos}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Split editor */}
+                {splitMode !== 'single' && splitFile && (
+                  <>
+                    <div style={{
+                      ...(splitMode === 'horizontal'
+                        ? { width: 2, minWidth: 2 }
+                        : { height: 2, minHeight: 2 }),
+                      background: 'var(--border)',
+                      flexShrink: 0,
+                      cursor: splitMode === 'horizontal' ? 'col-resize' : 'row-resize',
+                    }} />
+                    <div
+                      style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const tabPath = e.dataTransfer.getData('application/x-orion-tab')
+                        if (tabPath) {
+                          window.dispatchEvent(new CustomEvent('orion:move-tab-to-group', { detail: { filePath: tabPath, targetGroup: 2 } }))
+                        }
+                      }}
+                    >
+                      {/* Split file header */}
+                      <div style={{
+                        height: 28,
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0 12px',
+                        borderBottom: '1px solid var(--border)',
+                        fontSize: 11,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--bg-tertiary)',
+                        gap: 6,
+                      }}>
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                          {splitFile.name}
+                        </span>
+                        {/* Sync scroll indicator */}
+                        {syncScrollEnabled && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--accent)', fontSize: 10 }}>
+                            <Link2 size={10} />
+                            synced
+                          </span>
+                        )}
+                        {/* Switch split file dropdown */}
+                        <select
+                          value={splitFilePath || ''}
+                          onChange={(e) => setSplitFilePath(e.target.value)}
+                          style={{
+                            marginLeft: 'auto',
+                            fontSize: 10,
+                            color: 'var(--text-muted)',
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 3,
+                            padding: '1px 4px',
+                            outline: 'none',
+                          }}
+                        >
+                          {openFiles.map((f) => (
+                            <option key={f.path} value={f.path}>{f.name}</option>
+                          ))}
+                        </select>
+                        {/* Close split button */}
+                        <button
+                          onClick={() => { setSplitMode('single'); setSplitFilePath(null); setGroup1Files([]); setGroup2Files([]) }}
+                          title="Close Split"
+                          style={{
+                            width: 18,
+                            height: 18,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 3,
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            background: 'transparent',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <Editor
+                          theme={currentMonacoTheme}
+                          language={splitFile.language}
+                          value={splitFile.content}
+                          onChange={(val) => {
+                            if (splitFilePath && val !== undefined) {
+                              updateFileContent(splitFilePath, val)
+                            }
+                          }}
+                          onMount={(editor) => {
+                            splitEditorRef.current = editor
+                          }}
+                          options={{
+                            ...editorOptions,
+                            minimap: { enabled: false },
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </>
         ) : (
           <WelcomeScreen />
         )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Diff File Picker ── */
+function DiffFilePicker({
+  openFiles,
+  currentPath,
+  onSelect,
+  onClose,
+}: {
+  openFiles: { path: string; name: string }[]
+  currentPath: string | null
+  onSelect: (path: string) => void
+  onClose: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const filtered = useMemo(() => {
+    const candidates = openFiles.filter(f => f.path !== currentPath)
+    if (!query.trim()) return candidates
+    const lower = query.toLowerCase()
+    return candidates.filter(f => f.name.toLowerCase().includes(lower) || f.path.toLowerCase().includes(lower))
+  }, [openFiles, currentPath, query])
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }, [])
+
+  useEffect(() => { setSelectedIndex(0) }, [query])
+
+  useEffect(() => {
+    const el = listRef.current?.children[selectedIndex] as HTMLElement
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIndex])
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { onClose(); return }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, filtered.length - 1)) }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)) }
+    if (e.key === 'Enter' && filtered[selectedIndex]) { onSelect(filtered[selectedIndex].path) }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex', justifyContent: 'center',
+        paddingTop: 80,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 480, maxHeight: 340,
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-bright)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-xl)',
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <GitCompare size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Select a file to compare with..."
+            style={{
+              flex: 1, background: 'transparent',
+              border: 'none', outline: 'none',
+              fontSize: 13, color: 'var(--text-primary)',
+              fontFamily: 'var(--font-sans)',
+            }}
+          />
+        </div>
+        <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              No other open files to compare with
+            </div>
+          ) : (
+            filtered.map((file, idx) => (
+              <div
+                key={file.path}
+                onClick={() => onSelect(file.path)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 14px',
+                  cursor: 'pointer',
+                  background: idx === selectedIndex ? 'var(--bg-active)' : 'transparent',
+                  color: idx === selectedIndex ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: 13,
+                }}
+                onMouseEnter={() => setSelectedIndex(idx)}
+              >
+                <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>{file.name}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.5 }}>
+                  {file.path.replace(/\\/g, '/').split('/').slice(-3, -1).join('/')}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+        <div style={{
+          padding: '6px 14px',
+          borderTop: '1px solid var(--border)',
+          fontSize: 11, color: 'var(--text-muted)',
+        }}>
+          Select a file to compare with the active file
+        </div>
       </div>
     </div>
   )
