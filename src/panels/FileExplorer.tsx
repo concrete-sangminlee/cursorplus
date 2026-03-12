@@ -4,10 +4,12 @@ import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
 import {
   ChevronRight, ChevronsDownUp,
-  File, FileCode2, FileJson, FileText, FileImage,
+  File, FileCode, FileCode2, FileText,
   Folder, FolderOpen, FolderPlus, RotateCw,
-  Settings, Braces, Hash, FileType, Image, Code,
+  Settings, Braces, Hash, Image,
   FilePlus, Trash2, Edit3, Clipboard, Plus,
+  Globe, Palette, Terminal as TermIcon, Coffee, Gem,
+  Database, Lock, Package,
 } from 'lucide-react'
 import type { FileNode } from '@shared/types'
 
@@ -35,33 +37,123 @@ interface InlineInputState {
 type IconEntry = { Icon: typeof File; color: string }
 
 const fileIcons: Record<string, IconEntry> = {
-  ts:    { Icon: Code, color: '#3178c6' },
-  tsx:   { Icon: Code, color: '#3178c6' },
-  js:    { Icon: Code, color: '#f1e05a' },
-  jsx:   { Icon: Code, color: '#f1e05a' },
-  py:    { Icon: FileCode2, color: '#3572a5' },
-  rs:    { Icon: FileCode2, color: '#dea584' },
-  go:    { Icon: FileCode2, color: '#00add8' },
-  json:  { Icon: Braces, color: '#cbcb41' },
+  // TypeScript / JavaScript
+  ts:    { Icon: FileCode, color: '#3178c6' },
+  tsx:   { Icon: FileCode, color: '#3178c6' },
+  js:    { Icon: FileCode, color: '#f1e05a' },
+  jsx:   { Icon: FileCode, color: '#f1e05a' },
+  mjs:   { Icon: FileCode, color: '#f1e05a' },
+  cjs:   { Icon: FileCode, color: '#f1e05a' },
+  // Web
+  html:  { Icon: Globe, color: '#e34c26' },
+  htm:   { Icon: Globe, color: '#e34c26' },
+  css:   { Icon: Palette, color: '#563d7c' },
+  scss:  { Icon: Palette, color: '#c6538c' },
+  less:  { Icon: Palette, color: '#1d365d' },
+  // Data / Config
+  json:  { Icon: Braces, color: '#8b949e' },
   yaml:  { Icon: FileText, color: '#cb171e' },
   yml:   { Icon: FileText, color: '#cb171e' },
   toml:  { Icon: FileText, color: '#9c4121' },
-  md:    { Icon: FileType, color: '#519aba' },
+  xml:   { Icon: FileText, color: '#0060ac' },
+  csv:   { Icon: FileText, color: '#8b949e' },
+  // Config / Environment
+  env:   { Icon: Lock, color: '#faf743' },
+  // Languages
+  py:    { Icon: Hash, color: '#3572a5' },
+  rb:    { Icon: Gem, color: '#701516' },
+  rs:    { Icon: Settings, color: '#dea584' },
+  go:    { Icon: FileCode, color: '#00add8' },
+  java:  { Icon: Coffee, color: '#b07219' },
+  kt:    { Icon: FileCode, color: '#a97bff' },
+  swift: { Icon: FileCode, color: '#f05138' },
+  c:     { Icon: FileCode2, color: '#555555' },
+  cpp:   { Icon: FileCode2, color: '#f34b7d' },
+  h:     { Icon: FileCode2, color: '#555555' },
+  hpp:   { Icon: FileCode2, color: '#f34b7d' },
+  cs:    { Icon: FileCode, color: '#178600' },
+  php:   { Icon: FileCode, color: '#4f5d95' },
+  lua:   { Icon: FileCode, color: '#000080' },
+  dart:  { Icon: FileCode, color: '#00b4ab' },
+  vue:   { Icon: FileCode, color: '#41b883' },
+  svelte: { Icon: FileCode, color: '#ff3e00' },
+  // Documentation / Text
+  md:    { Icon: FileText, color: '#083fa1' },
+  mdx:   { Icon: FileText, color: '#083fa1' },
   txt:   { Icon: FileText, color: '#8b949e' },
-  png:   { Icon: Image, color: '#a371f7' },
-  jpg:   { Icon: Image, color: '#a371f7' },
-  jpeg:  { Icon: Image, color: '#a371f7' },
-  gif:   { Icon: Image, color: '#a371f7' },
-  webp:  { Icon: Image, color: '#a371f7' },
-  svg:   { Icon: Image, color: '#f78166' },
-  html:  { Icon: Code, color: '#e34c26' },
-  css:   { Icon: Hash, color: '#563d7c' },
-  scss:  { Icon: Hash, color: '#c6538c' },
-  less:  { Icon: Hash, color: '#1d365d' },
-  vue:   { Icon: Code, color: '#41b883' },
-  sh:    { Icon: FileCode2, color: '#89e051' },
-  bash:  { Icon: FileCode2, color: '#89e051' },
-  env:   { Icon: Settings, color: '#ecd53f' },
+  log:   { Icon: FileText, color: '#8b949e' },
+  // Images
+  svg:   { Icon: Image, color: '#ffb13b' },
+  png:   { Icon: Image, color: '#a074c4' },
+  jpg:   { Icon: Image, color: '#a074c4' },
+  jpeg:  { Icon: Image, color: '#a074c4' },
+  gif:   { Icon: Image, color: '#a074c4' },
+  webp:  { Icon: Image, color: '#a074c4' },
+  ico:   { Icon: Image, color: '#a074c4' },
+  bmp:   { Icon: Image, color: '#a074c4' },
+  // Database / Data
+  sql:   { Icon: Database, color: '#e38c00' },
+  db:    { Icon: Database, color: '#e38c00' },
+  sqlite: { Icon: Database, color: '#e38c00' },
+  // Shell / Terminal
+  sh:    { Icon: TermIcon, color: '#89e051' },
+  bash:  { Icon: TermIcon, color: '#89e051' },
+  zsh:   { Icon: TermIcon, color: '#89e051' },
+  fish:  { Icon: TermIcon, color: '#89e051' },
+  bat:   { Icon: TermIcon, color: '#c1f12e' },
+  cmd:   { Icon: TermIcon, color: '#c1f12e' },
+  ps1:   { Icon: TermIcon, color: '#012456' },
+  // Lock files
+  lock:  { Icon: Lock, color: '#8b949e' },
+  // Misc
+  wasm:  { Icon: FileCode2, color: '#654ff0' },
+  graphql: { Icon: FileCode, color: '#e10098' },
+  gql:   { Icon: FileCode, color: '#e10098' },
+  prisma: { Icon: Database, color: '#2d3748' },
+}
+
+/** Special file names get a specific icon regardless of extension */
+const nameIcons: Record<string, IconEntry> = {
+  'package.json':      { Icon: Package, color: '#cb3837' },
+  'package-lock.json': { Icon: Lock, color: '#8b949e' },
+  'tsconfig.json':     { Icon: Settings, color: '#3178c6' },
+  'vite.config.ts':    { Icon: Settings, color: '#646cff' },
+  'vite.config.js':    { Icon: Settings, color: '#646cff' },
+  'webpack.config.js': { Icon: Settings, color: '#8dd6f9' },
+  'webpack.config.ts': { Icon: Settings, color: '#8dd6f9' },
+  'tailwind.config.js': { Icon: Settings, color: '#06b6d4' },
+  'tailwind.config.ts': { Icon: Settings, color: '#06b6d4' },
+  'postcss.config.js': { Icon: Settings, color: '#dd3a0a' },
+  'postcss.config.ts': { Icon: Settings, color: '#dd3a0a' },
+  'jest.config.js':    { Icon: Settings, color: '#99424f' },
+  'jest.config.ts':    { Icon: Settings, color: '#99424f' },
+  '.gitignore':        { Icon: Settings, color: '#f34f29' },
+  '.eslintrc':         { Icon: Settings, color: '#4b32c3' },
+  '.eslintrc.js':      { Icon: Settings, color: '#4b32c3' },
+  '.eslintrc.json':    { Icon: Settings, color: '#4b32c3' },
+  '.prettierrc':       { Icon: Settings, color: '#56b3b4' },
+  '.prettierrc.js':    { Icon: Settings, color: '#56b3b4' },
+  '.prettierrc.json':  { Icon: Settings, color: '#56b3b4' },
+  '.editorconfig':     { Icon: Settings, color: '#8b949e' },
+  '.env':              { Icon: Lock, color: '#faf743' },
+  '.env.local':        { Icon: Lock, color: '#faf743' },
+  '.env.development':  { Icon: Lock, color: '#faf743' },
+  '.env.production':   { Icon: Lock, color: '#faf743' },
+  'Dockerfile':        { Icon: Package, color: '#2496ed' },
+  'docker-compose.yml': { Icon: Package, color: '#2496ed' },
+  'docker-compose.yaml': { Icon: Package, color: '#2496ed' },
+  'Makefile':          { Icon: TermIcon, color: '#6d8086' },
+  'README.md':         { Icon: FileText, color: '#083fa1' },
+  'LICENSE':           { Icon: FileText, color: '#8b949e' },
+  'LICENSE.md':        { Icon: FileText, color: '#8b949e' },
+  'yarn.lock':         { Icon: Lock, color: '#2c8ebb' },
+  'pnpm-lock.yaml':    { Icon: Lock, color: '#f69220' },
+  'Cargo.toml':        { Icon: Package, color: '#dea584' },
+  'Cargo.lock':        { Icon: Lock, color: '#dea584' },
+  'go.mod':            { Icon: Package, color: '#00add8' },
+  'go.sum':            { Icon: Lock, color: '#00add8' },
+  'Gemfile':           { Icon: Gem, color: '#701516' },
+  'Gemfile.lock':      { Icon: Lock, color: '#701516' },
 }
 
 const configPatterns = [
@@ -71,13 +163,13 @@ const configPatterns = [
 ]
 
 function getFileInfo(name: string): IconEntry {
+  /* Check special file names first */
+  if (nameIcons[name]) return nameIcons[name]
+
   const ext = name.split('.').pop()?.toLowerCase() || ''
   if (fileIcons[ext]) return fileIcons[ext]
   const lowerName = name.toLowerCase()
   if (configPatterns.some((p) => lowerName.includes(p))) {
-    return { Icon: Settings, color: '#8b949e' }
-  }
-  if (lowerName === '.gitignore' || lowerName === '.editorconfig') {
     return { Icon: Settings, color: '#8b949e' }
   }
   return { Icon: File, color: '#8b949e' }
@@ -397,7 +489,7 @@ function FileTreeNode({
   }
 
   const { Icon: FileIcon, color: iconColor } = isDir
-    ? { Icon: isExpanded ? FolderOpen : Folder, color: isExpanded ? '#e8a953' : '#8b949e' }
+    ? { Icon: isExpanded ? FolderOpen : Folder, color: '#dcb67a' }
     : getFileInfo(node.name)
 
   /* Show inline rename instead of normal row */

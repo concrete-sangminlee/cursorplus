@@ -433,7 +433,33 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   )
 }
 
-/* ── Streaming indicator ───────────────────────────────── */
+/* ── Relative timestamp formatter ──────────────────────── */
+
+function formatTime(ts: number) {
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return new Date(ts).toLocaleDateString()
+}
+
+/* ── Thinking / streaming indicator ───────────────────── */
+
+function ThinkingIndicator() {
+  return (
+    <div style={{ display: 'flex', gap: 4, padding: '8px 0' }}>
+      <span className="thinking-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'thinking 1.4s ease-in-out infinite', animationDelay: '0s' }} />
+      <span className="thinking-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'thinking 1.4s ease-in-out infinite', animationDelay: '0.2s' }} />
+      <span className="thinking-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'thinking 1.4s ease-in-out infinite', animationDelay: '0.4s' }} />
+      <style>{`
+        @keyframes thinking {
+          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  )
+}
 
 function StreamingDots() {
   return (
@@ -481,7 +507,7 @@ function StreamingDots() {
 
 /* ── Message bubble ────────────────────────────────────── */
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, showThinking }: { message: ChatMessage; showThinking?: boolean }) {
   const isUser = message.role === 'user'
   const rendered = useMemo(
     () => (isUser ? null : renderMarkdown(message.content)),
@@ -489,31 +515,61 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   )
 
   return (
-    <div className="group" style={{ padding: '10px 0' }}>
+    <div
+      className="group"
+      style={{
+        padding: '10px 0',
+        ...(isUser
+          ? {
+              background: 'rgba(88, 166, 255, 0.06)',
+              borderLeft: '2px solid var(--accent)',
+              paddingLeft: 10,
+              marginLeft: -12,
+              marginRight: -12,
+              paddingRight: 12,
+            }
+          : {}),
+      }}
+    >
       <div className="flex items-start gap-2.5">
         {/* Avatar */}
-        <div
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 6,
-            flexShrink: 0,
-            marginTop: 1,
-            background: isUser
-              ? 'rgba(88,166,255,0.1)'
-              : 'linear-gradient(135deg, rgba(188,140,255,0.15), rgba(88,166,255,0.15))',
-            border: `1px solid ${isUser ? 'rgba(88,166,255,0.15)' : 'rgba(188,140,255,0.15)'}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {isUser ? (
+        {isUser ? (
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              flexShrink: 0,
+              marginTop: 1,
+              background: 'rgba(88,166,255,0.1)',
+              border: '1px solid rgba(88,166,255,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <User size={12} style={{ color: 'var(--accent)' }} />
-          ) : (
-            <Bot size={12} style={{ color: 'var(--accent-purple)' }} />
-          )}
-        </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--accent), var(--accent-purple))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#fff',
+              flexShrink: 0,
+              marginTop: 2,
+            }}
+          >
+            {message.agentName?.[0] || 'A'}
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -542,23 +598,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               </span>
             )}
             <span
-              className="transition-opacity duration-150"
               style={{
                 fontSize: 10,
                 color: 'var(--text-muted)',
                 marginLeft: 'auto',
-                opacity: 0,
-              }}
-              ref={(el) => {
-                const parent = el?.closest('.group')
-                parent?.addEventListener('mouseenter', () => el && (el.style.opacity = '1'))
-                parent?.addEventListener('mouseleave', () => el && (el.style.opacity = '0'))
               }}
             >
-              {new Date(message.timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              {formatTime(message.timestamp)}
             </span>
           </div>
 
@@ -576,7 +622,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               {message.content}
             </div>
           ) : (
-            <div>{rendered}</div>
+            <div>
+              {rendered}
+              {showThinking && <ThinkingIndicator />}
+            </div>
           )}
 
           {/* Task Progress */}
@@ -985,10 +1034,26 @@ export default function ChatPanel() {
           <EmptyChat />
         ) : (
           <>
-            {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
-            ))}
-            {isStreaming && <StreamingDots />}
+            {messages.map((msg, idx) => {
+              const isLast = idx === messages.length - 1
+              const isLastAssistantEmpty =
+                isLast &&
+                isStreaming &&
+                msg.role === 'assistant' &&
+                msg.content.trim().length < 10
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  showThinking={isLastAssistantEmpty}
+                />
+              )
+            })}
+            {isStreaming &&
+              (messages.length === 0 ||
+                messages[messages.length - 1].role !== 'assistant') && (
+                <StreamingDots />
+              )}
           </>
         )}
       </div>

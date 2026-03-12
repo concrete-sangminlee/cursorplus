@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Key, Check, Eye, EyeOff, MessageSquare, Sparkles } from 'lucide-react'
+import { X, Key, Check, Eye, EyeOff, MessageSquare, Sparkles, Code, Monitor } from 'lucide-react'
 
 interface Props {
   open: boolean
@@ -17,7 +17,17 @@ const providers = [
 const DEFAULT_SYSTEM_PROMPT = 'You are Orion AI by Bebut, an expert coding assistant integrated into a code editor IDE. You help with code analysis, debugging, feature implementation, and code explanations. Be concise and helpful. Use markdown formatting for code blocks. Respond in the same language the user uses.'
 const DEFAULT_USER_TEMPLATE = '{message}'
 
-type TabId = 'keys' | 'prompts'
+type TabId = 'keys' | 'prompts' | 'editor'
+
+interface EditorSettings {
+  fontSize: number
+  wordWrap: boolean
+  minimap: boolean
+  autoSave: boolean
+  tabSize: number
+  lineNumbers: boolean
+  bracketPairColorization: boolean
+}
 
 export default function SettingsModal({ open, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('keys')
@@ -28,6 +38,10 @@ export default function SettingsModal({ open, onClose }: Props) {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [userTemplate, setUserTemplate] = useState('')
   const [saved, setSaved] = useState(false)
+  const [editorSettings, setEditorSettings] = useState<EditorSettings>({
+    fontSize: 13, wordWrap: false, minimap: true, autoSave: true,
+    tabSize: 2, lineNumbers: true, bracketPairColorization: true,
+  })
 
   useEffect(() => {
     if (open) {
@@ -40,6 +54,8 @@ export default function SettingsModal({ open, onClose }: Props) {
           setSystemPrompt(p.systemPrompt || '')
           setUserTemplate(p.userPromptTemplate || '')
         }
+        const storedEditor = localStorage.getItem('orion-editor-settings')
+        if (storedEditor) setEditorSettings({ ...editorSettings, ...JSON.parse(storedEditor) })
       } catch {}
       setSaved(false)
     }
@@ -56,6 +72,10 @@ export default function SettingsModal({ open, onClose }: Props) {
     localStorage.setItem('orion-prompts', JSON.stringify(prompts))
     await window.api?.omoSetPrompts(prompts)
 
+    localStorage.setItem('orion-editor-settings', JSON.stringify(editorSettings))
+    // Dispatch editor config update event
+    window.dispatchEvent(new CustomEvent('orion:editor-config', { detail: editorSettings }))
+
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -65,6 +85,7 @@ export default function SettingsModal({ open, onClose }: Props) {
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: 'keys', label: 'API Keys', icon: <Key size={13} /> },
     { id: 'prompts', label: 'Prompts', icon: <MessageSquare size={13} /> },
+    { id: 'editor', label: 'Editor', icon: <Code size={13} /> },
   ]
 
   return (
@@ -184,6 +205,82 @@ export default function SettingsModal({ open, onClose }: Props) {
                       {showKey[key] ? <EyeOff size={13} /> : <Eye size={13} />}
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'editor' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Customize the code editor appearance and behavior.
+              </p>
+
+              {/* Font Size */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Font Size</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Editor font size in pixels</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => setEditorSettings(s => ({ ...s, fontSize: Math.max(10, s.fontSize - 1) }))}
+                    style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>-</button>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', minWidth: 28, textAlign: 'center' }}>{editorSettings.fontSize}</span>
+                  <button onClick={() => setEditorSettings(s => ({ ...s, fontSize: Math.min(28, s.fontSize + 1) }))}
+                    style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                </div>
+              </div>
+
+              {/* Tab Size */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Tab Size</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Number of spaces per tab</div>
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[2, 4, 8].map(n => (
+                    <button key={n}
+                      onClick={() => setEditorSettings(s => ({ ...s, tabSize: n }))}
+                      style={{
+                        width: 32, height: 28, borderRadius: 6, fontSize: 12, fontWeight: 600,
+                        background: editorSettings.tabSize === n ? 'var(--accent)' : 'var(--bg-primary)',
+                        color: editorSettings.tabSize === n ? '#fff' : 'var(--text-secondary)',
+                        border: editorSettings.tabSize === n ? 'none' : '1px solid var(--border)',
+                        cursor: 'pointer', transition: 'background 0.15s',
+                      }}>{n}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Toggle Settings */}
+              {([
+                ['wordWrap', 'Word Wrap', 'Wrap long lines at the editor width'],
+                ['minimap', 'Minimap', 'Show code overview on the right side'],
+                ['autoSave', 'Auto Save', 'Automatically save files after 2 seconds'],
+                ['lineNumbers', 'Line Numbers', 'Show line numbers in the gutter'],
+                ['bracketPairColorization', 'Bracket Colorization', 'Colorize matching brackets'],
+              ] as const).map(([key, label, desc]) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{desc}</div>
+                  </div>
+                  <button
+                    onClick={() => setEditorSettings(s => ({ ...s, [key]: !s[key] }))}
+                    style={{
+                      width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                      background: editorSettings[key] ? 'var(--accent)' : 'var(--bg-hover)',
+                      position: 'relative', transition: 'background 0.2s',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 3, left: editorSettings[key] ? 21 : 3,
+                      width: 16, height: 16, borderRadius: '50%',
+                      background: '#fff', transition: 'left 0.2s',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                    }} />
+                  </button>
                 </div>
               ))}
             </div>

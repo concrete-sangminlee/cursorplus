@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import TerminalPanel from './TerminalPanel'
 import { useAgentStore } from '@/store/agents'
 import {
   Terminal, Activity, AlertTriangle, FileOutput,
-  ChevronRight, AlertCircle, Info, Zap,
+  ChevronRight, AlertCircle, Info, Zap, Plus, X, Trash2,
 } from 'lucide-react'
+import { v4 as uuid } from 'uuid'
 
 type Tab = 'terminal' | 'agent-log' | 'problems' | 'output'
 
@@ -26,9 +27,37 @@ const logTypeConfig: Record<string, { color: string; borderColor: string; Icon: 
 
 /* ── Main component ────────────────────────────────────── */
 
+interface TermInstance {
+  id: string
+  name: string
+}
+
 export default function BottomPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('terminal')
+  const [terminals, setTerminals] = useState<TermInstance[]>([{ id: uuid(), name: 'Terminal 1' }])
+  const [activeTerminal, setActiveTerminal] = useState<string>(() => terminals[0]?.id || '')
   const logs = useAgentStore((s) => s.logs)
+
+  const addTerminal = useCallback(() => {
+    const num = terminals.length + 1
+    const t: TermInstance = { id: uuid(), name: `Terminal ${num}` }
+    setTerminals(prev => [...prev, t])
+    setActiveTerminal(t.id)
+    setActiveTab('terminal')
+  }, [terminals.length])
+
+  const closeTerminal = useCallback((id: string) => {
+    setTerminals(prev => {
+      const next = prev.filter(t => t.id !== id)
+      if (next.length === 0) {
+        const t: TermInstance = { id: uuid(), name: 'Terminal 1' }
+        setActiveTerminal(t.id)
+        return [t]
+      }
+      if (activeTerminal === id) setActiveTerminal(next[0].id)
+      return next
+    })
+  }, [activeTerminal])
 
   // Counts for badges
   const errorCount = logs.filter((l) => l.type === 'error').length
@@ -131,13 +160,82 @@ export default function BottomPanel() {
           )
         })}
 
-        {/* Right side spacer / extra controls could go here */}
-        <div className="ml-auto" />
+        {/* Right side: terminal sub-tabs + controls */}
+        <div className="ml-auto flex items-center gap-1" style={{ paddingRight: 4 }}>
+          {activeTab === 'terminal' && (
+            <>
+              {terminals.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTerminal(t.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    height: 22, padding: '0 6px',
+                    fontSize: 10, borderRadius: 3,
+                    color: activeTerminal === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                    background: activeTerminal === t.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    border: 'none', cursor: 'pointer',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (activeTerminal !== t.id) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                  onMouseLeave={e => { if (activeTerminal !== t.id) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <Terminal size={10} />
+                  {t.name}
+                  {terminals.length > 1 && (
+                    <span
+                      onClick={e => { e.stopPropagation(); closeTerminal(t.id) }}
+                      style={{ display: 'flex', marginLeft: 2, opacity: 0.5, cursor: 'pointer' }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '0.5' }}
+                    >
+                      <X size={10} />
+                    </span>
+                  )}
+                </button>
+              ))}
+              <button
+                onClick={addTerminal}
+                title="New Terminal"
+                style={{
+                  width: 22, height: 22,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 3, border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', background: 'transparent',
+                  transition: 'background 0.1s, color 0.1s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+              >
+                <Plus size={12} />
+              </button>
+              <button
+                onClick={() => closeTerminal(activeTerminal)}
+                title="Kill Terminal"
+                style={{
+                  width: 22, height: 22,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 3, border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', background: 'transparent',
+                  transition: 'background 0.1s, color 0.1s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'terminal' && <TerminalPanel />}
+        {activeTab === 'terminal' && terminals.map(t => (
+          <div key={t.id} style={{ height: '100%', display: activeTerminal === t.id ? 'block' : 'none' }}>
+            <TerminalPanel key={t.id} sessionId={t.id} />
+          </div>
+        ))}
 
         {activeTab === 'agent-log' && (
           <div

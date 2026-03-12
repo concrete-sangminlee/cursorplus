@@ -12,13 +12,16 @@ import {
 } from 'lucide-react'
 
 export default function EditorPanel() {
-  const { openFiles, activeFilePath, updateFileContent, markSaved } = useEditorStore()
+  const { openFiles, activeFilePath, updateFileContent, markSaved, closeFile, closeAllFiles } = useEditorStore()
   const addToast = useToastStore((s) => s.addToast)
   const activeFile = openFiles.find((f) => f.path === activeFilePath)
   const [saving, setSaving] = useState(false)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<Monaco | null>(null)
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Editor config state for command palette toggling
+  const [editorConfig, setEditorConfig] = useState({ fontSize: 13, minimap: true, wordWrap: false })
 
   // Inline edit (Ctrl+K) state
   const [inlineEditVisible, setInlineEditVisible] = useState(false)
@@ -209,12 +212,89 @@ export default function EditorPanel() {
     return () => window.removeEventListener('orion:split-editor', handler)
   }, [handleSplitToggle])
 
+  // Command palette event handlers
+  useEffect(() => {
+    const handlers: Record<string, () => void> = {
+      'orion:toggle-minimap': () => {
+        setEditorConfig(prev => {
+          const next = { ...prev, minimap: !prev.minimap }
+          editorRef.current?.updateOptions({ minimap: { enabled: next.minimap } })
+          return next
+        })
+      },
+      'orion:toggle-wordwrap': () => {
+        setEditorConfig(prev => {
+          const next = { ...prev, wordWrap: !prev.wordWrap }
+          editorRef.current?.updateOptions({ wordWrap: next.wordWrap ? 'on' : 'off' })
+          return next
+        })
+      },
+      'orion:font-increase': () => {
+        setEditorConfig(prev => {
+          const next = { ...prev, fontSize: prev.fontSize + 1 }
+          editorRef.current?.updateOptions({ fontSize: next.fontSize })
+          return next
+        })
+      },
+      'orion:font-decrease': () => {
+        setEditorConfig(prev => {
+          const next = { ...prev, fontSize: Math.max(10, prev.fontSize - 1) }
+          editorRef.current?.updateOptions({ fontSize: next.fontSize })
+          return next
+        })
+      },
+      'orion:font-reset': () => {
+        setEditorConfig(prev => {
+          const next = { ...prev, fontSize: 13 }
+          editorRef.current?.updateOptions({ fontSize: 13 })
+          return next
+        })
+      },
+      'orion:format-document': () => {
+        editorRef.current?.getAction('editor.action.formatDocument')?.run()
+      },
+      'orion:editor-find': () => {
+        editorRef.current?.getAction('actions.find')?.run()
+      },
+      'orion:editor-replace': () => {
+        editorRef.current?.getAction('editor.action.startFindReplaceAction')?.run()
+      },
+      'orion:close-tab': () => {
+        if (activeFilePath) {
+          closeFile(activeFilePath)
+        }
+      },
+      'orion:close-all-tabs': () => {
+        closeAllFiles()
+      },
+      'orion:save-file': () => {
+        if (activeFile) {
+          setSaving(true)
+          window.api.writeFile(activeFile.path, activeFile.content).then(() => {
+            markSaved(activeFile.path)
+            addToast({ type: 'success', message: `Saved ${activeFile.name}`, duration: 1500 })
+            setTimeout(() => setSaving(false), 800)
+          })
+        }
+      },
+    }
+
+    Object.entries(handlers).forEach(([event, handler]) => {
+      window.addEventListener(event, handler)
+    })
+    return () => {
+      Object.entries(handlers).forEach(([event, handler]) => {
+        window.removeEventListener(event, handler)
+      })
+    }
+  }, [activeFilePath, activeFile, closeFile, closeAllFiles, markSaved, addToast])
+
   const editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
-    fontSize: 13,
+    fontSize: editorConfig.fontSize,
     fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
     fontLigatures: true,
     minimap: {
-      enabled: true,
+      enabled: editorConfig.minimap,
       scale: 1,
       showSlider: 'mouseover',
       maxColumn: 60,
@@ -250,7 +330,7 @@ export default function EditorPanel() {
       horizontalSliderSize: 8,
     },
     stickyScroll: { enabled: true },
-    wordWrap: 'off',
+    wordWrap: editorConfig.wordWrap ? 'on' : 'off',
     links: true,
     colorDecorators: true,
     matchBrackets: 'always',

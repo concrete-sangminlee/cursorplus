@@ -3,10 +3,13 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 import { useTerminalStore } from '@/store/terminal'
-import { v4 as uuid } from 'uuid'
 import 'xterm/css/xterm.css'
 
-export default function TerminalPanel() {
+interface Props {
+  sessionId: string
+}
+
+export default function TerminalPanel({ sessionId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -48,7 +51,6 @@ export default function TerminalPanel() {
     termRef.current = term
     fitRef.current = fit
 
-    const sessionId = uuid()
     addSession({ id: sessionId, name: 'Terminal', type: 'shell' })
 
     window.api.termCreate(sessionId).then((result: any) => {
