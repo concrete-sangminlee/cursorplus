@@ -271,6 +271,15 @@ button {
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body strong { color: var(--text-primary); font-weight: 600; }
 .markdown-body em { font-style: italic; }
+.markdown-body table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 6px 10px; font-size: 12px; text-align: left; }
+.markdown-body th { background: var(--bg-tertiary); font-weight: 600; color: var(--text-secondary); }
+.markdown-body td { color: var(--text-primary); }
+.markdown-body tr:hover td { background: rgba(255,255,255,0.02); }
+.markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.markdown-body img { max-width: 100%; border-radius: var(--radius-md); }
+.markdown-body .task-list-item { list-style: none; display: flex; align-items: center; gap: 6px; }
+.markdown-body .task-list-item input[type="checkbox"] { accent-color: var(--accent); }
 
 /* Tooltip */
 /* Context menu */
@@ -401,3 +410,67 @@ button {
   box-shadow: var(--shadow-md);
 }
 .tooltip:hover::after { opacity: 1; }
+
+/* Typing cursor for streaming */
+@keyframes blink-cursor {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.typing-cursor::after {
+  content: '▋';
+  animation: blink-cursor 0.8s step-end infinite;
+  color: var(--accent);
+  margin-left: 1px;
+}
+
+/* Status bar item hover */
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 100%;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+.status-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+/* Divider for status bar */
+.status-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* Smooth panel transitions */
+.panel-transition {
+  transition: width 0.15s ease, height 0.15s ease;
+}
+
+/* Notification badge */
+.notification-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+  border: 2px solid var(--bg-tertiary);
+}

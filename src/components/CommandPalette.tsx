@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, FileText, Settings, Terminal, FolderOpen, MessageSquare, Zap, Command as CommandIcon, ChevronRight } from 'lucide-react'
+import { Search, FileText, Settings, Terminal, FolderOpen, MessageSquare, Zap, ChevronRight, Columns, Eye, EyeOff, Type, Minus, Plus, GitBranch, Paintbrush, WrapText, Map, PanelLeft, PanelBottom, X, Save, RotateCcw, RotateCw, Scissors, Copy, Clipboard, Keyboard } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
 
@@ -41,12 +41,45 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
   const isFileMode = !query.startsWith('>')
   const searchQuery = query.startsWith('>') ? query.slice(1).trim() : query.trim()
 
+  const dispatch = (event: string) => window.dispatchEvent(new CustomEvent(event))
+
   const commands: PaletteItem[] = useMemo(() => [
-    { id: 'settings', label: 'Preferences: Open Settings', category: 'command', icon: <Settings size={14} />, action: () => { onClose(); onOpenSettings() } },
-    { id: 'terminal', label: 'Terminal: Create New Terminal', category: 'command', icon: <Terminal size={14} />, shortcut: 'Ctrl+`', action: () => { onClose() } },
-    { id: 'chat', label: 'AI: Open Chat', category: 'command', icon: <MessageSquare size={14} />, shortcut: 'Ctrl+L', action: () => { onClose() } },
-    { id: 'agent', label: 'AI: Toggle Agent Mode', category: 'command', icon: <Zap size={14} />, action: () => { onClose() } },
+    // File
+    { id: 'save', label: 'File: Save', category: 'command', icon: <Save size={14} />, shortcut: 'Ctrl+S', action: () => { dispatch('orion:save-file'); onClose() } },
     { id: 'folder', label: 'File: Open Folder', category: 'command', icon: <FolderOpen size={14} />, shortcut: 'Ctrl+O', action: () => { window.api?.openFolder(); onClose() } },
+    { id: 'close-tab', label: 'File: Close Editor', category: 'command', icon: <X size={14} />, shortcut: 'Ctrl+W', action: () => { dispatch('orion:close-tab'); onClose() } },
+    { id: 'close-all', label: 'File: Close All Editors', category: 'command', icon: <X size={14} />, action: () => { dispatch('orion:close-all-tabs'); onClose() } },
+    // Edit
+    { id: 'undo', label: 'Edit: Undo', category: 'command', icon: <RotateCcw size={14} />, shortcut: 'Ctrl+Z', action: () => { document.execCommand('undo'); onClose() } },
+    { id: 'redo', label: 'Edit: Redo', category: 'command', icon: <RotateCw size={14} />, shortcut: 'Ctrl+Y', action: () => { document.execCommand('redo'); onClose() } },
+    { id: 'cut', label: 'Edit: Cut', category: 'command', icon: <Scissors size={14} />, shortcut: 'Ctrl+X', action: () => { document.execCommand('cut'); onClose() } },
+    { id: 'copy', label: 'Edit: Copy', category: 'command', icon: <Copy size={14} />, shortcut: 'Ctrl+C', action: () => { document.execCommand('copy'); onClose() } },
+    { id: 'paste', label: 'Edit: Paste', category: 'command', icon: <Clipboard size={14} />, shortcut: 'Ctrl+V', action: () => { document.execCommand('paste'); onClose() } },
+    { id: 'find', label: 'Edit: Find', category: 'command', icon: <Search size={14} />, shortcut: 'Ctrl+F', action: () => { dispatch('orion:editor-find'); onClose() } },
+    { id: 'replace', label: 'Edit: Find and Replace', category: 'command', icon: <Search size={14} />, shortcut: 'Ctrl+H', action: () => { dispatch('orion:editor-replace'); onClose() } },
+    // View
+    { id: 'toggle-sidebar', label: 'View: Toggle Sidebar', category: 'command', icon: <PanelLeft size={14} />, shortcut: 'Ctrl+B', action: () => { dispatch('orion:toggle-sidebar'); onClose() } },
+    { id: 'toggle-terminal', label: 'View: Toggle Terminal', category: 'command', icon: <PanelBottom size={14} />, shortcut: 'Ctrl+`', action: () => { dispatch('orion:toggle-terminal'); onClose() } },
+    { id: 'toggle-chat', label: 'View: Toggle Chat Panel', category: 'command', icon: <MessageSquare size={14} />, shortcut: 'Ctrl+L', action: () => { dispatch('orion:toggle-chat'); onClose() } },
+    { id: 'show-explorer', label: 'View: Show Explorer', category: 'command', icon: <FileText size={14} />, shortcut: 'Ctrl+Shift+E', action: () => { dispatch('orion:show-explorer'); onClose() } },
+    { id: 'show-search', label: 'View: Show Search', category: 'command', icon: <Search size={14} />, shortcut: 'Ctrl+Shift+F', action: () => { dispatch('orion:show-search'); onClose() } },
+    { id: 'show-git', label: 'View: Show Source Control', category: 'command', icon: <GitBranch size={14} />, shortcut: 'Ctrl+Shift+G', action: () => { dispatch('orion:show-git'); onClose() } },
+    { id: 'show-agents', label: 'View: Show Agents', category: 'command', icon: <Zap size={14} />, action: () => { dispatch('orion:show-agents'); onClose() } },
+    // Editor
+    { id: 'toggle-wordwrap', label: 'Editor: Toggle Word Wrap', category: 'command', icon: <WrapText size={14} />, action: () => { dispatch('orion:toggle-wordwrap'); onClose() } },
+    { id: 'toggle-minimap', label: 'Editor: Toggle Minimap', category: 'command', icon: <Map size={14} />, action: () => { dispatch('orion:toggle-minimap'); onClose() } },
+    { id: 'format', label: 'Editor: Format Document', category: 'command', icon: <Paintbrush size={14} />, shortcut: 'Shift+Alt+F', action: () => { dispatch('orion:format-document'); onClose() } },
+    { id: 'split-editor', label: 'Editor: Split Editor Right', category: 'command', icon: <Columns size={14} />, action: () => { dispatch('orion:split-editor'); onClose() } },
+    { id: 'font-increase', label: 'Editor: Increase Font Size', category: 'command', icon: <Plus size={14} />, shortcut: 'Ctrl+=', action: () => { dispatch('orion:font-increase'); onClose() } },
+    { id: 'font-decrease', label: 'Editor: Decrease Font Size', category: 'command', icon: <Minus size={14} />, shortcut: 'Ctrl+-', action: () => { dispatch('orion:font-decrease'); onClose() } },
+    { id: 'font-reset', label: 'Editor: Reset Font Size', category: 'command', icon: <Type size={14} />, action: () => { dispatch('orion:font-reset'); onClose() } },
+    // Terminal
+    { id: 'terminal', label: 'Terminal: Create New Terminal', category: 'command', icon: <Terminal size={14} />, shortcut: 'Ctrl+`', action: () => { dispatch('orion:toggle-terminal'); onClose() } },
+    // AI
+    { id: 'inline-edit', label: 'AI: Inline Edit (Ctrl+K)', category: 'command', icon: <Zap size={14} />, shortcut: 'Ctrl+K', action: () => { dispatch('orion:inline-edit'); onClose() } },
+    // Preferences
+    { id: 'settings', label: 'Preferences: Open Settings', category: 'command', icon: <Settings size={14} />, shortcut: 'Ctrl+,', action: () => { onClose(); onOpenSettings() } },
+    { id: 'shortcuts', label: 'Preferences: Keyboard Shortcuts', category: 'command', icon: <Keyboard size={14} />, shortcut: 'Ctrl+K Ctrl+S', action: () => { onClose(); onOpenSettings() } },
   ], [onClose, onOpenSettings])
 
   const fileItems: PaletteItem[] = useMemo(() => {
@@ -56,16 +89,19 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
       category: 'file' as const,
       icon: <FileText size={14} />,
       action: () => {
-        window.api?.readFile(f.path).then((content: string) => {
+        window.api?.readFile(f.path).then((result: any) => {
+          const content = typeof result === 'string' ? result : result?.content || ''
           const ext = f.name.split('.').pop() || ''
           const langMap: Record<string, string> = {
             ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
             json: 'json', md: 'markdown', css: 'css', html: 'html', py: 'python',
             rs: 'rust', go: 'go', java: 'java', yml: 'yaml', yaml: 'yaml',
+            scss: 'scss', less: 'less', vue: 'vue', sh: 'shell', bash: 'shell',
+            toml: 'toml', xml: 'xml', svg: 'xml', sql: 'sql', graphql: 'graphql',
           }
           openFile({
             path: f.path, name: f.name, content,
-            language: langMap[ext] || ext,
+            language: result?.language || langMap[ext] || ext,
             isModified: false, aiModified: false,
           })
         })
@@ -76,11 +112,34 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
 
   const items = useMemo(() => {
     const source = isFileMode ? fileItems : commands
-    if (!searchQuery) return source.slice(0, 20)
+    if (!searchQuery) return source.slice(0, 30)
     const lower = searchQuery.toLowerCase()
-    return source
-      .filter(item => item.label.toLowerCase().includes(lower))
-      .slice(0, 20)
+
+    // Fuzzy match: each character must appear in order
+    const fuzzyMatch = (text: string, query: string) => {
+      let qi = 0
+      const tl = text.toLowerCase()
+      for (let i = 0; i < tl.length && qi < query.length; i++) {
+        if (tl[i] === query[qi]) qi++
+      }
+      return qi === query.length
+    }
+
+    // Score: prefer exact substring > starts with > fuzzy
+    const scored = source
+      .filter(item => fuzzyMatch(item.label, lower))
+      .map(item => {
+        const ll = item.label.toLowerCase()
+        let score = 0
+        if (ll === lower) score = 100
+        else if (ll.startsWith(lower)) score = 80
+        else if (ll.includes(lower)) score = 60
+        else score = 30 // fuzzy only
+        return { item, score }
+      })
+      .sort((a, b) => b.score - a.score)
+
+    return scored.map(s => s.item).slice(0, 30)
   }, [isFileMode, searchQuery, fileItems, commands])
 
   useEffect(() => {
@@ -195,7 +254,14 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
                 <span style={{ color: 'var(--text-muted)', flexShrink: 0, display: 'flex' }}>
                   {item.icon}
                 </span>
-                <span className="truncate" style={{ flex: 1 }}>{item.label}</span>
+                <span className="truncate" style={{ flex: 1 }}>
+                  {item.label}
+                  {item.category === 'file' && (
+                    <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.4 }}>
+                      {item.id.replace(/\\/g, '/').split('/').slice(-3, -1).join('/')}
+                    </span>
+                  )}
+                </span>
                 {item.shortcut && (
                   <span className="kbd">{item.shortcut}</span>
                 )}

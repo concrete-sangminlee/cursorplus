@@ -70,6 +70,8 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
   const rootPath = useFileStore((s) => s.rootPath)
   const activeAgents = agents.filter((a) => a.status !== 'idle').length
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
+  const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 })
+  const [selectionInfo, setSelectionInfo] = useState<{ chars: number; lines: number } | null>(null)
 
   useEffect(() => {
     if (!rootPath) return
@@ -83,6 +85,83 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
     const interval = setInterval(fetchGit, 5000)
     return () => clearInterval(interval)
   }, [rootPath])
+
+  // Listen for cursor position changes from EditorPanel
+  useEffect(() => {
+    const handleCursorChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail) {
+        setCursorPos({ line: detail.line, column: detail.column })
+      }
+    }
+    const handleSelectionChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      setSelectionInfo(detail)
+    }
+    window.addEventListener('orion:cursor-change', handleCursorChange)
+    window.addEventListener('orion:selection-change', handleSelectionChange)
+    return () => {
+      window.removeEventListener('orion:cursor-change', handleCursorChange)
+      window.removeEventListener('orion:selection-change', handleSelectionChange)
+    }
+  }, [])
+
+  // Reset cursor position when the active file changes
+  useEffect(() => {
+    setCursorPos({ line: 1, column: 1 })
+    setSelectionInfo(null)
+  }, [activeFile?.path])
+
+  // Derive display language from file extension
+  const getLanguageLabel = (filename?: string, language?: string): string => {
+    if (language) {
+      const langMap: Record<string, string> = {
+        typescript: 'TypeScript',
+        typescriptreact: 'TypeScript React',
+        javascript: 'JavaScript',
+        javascriptreact: 'JavaScript React',
+        python: 'Python',
+        html: 'HTML',
+        css: 'CSS',
+        scss: 'SCSS',
+        less: 'Less',
+        json: 'JSON',
+        markdown: 'Markdown',
+        yaml: 'YAML',
+        xml: 'XML',
+        rust: 'Rust',
+        go: 'Go',
+        java: 'Java',
+        cpp: 'C++',
+        c: 'C',
+        csharp: 'C#',
+        ruby: 'Ruby',
+        php: 'PHP',
+        swift: 'Swift',
+        kotlin: 'Kotlin',
+        sql: 'SQL',
+        shell: 'Shell',
+        bash: 'Bash',
+        powershell: 'PowerShell',
+        dockerfile: 'Dockerfile',
+        plaintext: 'Plain Text',
+      }
+      return langMap[language] || language.charAt(0).toUpperCase() + language.slice(1)
+    }
+    if (!filename) return 'Plain Text'
+    const ext = filename.split('.').pop()?.toLowerCase()
+    const extMap: Record<string, string> = {
+      ts: 'TypeScript', tsx: 'TypeScript React',
+      js: 'JavaScript', jsx: 'JavaScript React',
+      py: 'Python', rb: 'Ruby', rs: 'Rust', go: 'Go',
+      java: 'Java', kt: 'Kotlin', swift: 'Swift',
+      cpp: 'C++', c: 'C', cs: 'C#', php: 'PHP',
+      html: 'HTML', css: 'CSS', scss: 'SCSS', less: 'Less',
+      json: 'JSON', md: 'Markdown', yml: 'YAML', yaml: 'YAML',
+      xml: 'XML', sql: 'SQL', sh: 'Shell', ps1: 'PowerShell',
+    }
+    return ext ? (extMap[ext] || 'Plain Text') : 'Plain Text'
+  }
 
   const changedFiles = gitInfo?.files?.length || 0
 
@@ -175,18 +254,28 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
       <div className="flex items-center" style={{ height: '100%' }}>
         {activeFile && (
           <>
-            <StatusItem>
-              <span>Ln 1, Col 1</span>
+            <StatusItem title={selectionInfo ? `${selectionInfo.chars} characters selected across ${selectionInfo.lines} line(s)` : `Line ${cursorPos.line}, Column ${cursorPos.column}`}>
+              <span>
+                Ln {cursorPos.line}, Col {cursorPos.column}
+                {selectionInfo && (
+                  <span style={{ color: 'var(--accent)', marginLeft: 4 }}>
+                    ({selectionInfo.chars} selected)
+                  </span>
+                )}
+              </span>
             </StatusItem>
             <StatusItem>
               <span>Spaces: 2</span>
             </StatusItem>
-            <StatusItem>
+            <StatusItem title="End of line sequence">
+              <span>LF</span>
+            </StatusItem>
+            <StatusItem title="File encoding">
               <span>UTF-8</span>
             </StatusItem>
-            <StatusItem>
+            <StatusItem title={`Language: ${getLanguageLabel(activeFile.name, activeFile.language)}`}>
               <span style={{ color: 'var(--text-secondary)' }}>
-                {activeFile.language || 'Plain Text'}
+                {getLanguageLabel(activeFile.name, activeFile.language)}
               </span>
             </StatusItem>
           </>

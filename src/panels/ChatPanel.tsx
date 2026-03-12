@@ -7,6 +7,8 @@ import {
   ChevronDown, Copy, Check, Code, Lightbulb, Wrench, BookOpen,
   Play, Trash2,
 } from 'lucide-react'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { ChatMessage } from '@shared/types'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
@@ -306,6 +308,25 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     setTimeout(() => setApplied(false), 2000)
   }
 
+  // Map common language aliases to what react-syntax-highlighter expects
+  const langMap: Record<string, string> = {
+    js: 'javascript',
+    ts: 'typescript',
+    tsx: 'tsx',
+    jsx: 'jsx',
+    py: 'python',
+    rb: 'ruby',
+    yml: 'yaml',
+    sh: 'bash',
+    shell: 'bash',
+    zsh: 'bash',
+    md: 'markdown',
+    cs: 'csharp',
+    'c++': 'cpp',
+    'c#': 'csharp',
+  }
+  const highlightLang = langMap[language.toLowerCase()] || language.toLowerCase() || 'text'
+
   return (
     <div
       style={{
@@ -313,24 +334,25 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         borderRadius: 8,
         overflow: 'hidden',
         border: '1px solid var(--border)',
-        background: 'rgba(0,0,0,0.2)',
+        background: '#282c34',
       }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-3"
         style={{
-          height: 30,
-          background: 'rgba(255,255,255,0.03)',
-          borderBottom: '1px solid var(--border)',
+          height: 32,
+          background: 'rgba(255,255,255,0.04)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}
       >
         <span
           style={{
-            fontSize: 10,
+            fontSize: 10.5,
             color: 'var(--text-muted)',
             fontFamily: 'var(--font-mono, monospace)',
             textTransform: 'lowercase',
+            letterSpacing: '0.02em',
           }}
         >
           {language || 'code'}
@@ -382,21 +404,31 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           </button>
         </div>
       </div>
-      {/* Code */}
-      <pre
-        style={{
+      {/* Syntax-highlighted code */}
+      <SyntaxHighlighter
+        language={highlightLang}
+        style={oneDark}
+        customStyle={{
           margin: 0,
           padding: '12px 14px',
           fontSize: 12,
           lineHeight: 1.6,
-          fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
-          color: '#e6edf3',
-          overflowX: 'auto',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: 0,
           tabSize: 2,
         }}
+        codeTagProps={{
+          style: {
+            fontFamily:
+              "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+          },
+        }}
+        showLineNumbers={false}
+        wrapLongLines={false}
       >
-        <code>{code}</code>
-      </pre>
+        {code}
+      </SyntaxHighlighter>
     </div>
   )
 }

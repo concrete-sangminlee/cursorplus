@@ -10,6 +10,7 @@ interface EditorStore {
   setActiveFile: (path: string) => void
   updateFileContent: (path: string, content: string) => void
   markAiModified: (path: string) => void
+  markSaved: (path: string) => void
   reorderFiles: (fromIndex: number, toIndex: number) => void
 }
 
@@ -47,6 +48,13 @@ export const useEditorStore = create<EditorStore>((set) => ({
     set((state) => ({
       openFiles: state.openFiles.map((f) =>
         f.path === path ? { ...f, aiModified: true } : f
+      ),
+    })),
+
+  markSaved: (path) =>
+    set((state) => ({
+      openFiles: state.openFiles.map((f) =>
+        f.path === path ? { ...f, isModified: false } : f
       ),
     })),
 

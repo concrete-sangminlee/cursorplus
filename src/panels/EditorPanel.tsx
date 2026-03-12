@@ -12,12 +12,13 @@ import {
 } from 'lucide-react'
 
 export default function EditorPanel() {
-  const { openFiles, activeFilePath, updateFileContent } = useEditorStore()
+  const { openFiles, activeFilePath, updateFileContent, markSaved } = useEditorStore()
   const addToast = useToastStore((s) => s.addToast)
   const activeFile = openFiles.find((f) => f.path === activeFilePath)
   const [saving, setSaving] = useState(false)
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<Monaco | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Inline edit (Ctrl+K) state
   const [inlineEditVisible, setInlineEditVisible] = useState(false)
@@ -33,8 +34,24 @@ export default function EditorPanel() {
   const handleChange = (value: string | undefined) => {
     if (activeFilePath && value !== undefined) {
       updateFileContent(activeFilePath, value)
+
+      // Auto-save with 2-second debounce
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = setTimeout(async () => {
+        if (activeFilePath) {
+          await window.api.writeFile(activeFilePath, value)
+          markSaved(activeFilePath) // clear modified indicator
+        }
+      }, 2000)
     }
   }
+
+  // Clean up auto-save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [])
 
   const handleEditorMount = (editor: MonacoEditor.IStandaloneCodeEditor, monaco: Monaco) => {
     editorRef.current = editor
@@ -78,6 +95,27 @@ export default function EditorPanel() {
       run: (ed) => {
         ed.getAction('editor.action.startFindReplaceAction')?.run()
       },
+    })
+
+    // Dispatch cursor position changes to status bar
+    editor.onDidChangeCursorPosition((e) => {
+      window.dispatchEvent(new CustomEvent('orion:cursor-change', {
+        detail: { line: e.position.lineNumber, column: e.position.column }
+      }))
+    })
+
+    // Dispatch selection changes to status bar
+    editor.onDidChangeCursorSelection((e) => {
+      const selection = e.selection
+      const model = editor.getModel()
+      if (model && !selection.isEmpty()) {
+        const text = model.getValueInRange(selection)
+        window.dispatchEvent(new CustomEvent('orion:selection-change', {
+          detail: { chars: text.length, lines: text.split('\n').length }
+        }))
+      } else {
+        window.dispatchEvent(new CustomEvent('orion:selection-change', { detail: null }))
+      }
     })
   }
 
@@ -225,6 +263,7 @@ export default function EditorPanel() {
       showStatusBar: true,
       preview: true,
     },
+    contextmenu: true,
   }
 
   return (

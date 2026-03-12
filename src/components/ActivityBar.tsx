@@ -9,10 +9,10 @@ interface Props {
   onSettingsClick?: () => void
 }
 
-const items: { view: PanelView; Icon: typeof Files; label: string; badge?: number | null; showDot?: boolean }[] = [
-  { view: 'explorer', Icon: Files, label: 'Explorer' },
-  { view: 'search', Icon: Search, label: 'Search' },
-  { view: 'git', Icon: GitBranch, label: 'Source Control' },
+const items: { view: PanelView; Icon: typeof Files; label: string; shortcut?: string; showDot?: boolean }[] = [
+  { view: 'explorer', Icon: Files, label: 'Explorer', shortcut: 'Ctrl+Shift+E' },
+  { view: 'search', Icon: Search, label: 'Search', shortcut: 'Ctrl+Shift+F' },
+  { view: 'git', Icon: GitBranch, label: 'Source Control', shortcut: 'Ctrl+Shift+G' },
   { view: 'agents', Icon: Bot, label: 'AI Agents', showDot: true },
 ]
 
@@ -62,14 +62,14 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
           paddingBottom: 8,
         }}
       >
-        {items.map(({ view, Icon, label, showDot }) => {
+        {items.map(({ view, Icon, label, shortcut, showDot }) => {
           const isActive = activeView === view
           const isHovered = hoveredView === view
 
           return (
             <button
               key={view}
-              data-tooltip={label}
+              data-tooltip={shortcut ? `${label} (${shortcut})` : label}
               onClick={() => onViewChange(view)}
               className="relative flex items-center justify-center"
               style={{
