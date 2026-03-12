@@ -15,8 +15,20 @@ import {
   Search, Settings, GitBranch, Columns, Sparkles,
   FileText, ZoomIn, ZoomOut, Maximize2, Minimize2,
   Image as ImageIcon, Folder, File, Hash, Box, Braces, Type as TypeIcon,
+  Upload,
 } from 'lucide-react'
 import { useEditorStore as useBreadcrumbEditorStore } from '@/store/editor'
+import { useFileStore } from '@/store/files'
+
+// ── Types for git gutter decorations ──────────────────
+interface DiffHunk {
+  type: 'added' | 'modified' | 'deleted'
+  startLine: number
+  count: number
+}
+
+// ── CSS color regex for inline color decorators ──────────────────
+const CSS_COLOR_REGEX = /#(?:[0-9a-fA-F]{3,4}){1,2}\b|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+\s*)?\)|hsla?\(\s*\d+\s*,\s*\d+%?\s*,\s*\d+%?\s*(?:,\s*[\d.]+\s*)?\)/g
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'])
 
@@ -68,10 +80,95 @@ export default function EditorPanel() {
   const [diffPos, setDiffPos] = useState({ top: 60, left: 100 })
   const diffSelectionRef = useRef<MonacoEditor.ISelection | null>(null)
 
+  // Decoration refs for active line highlight, git gutter, and color decorators
+  const activeLineDecorationsRef = useRef<string[]>([])
+  const gitGutterDecorationsRef = useRef<string[]>([])
+  const colorDecorationsRef = useRef<string[]>([])
+  const rootPath = useFileStore((s) => s.rootPath)
+
   // Split editor state
   const [splitMode, setSplitMode] = useState<'single' | 'split'>('single')
   const [splitFilePath, setSplitFilePath] = useState<string | null>(null)
   const splitFile = splitFilePath ? openFiles.find((f) => f.path === splitFilePath) : null
+
+  // Drag-and-drop state for OS file drops
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
+  const openFile = useEditorStore((s) => s.openFile)
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    // Only show overlay for file drags from OS (has Files type)
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0
+      setIsDragOver(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+
+    let openedCount = 0
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      // Electron exposes .path on dropped File objects
+      const filePath = (file as any).path as string | undefined
+      if (!filePath) continue
+
+      try {
+        const result = await window.api.readFile(filePath)
+        openFile(
+          {
+            path: filePath,
+            name: file.name,
+            content: result.content,
+            language: result.language,
+            isModified: false,
+            aiModified: false,
+          },
+          { preview: false },
+        )
+        openedCount++
+      } catch (err: any) {
+        addToast({ type: 'error', message: `Failed to open ${file.name}: ${err?.message || err}` })
+      }
+    }
+
+    if (openedCount > 0) {
+      addToast({
+        type: 'success',
+        message: openedCount === 1
+          ? `Opened ${files[0].name}`
+          : `Opened ${openedCount} files`,
+        duration: 2000,
+      })
+    }
+  }, [openFile, addToast])
 
   const scanFile = useProblemsStore((s) => s.scanFile)
 
@@ -420,6 +517,22 @@ export default function EditorPanel() {
       const selectedCode = model.getValueInRange(selection) || ''
       const fullContext = model.getValue()
 
+      // Store the selection for later use by the diff Accept handler
+      diffSelectionRef.current = selection
+
+      // Position the diff overlay near the selection
+      const vPos = editorRef.current.getScrolledVisiblePosition(selection.getStartPosition())
+      const domNode = editorRef.current.getDomNode()
+      if (vPos && domNode) {
+        const rect = domNode.getBoundingClientRect()
+        setDiffPos({
+          top: vPos.top + rect.top - 10,
+          left: Math.max(vPos.left + rect.left, rect.left + 40),
+        })
+      } else {
+        setDiffPos({ top: 100, left: 100 })
+      }
+
       // Send to AI for inline editing
       const message = `You are editing code inline. The user selected this code:\n\`\`\`\n${selectedCode}\n\`\`\`\n\nFrom this file:\n\`\`\`${activeFile.language}\n${fullContext.substring(0, 2000)}\n\`\`\`\n\nInstruction: ${instruction}\n\nRespond with ONLY the replacement code, no explanation, no markdown fences. Just the raw code that should replace the selection.`
 
@@ -428,16 +541,15 @@ export default function EditorPanel() {
         payload: { message, mode: 'chat', model: 'inline-edit' },
       })
 
-      // Listen for the response
+      // Listen for the response -- show diff preview instead of immediately applying
       const handler = (event: any) => {
         if (event?.detail?.type === 'inline-edit-response') {
           const newCode = event.detail.content
           if (newCode && selection) {
-            editorRef.current?.executeEdits('orion-inline-edit', [{
-              range: selection,
-              text: newCode,
-            }])
-            addToast({ type: 'success', message: 'Code updated by AI' })
+            // Store original and suggested code, then show diff preview
+            setDiffOriginalCode(selectedCode)
+            setDiffSuggestedCode(newCode)
+            setDiffVisible(true)
           }
           setInlineProcessing(false)
           setInlineEditVisible(false)
@@ -460,6 +572,55 @@ export default function EditorPanel() {
       addToast({ type: 'error', message: 'Failed to process inline edit' })
     }
   }
+
+  // Accept diff: apply the AI-suggested code to the editor
+  const handleDiffAccept = useCallback((newCode: string) => {
+    const sel = diffSelectionRef.current
+    if (sel && editorRef.current) {
+      editorRef.current.executeEdits('orion-inline-edit', [{
+        range: sel,
+        text: newCode,
+      }])
+      addToast({ type: 'success', message: 'AI suggestion applied' })
+    }
+    setDiffVisible(false)
+    setDiffOriginalCode('')
+    setDiffSuggestedCode('')
+    diffSelectionRef.current = null
+  }, [addToast])
+
+  // Reject diff: dismiss without changes
+  const handleDiffReject = useCallback(() => {
+    setDiffVisible(false)
+    setDiffOriginalCode('')
+    setDiffSuggestedCode('')
+    diffSelectionRef.current = null
+    addToast({ type: 'info', message: 'AI suggestion dismissed' })
+  }, [addToast])
+
+  // Listen for AI context-action responses (refactor / add-comments / fix-issues)
+  // These come from the AI backend after a right-click context menu action
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (!detail) return
+      const { action, suggestedCode, originalText } = detail as {
+        action: string
+        suggestedCode: string
+        originalText: string
+      }
+      if (!suggestedCode) return
+
+      // For refactor, add-comments, fix-issues: show inline diff
+      if (action === 'refactor' || action === 'add-comments' || action === 'fix-issues') {
+        setDiffOriginalCode(originalText)
+        setDiffSuggestedCode(suggestedCode)
+        setDiffVisible(true)
+      }
+    }
+    window.addEventListener('orion:ai-context-response', handler)
+    return () => window.removeEventListener('orion:ai-context-response', handler)
+  }, [])
 
   // Ctrl+S save handler
   useEffect(() => {
@@ -755,6 +916,18 @@ export default function EditorPanel() {
                       isProcessing={inlineProcessing}
                       selectedText={inlineEditText}
                       position={inlineEditPos}
+                    />
+                  )}
+                  {/* Inline Diff Preview Overlay */}
+                  {diffVisible && (
+                    <InlineDiff
+                      visible={diffVisible}
+                      originalCode={diffOriginalCode}
+                      suggestedCode={diffSuggestedCode}
+                      language={activeFile.language}
+                      onAccept={handleDiffAccept}
+                      onReject={handleDiffReject}
+                      position={diffPos}
                     />
                   )}
                 </>

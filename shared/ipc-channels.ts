@@ -15,6 +15,8 @@ export const IPC = {
   FS_DUPLICATE: 'fs:duplicate',
   FS_COPY_PATH: 'fs:copy-path',
   FS_TRASH: 'fs:trash',
+  FS_SHOW_ITEM: 'fs:show-item',
+  FS_COPY_FILE: 'fs:copy-file',
 
   // Git
   GIT_STATUS: 'git:status',
@@ -26,6 +28,7 @@ export const IPC = {
   GIT_DISCARD: 'git:discard',
   GIT_BRANCHES: 'git:branches',
   GIT_SHOW: 'git:show',
+  GIT_FILE_DIFF: 'git:file-diff',
 
   // Terminal
   TERM_CREATE: 'term:create',

@@ -9,7 +9,8 @@ import {
   Settings, Braces, Hash, Image,
   FilePlus, Trash2, Edit3, Clipboard, Plus,
   Globe, Palette, Terminal as TermIcon, Coffee, Gem,
-  Database, Lock, Package,
+  Database, Lock, Package, Copy, FolderIcon,
+  Columns, ExternalLink,
 } from 'lucide-react'
 import type { FileNode } from '@shared/types'
 
@@ -18,7 +19,8 @@ import type { FileNode } from '@shared/types'
 interface ContextMenuState {
   x: number
   y: number
-  node: FileNode
+  node: FileNode | null          // null = empty-space click
+  target: 'file' | 'folder' | 'empty'
 }
 
 type InlineInputMode = 'new-file' | 'new-folder' | 'rename'
@@ -209,28 +211,125 @@ function IndentGuides({ depth }: { depth: number }) {
   )
 }
 
+/* ── Delete confirmation dialog ──────────────────────── */
+
+function DeleteDialog({
+  name,
+  isDirectory,
+  onConfirm,
+  onCancel,
+}: {
+  name: string
+  isDirectory: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+      if (e.key === 'Enter') onConfirm()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onCancel, onConfirm])
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.5)',
+      }}
+      onClick={onCancel}
+    >
+      <div
+        ref={dialogRef}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-secondary, #1e1e2e)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          padding: '20px 24px',
+          minWidth: 340,
+          maxWidth: 420,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+          Delete {isDirectory ? 'Folder' : 'File'}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
+          Are you sure you want to delete <strong style={{ color: 'var(--text-primary)' }}>"{name}"</strong>?
+          {isDirectory && ' This will delete all its contents.'}
+          {' '}This action will move the item to the system trash if possible.
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            style={{
+              fontSize: 12,
+              padding: '5px 14px',
+              borderRadius: 5,
+              border: '1px solid var(--border)',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              fontSize: 12,
+              padding: '5px 14px',
+              borderRadius: 5,
+              border: 'none',
+              background: '#f85149',
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Context menu component ───────────────────────────── */
+
+interface ContextMenuItem {
+  label: string
+  icon: typeof File
+  action: () => void
+  separator?: boolean
+  hidden?: boolean
+  danger?: boolean
+}
 
 function ContextMenu({
   x,
   y,
-  node,
+  items,
   onClose,
-  onNewFile,
-  onNewFolder,
-  onRename,
-  onDelete,
-  onCopyPath,
 }: {
   x: number
   y: number
-  node: FileNode
+  items: ContextMenuItem[]
   onClose: () => void
-  onNewFile: () => void
-  onNewFolder: () => void
-  onRename: () => void
-  onDelete: () => void
-  onCopyPath: () => void
 }) {
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -263,22 +362,6 @@ function ContextMenu({
     }
   }, [x, y])
 
-  const isDir = node.type === 'directory'
-
-  const items: {
-    label: string
-    icon: typeof File
-    action: () => void
-    separator?: boolean
-    hidden?: boolean
-  }[] = [
-    { label: 'New File', icon: FilePlus, action: onNewFile, hidden: !isDir },
-    { label: 'New Folder', icon: Plus, action: onNewFolder, hidden: !isDir, separator: isDir },
-    { label: 'Rename', icon: Edit3, action: onRename },
-    { label: 'Delete', icon: Trash2, action: onDelete, separator: true },
-    { label: 'Copy Path', icon: Clipboard, action: onCopyPath },
-  ]
-
   const visibleItems = items.filter((it) => !it.hidden)
 
   return (
@@ -289,7 +372,7 @@ function ContextMenu({
         left: x,
         top: y,
         zIndex: 9999,
-        minWidth: 170,
+        minWidth: 190,
         background: 'var(--bg-secondary, #1e1e2e)',
         border: '1px solid var(--border)',
         borderRadius: 6,
@@ -310,7 +393,7 @@ function ContextMenu({
               className="flex items-center gap-2 cursor-pointer transition-colors duration-75"
               style={{
                 padding: '5px 14px',
-                color: item.label === 'Delete' ? '#f85149' : 'var(--text-secondary)',
+                color: item.danger ? '#f85149' : 'var(--text-secondary)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
@@ -489,7 +572,7 @@ function FileTreeNode({
     // Delay single-click to distinguish from double-click
     if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
     clickTimerRef.current = setTimeout(() => {
-      openFileInEditor(true) // single-click → preview
+      openFileInEditor(true) // single-click = preview
     }, 200)
   }
 
@@ -500,7 +583,7 @@ function FileTreeNode({
       clearTimeout(clickTimerRef.current)
       clickTimerRef.current = null
     }
-    openFileInEditor(false) // double-click → pinned
+    openFileInEditor(false) // double-click = pinned
   }
 
   const handleCtx = (e: React.MouseEvent) => {
@@ -663,6 +746,25 @@ function FileTreeNode({
   )
 }
 
+/* ── Helpers ───────────────────────────────────────────── */
+
+/** Get the path separator used in a given path string */
+function sep(p: string): string {
+  return p.includes('/') ? '/' : '\\'
+}
+
+/** Compute a relative path from a root to a target */
+function relativePath(root: string, target: string): string {
+  const norm = (s: string) => s.replace(/\\/g, '/')
+  const r = norm(root)
+  const t = norm(target)
+  if (t.startsWith(r)) {
+    const rel = t.slice(r.length)
+    return rel.startsWith('/') ? rel.slice(1) : rel
+  }
+  return t
+}
+
 /* ── File Explorer panel ───────────────────────────────── */
 
 export default function FileExplorer() {
@@ -674,6 +776,7 @@ export default function FileExplorer() {
 
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [inlineInput, setInlineInput] = useState<InlineInputState | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<FileNode | null>(null)
 
   /* ── Standard handlers ───────────────────────────────── */
 
@@ -697,11 +800,36 @@ export default function FileExplorer() {
     useFileStore.setState({ expandedDirs: new Set() })
   }, [])
 
+  /* ── Toolbar new file / new folder at root ────────────── */
+
+  const handleToolbarNewFile = useCallback(() => {
+    if (!rootPath) return
+    setInlineInput({
+      mode: 'new-file',
+      parentPath: rootPath,
+      depth: 0,
+    })
+  }, [rootPath])
+
+  const handleToolbarNewFolder = useCallback(() => {
+    if (!rootPath) return
+    setInlineInput({
+      mode: 'new-folder',
+      parentPath: rootPath,
+      depth: 0,
+    })
+  }, [rootPath])
+
   /* ── Context menu open / close ───────────────────────── */
 
   const handleContextMenu = useCallback((e: React.MouseEvent, node: FileNode) => {
     e.preventDefault()
-    setCtxMenu({ x: e.clientX, y: e.clientY, node })
+    setCtxMenu({
+      x: e.clientX,
+      y: e.clientY,
+      node,
+      target: node.type === 'directory' ? 'folder' : 'file',
+    })
   }, [])
 
   const closeContextMenu = useCallback(() => {
@@ -713,24 +841,24 @@ export default function FileExplorer() {
   const handleNewFile = useCallback(() => {
     if (!ctxMenu) return
     const node = ctxMenu.node
-    const parentPath = node.type === 'directory' ? node.path : node.path.replace(/[\\/][^\\/]+$/, '')
+    const parentPath = node && node.type === 'directory' ? node.path : (node ? node.path.replace(/[\\/][^\\/]+$/, '') : rootPath!)
     /* Ensure the directory is expanded so the inline input is visible */
-    if (node.type === 'directory' && !expandedDirs.has(node.path)) {
+    if (node && node.type === 'directory' && !expandedDirs.has(node.path)) {
       toggleDir(node.path)
     }
     setInlineInput({
       mode: 'new-file',
       parentPath,
-      depth: 0, // depth calculated relative to where it shows
+      depth: 0,
     })
     closeContextMenu()
-  }, [ctxMenu, expandedDirs, toggleDir, closeContextMenu])
+  }, [ctxMenu, expandedDirs, toggleDir, closeContextMenu, rootPath])
 
   const handleNewFolder = useCallback(() => {
     if (!ctxMenu) return
     const node = ctxMenu.node
-    const parentPath = node.type === 'directory' ? node.path : node.path.replace(/[\\/][^\\/]+$/, '')
-    if (node.type === 'directory' && !expandedDirs.has(node.path)) {
+    const parentPath = node && node.type === 'directory' ? node.path : (node ? node.path.replace(/[\\/][^\\/]+$/, '') : rootPath!)
+    if (node && node.type === 'directory' && !expandedDirs.has(node.path)) {
       toggleDir(node.path)
     }
     setInlineInput({
@@ -739,10 +867,10 @@ export default function FileExplorer() {
       depth: 0,
     })
     closeContextMenu()
-  }, [ctxMenu, expandedDirs, toggleDir, closeContextMenu])
+  }, [ctxMenu, expandedDirs, toggleDir, closeContextMenu, rootPath])
 
   const handleRename = useCallback(() => {
-    if (!ctxMenu) return
+    if (!ctxMenu || !ctxMenu.node) return
     const node = ctxMenu.node
     setInlineInput({
       mode: 'rename',
@@ -754,32 +882,179 @@ export default function FileExplorer() {
     closeContextMenu()
   }, [ctxMenu, closeContextMenu])
 
-  const handleDelete = useCallback(async () => {
-    if (!ctxMenu) return
-    const node = ctxMenu.node
+  const handleDeleteRequest = useCallback(() => {
+    if (!ctxMenu || !ctxMenu.node) return
+    setDeleteTarget(ctxMenu.node)
     closeContextMenu()
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${node.name}"?${node.type === 'directory' ? ' This will delete all contents.' : ''}`
-    )
-    if (!confirmed) return
+  }, [ctxMenu, closeContextMenu])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    const name = deleteTarget.name
     try {
-      await window.api.deleteFile(node.path)
-      addToast({ type: 'success', message: `Deleted ${node.name}` })
+      await window.api.trashItem(deleteTarget.path)
+      addToast({ type: 'success', message: `Deleted ${name}` })
       await handleRefresh()
     } catch (err: any) {
       addToast({ type: 'error', message: `Failed to delete: ${err?.message || err}` })
+    } finally {
+      setDeleteTarget(null)
     }
-  }, [ctxMenu, closeContextMenu, addToast, handleRefresh])
+  }, [deleteTarget, addToast, handleRefresh])
+
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteTarget(null)
+  }, [])
 
   const handleCopyPath = useCallback(() => {
-    if (!ctxMenu) return
-    navigator.clipboard.writeText(ctxMenu.node.path).then(() => {
+    if (!ctxMenu || !ctxMenu.node) return
+    const nodePath = ctxMenu.node.path
+    window.api.copyPathToClipboard(nodePath).then(() => {
       addToast({ type: 'info', message: 'Path copied to clipboard' })
+    }).catch(() => {
+      // Fallback to navigator clipboard
+      navigator.clipboard.writeText(nodePath).then(() => {
+        addToast({ type: 'info', message: 'Path copied to clipboard' })
+      }).catch(() => {
+        addToast({ type: 'error', message: 'Failed to copy path' })
+      })
+    })
+    closeContextMenu()
+  }, [ctxMenu, closeContextMenu, addToast])
+
+  const handleCopyRelativePath = useCallback(() => {
+    if (!ctxMenu || !ctxMenu.node || !rootPath) return
+    const rel = relativePath(rootPath, ctxMenu.node.path)
+    navigator.clipboard.writeText(rel).then(() => {
+      addToast({ type: 'info', message: 'Relative path copied' })
     }).catch(() => {
       addToast({ type: 'error', message: 'Failed to copy path' })
     })
     closeContextMenu()
+  }, [ctxMenu, closeContextMenu, addToast, rootPath])
+
+  const handleDuplicate = useCallback(async () => {
+    if (!ctxMenu || !ctxMenu.node) return
+    const node = ctxMenu.node
+    closeContextMenu()
+    try {
+      const result = await window.api.duplicateFile(node.path)
+      if (result.success) {
+        addToast({ type: 'success', message: `Duplicated ${node.name}` })
+        await handleRefresh()
+      } else {
+        addToast({ type: 'error', message: `Failed to duplicate: ${result.error}` })
+      }
+    } catch (err: any) {
+      addToast({ type: 'error', message: `Failed to duplicate: ${err?.message || err}` })
+    }
+  }, [ctxMenu, closeContextMenu, addToast, handleRefresh])
+
+  const handleOpenFileFromMenu = useCallback(async () => {
+    if (!ctxMenu || !ctxMenu.node) return
+    const node = ctxMenu.node
+    closeContextMenu()
+    if (node.type === 'file') {
+      try {
+        const result = await window.api.readFile(node.path)
+        useEditorStore.getState().openFile(
+          {
+            path: node.path,
+            name: node.name,
+            content: result.content,
+            language: result.language,
+            isModified: false,
+            aiModified: false,
+          },
+          { preview: false },
+        )
+      } catch (e) {
+        console.error('Failed to open file:', e)
+      }
+    }
+  }, [ctxMenu, closeContextMenu])
+
+  const handleOpenToSide = useCallback(async () => {
+    if (!ctxMenu || !ctxMenu.node) return
+    const node = ctxMenu.node
+    closeContextMenu()
+    if (node.type === 'file') {
+      try {
+        const result = await window.api.readFile(node.path)
+        useEditorStore.getState().openFile(
+          {
+            path: node.path,
+            name: node.name,
+            content: result.content,
+            language: result.language,
+            isModified: false,
+            aiModified: false,
+          },
+          { preview: false },
+        )
+        // Trigger split editor via custom event (EditorPanel listens for this)
+        window.dispatchEvent(new CustomEvent('orion:split-editor'))
+      } catch (e) {
+        console.error('Failed to open file to side:', e)
+      }
+    }
+  }, [ctxMenu, closeContextMenu])
+
+  const handleRevealInFileManager = useCallback(() => {
+    if (!ctxMenu || !ctxMenu.node) return
+    const nodePath = ctxMenu.node.path
+    closeContextMenu()
+    if (typeof window.api.showItemInFolder === 'function') {
+      window.api.showItemInFolder(nodePath).catch(() => {
+        addToast({ type: 'error', message: 'Failed to reveal in file manager' })
+      })
+    } else {
+      addToast({ type: 'info', message: 'Reveal in file manager is not available' })
+    }
   }, [ctxMenu, closeContextMenu, addToast])
+
+  /* ── Build context menu items based on target type ────── */
+
+  const buildMenuItems = useCallback((): ContextMenuItem[] => {
+    if (!ctxMenu) return []
+
+    if (ctxMenu.target === 'file') {
+      return [
+        { label: 'Open', icon: File, action: handleOpenFileFromMenu },
+        { label: 'Open to the Side', icon: Columns, action: handleOpenToSide, separator: true },
+        { label: 'Rename', icon: Edit3, action: handleRename },
+        { label: 'Delete', icon: Trash2, action: handleDeleteRequest, danger: true, separator: true },
+        { label: 'Duplicate', icon: Copy, action: handleDuplicate, separator: true },
+        { label: 'Copy Path', icon: Clipboard, action: handleCopyPath },
+        { label: 'Copy Relative Path', icon: Clipboard, action: handleCopyRelativePath, separator: true },
+        { label: 'Reveal in File Manager', icon: ExternalLink, action: handleRevealInFileManager },
+      ]
+    }
+
+    if (ctxMenu.target === 'folder') {
+      return [
+        { label: 'New File...', icon: FilePlus, action: handleNewFile },
+        { label: 'New Folder...', icon: FolderIcon, action: handleNewFolder, separator: true },
+        { label: 'Rename', icon: Edit3, action: handleRename },
+        { label: 'Delete', icon: Trash2, action: handleDeleteRequest, danger: true, separator: true },
+        { label: 'Copy Path', icon: Clipboard, action: handleCopyPath },
+        { label: 'Copy Relative Path', icon: Clipboard, action: handleCopyRelativePath, separator: true },
+        { label: 'Collapse All', icon: ChevronsDownUp, action: () => { closeContextMenu(); handleCollapseAll() } },
+      ]
+    }
+
+    // empty space
+    return [
+      { label: 'New File...', icon: FilePlus, action: handleNewFile },
+      { label: 'New Folder...', icon: FolderIcon, action: handleNewFolder, separator: true },
+      { label: 'Refresh', icon: RotateCw, action: () => { closeContextMenu(); handleRefresh() } },
+    ]
+  }, [
+    ctxMenu, handleOpenFileFromMenu, handleOpenToSide, handleRename,
+    handleDeleteRequest, handleDuplicate, handleCopyPath, handleCopyRelativePath,
+    handleNewFile, handleNewFolder, handleRevealInFileManager,
+    handleCollapseAll, closeContextMenu, handleRefresh,
+  ])
 
   /* ── Inline input handlers ──────────────────────────── */
 
@@ -789,18 +1064,18 @@ export default function FileExplorer() {
 
     try {
       if (mode === 'new-file') {
-        const sep = parentPath.includes('/') ? '/' : '\\'
-        const filePath = parentPath + sep + value
+        const s = sep(parentPath)
+        const filePath = parentPath + s + value
         await window.api.createFile(filePath)
         addToast({ type: 'success', message: `Created ${value}` })
       } else if (mode === 'new-folder') {
-        const sep = parentPath.includes('/') ? '/' : '\\'
-        const dirPath = parentPath + sep + value
+        const s = sep(parentPath)
+        const dirPath = parentPath + s + value
         await window.api.createDir(dirPath)
         addToast({ type: 'success', message: `Created folder ${value}` })
       } else if (mode === 'rename' && existingPath) {
-        const sep = parentPath.includes('/') ? '/' : '\\'
-        const newPath = parentPath + sep + value
+        const s = sep(parentPath)
+        const newPath = parentPath + s + value
         await window.api.renameFile(existingPath, newPath)
         addToast({ type: 'success', message: `Renamed to ${value}` })
       }
@@ -823,15 +1098,21 @@ export default function FileExplorer() {
        Only show New File / New Folder if we have a rootPath. */
     if (!rootPath) return
     e.preventDefault()
-    /* Create a fake root-level node so we can reuse the context menu */
     setCtxMenu({
       x: e.clientX,
       y: e.clientY,
-      node: { name: '', path: rootPath, type: 'directory' },
+      node: null,
+      target: 'empty',
     })
   }, [rootPath])
 
   const folderName = rootPath?.replace(/\\/g, '/').split('/').pop() || ''
+
+  /* ── Inline input at root level (from toolbar buttons) ── */
+  const showRootInlineInput =
+    inlineInput &&
+    (inlineInput.mode === 'new-file' || inlineInput.mode === 'new-folder') &&
+    inlineInput.parentPath === rootPath
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -850,9 +1131,14 @@ export default function FileExplorer() {
         <span>EXPLORER</span>
         <div className="ml-auto flex items-center gap-0.5">
           <HeaderButton
-            Icon={ChevronsDownUp}
-            title="Collapse All"
-            onClick={handleCollapseAll}
+            Icon={FilePlus}
+            title="New File"
+            onClick={handleToolbarNewFile}
+          />
+          <HeaderButton
+            Icon={FolderPlus}
+            title="New Folder"
+            onClick={handleToolbarNewFolder}
           />
           <HeaderButton
             Icon={RotateCw}
@@ -860,9 +1146,9 @@ export default function FileExplorer() {
             onClick={handleRefresh}
           />
           <HeaderButton
-            Icon={FolderPlus}
-            title="Open Folder"
-            onClick={handleOpenFolder}
+            Icon={ChevronsDownUp}
+            title="Collapse All"
+            onClick={handleCollapseAll}
           />
         </div>
       </div>
@@ -907,17 +1193,29 @@ export default function FileExplorer() {
         {fileTree.length === 0 ? (
           <EmptyExplorer onOpenFolder={handleOpenFolder} />
         ) : (
-          fileTree.map((node) => (
-            <FileTreeNode
-              key={node.path}
-              node={node}
-              depth={0}
-              onContextMenu={handleContextMenu}
-              inlineInput={inlineInput}
-              onInlineSubmit={handleInlineSubmit}
-              onInlineCancel={handleInlineCancel}
-            />
-          ))
+          <>
+            {/* Root-level inline input (e.g. from toolbar New File / New Folder) */}
+            {showRootInlineInput && (
+              <InlineInput
+                mode={inlineInput.mode}
+                depth={0}
+                initialValue=""
+                onSubmit={handleInlineSubmit}
+                onCancel={handleInlineCancel}
+              />
+            )}
+            {fileTree.map((node) => (
+              <FileTreeNode
+                key={node.path}
+                node={node}
+                depth={0}
+                onContextMenu={handleContextMenu}
+                inlineInput={inlineInput}
+                onInlineSubmit={handleInlineSubmit}
+                onInlineCancel={handleInlineCancel}
+              />
+            ))}
+          </>
         )}
       </div>
 
@@ -926,13 +1224,18 @@ export default function FileExplorer() {
         <ContextMenu
           x={ctxMenu.x}
           y={ctxMenu.y}
-          node={ctxMenu.node}
+          items={buildMenuItems()}
           onClose={closeContextMenu}
-          onNewFile={handleNewFile}
-          onNewFolder={handleNewFolder}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onCopyPath={handleCopyPath}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (
+        <DeleteDialog
+          name={deleteTarget.name}
+          isDirectory={deleteTarget.type === 'directory'}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
         />
       )}
     </div>

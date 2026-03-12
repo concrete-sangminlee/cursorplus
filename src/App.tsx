@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useFileWatcher } from './hooks/useIpc'
 import { useOmo } from './hooks/useOmo'
+import { useEditorStore } from '@/store/editor'
 import TitleBar from './components/TitleBar'
 import ActivityBar, { type PanelView } from './components/ActivityBar'
 import Resizer from './components/Resizer'
@@ -9,6 +10,7 @@ import SettingsModal from './components/SettingsModal'
 import AboutDialog from './components/AboutDialog'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
 import CommandPalette from '@/components/CommandPalette'
+import SnippetManager from '@/components/SnippetManager'
 import ToastContainer from '@/components/Toast'
 import AgentPanel from './panels/AgentPanel'
 import FileExplorer from './panels/FileExplorer'
@@ -35,6 +37,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [snippetsOpen, setSnippetsOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [bottomVisible, setBottomVisible] = useState(true)
   const [chatVisible, setChatVisible] = useState(true)
@@ -117,6 +120,7 @@ export default function App() {
       'orion:keyboard-shortcuts': () => setShortcutsOpen(true),
       'orion:zen-mode': () => toggleZenMode(),
       'orion:about': () => setAboutOpen(true),
+      'orion:open-snippets': () => setSnippetsOpen(true),
       'orion:show-explorer': () => { setSidebarVisible(true); setActiveView('explorer') },
       'orion:show-search': () => { setSidebarVisible(true); setActiveView('search') },
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
@@ -138,6 +142,16 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey
+
+      // Ctrl+W -> close current tab
+      if (ctrl && e.key === 'w') {
+        e.preventDefault()
+        const { activeFilePath, closeFile } = useEditorStore.getState()
+        if (activeFilePath) {
+          closeFile(activeFilePath)
+        }
+        return
+      }
 
       // Ctrl+Shift+P -> command palette
       if (ctrl && e.shiftKey && e.key === 'P') {
@@ -376,6 +390,8 @@ export default function App() {
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <SnippetManager open={snippetsOpen} onClose={() => setSnippetsOpen(false)} />
 
       <CommandPalette
         open={paletteOpen}

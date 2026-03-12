@@ -169,6 +169,47 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
     }
   })
 
+  // Reveal item in system file manager
+  ipcMain.handle(IPC.FS_SHOW_ITEM, async (_event, itemPath: string) => {
+    try {
+      shell.showItemInFolder(itemPath)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  // Copy a file from source to destination directory
+  ipcMain.handle(IPC.FS_COPY_FILE, async (_event, srcPath: string, destDir: string) => {
+    try {
+      const fileName = path.basename(srcPath)
+      let destPath = path.join(destDir, fileName)
+      // Avoid overwriting: if destination exists, add a suffix
+      let counter = 1
+      const ext = path.extname(fileName)
+      const base = path.basename(fileName, ext)
+      while (true) {
+        try {
+          await fs.access(destPath)
+          counter++
+          destPath = path.join(destDir, `${base} (${counter})${ext}`)
+        } catch {
+          break // path doesn't exist, safe to use
+        }
+      }
+      const stat = await fs.stat(srcPath)
+      if (stat.isDirectory()) {
+        await copyDir(srcPath, destPath)
+      } else {
+        await fs.mkdir(destDir, { recursive: true })
+        await fs.copyFile(srcPath, destPath)
+      }
+      return { success: true, newPath: destPath }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.on(IPC.FS_WATCH_START, (_event, dirPath: string) => {
     startWatching(dirPath, getWindow)
   })

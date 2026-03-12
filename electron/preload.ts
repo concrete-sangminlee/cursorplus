@@ -16,6 +16,8 @@ const api = {
   trashItem: (filePath: string) => ipcRenderer.invoke(IPC.FS_TRASH, filePath),
   copyPathToClipboard: (filePath: string) => ipcRenderer.invoke(IPC.FS_COPY_PATH, filePath),
   duplicateFile: (filePath: string) => ipcRenderer.invoke(IPC.FS_DUPLICATE, filePath),
+  showItemInFolder: (filePath: string) => ipcRenderer.invoke(IPC.FS_SHOW_ITEM, filePath),
+  copyFile: (srcPath: string, destDir: string) => ipcRenderer.invoke(IPC.FS_COPY_FILE, srcPath, destDir),
   watchStart: (dirPath: string) => ipcRenderer.send(IPC.FS_WATCH_START, dirPath),
   watchStop: () => ipcRenderer.send(IPC.FS_WATCH_STOP),
   onFsChange: (callback: (event: string, filePath: string) => void) => {
@@ -34,6 +36,7 @@ const api = {
   gitDiscard: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_DISCARD, cwd, filePath),
   gitBranches: (cwd: string) => ipcRenderer.invoke(IPC.GIT_BRANCHES, cwd),
   gitShow: (cwd: string, hash: string) => ipcRenderer.invoke(IPC.GIT_SHOW, cwd, hash),
+  gitFileDiff: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_FILE_DIFF, cwd, filePath),
 
   // Terminal
   termCreate: (id: string) => ipcRenderer.invoke(IPC.TERM_CREATE, id),

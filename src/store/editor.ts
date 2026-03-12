@@ -8,7 +8,12 @@ interface EditorStore {
   openFile: (file: OpenFile, options?: { preview?: boolean }) => void
   closeFile: (path: string) => void
   closeAllFiles: () => void
+  closeOtherFiles: (path: string) => void
+  closeToRight: (path: string) => void
+  closeSaved: () => void
   setActiveFile: (path: string) => void
+  switchToNextTab: () => void
+  switchToPrevTab: () => void
   updateFileContent: (path: string, content: string) => void
   markAiModified: (path: string) => void
   markSaved: (path: string) => void
@@ -111,6 +116,65 @@ export const useEditorStore = create<EditorStore>((set) => ({
     })),
 
   closeAllFiles: () => set({ openFiles: [], activeFilePath: null, previewPath: null }),
+
+  closeOtherFiles: (path) =>
+    set((state) => ({
+      openFiles: state.openFiles.filter((f) => f.path === path),
+      activeFilePath: path,
+      previewPath: state.previewPath === path ? state.previewPath : null,
+    })),
+
+  closeToRight: (path) =>
+    set((state) => {
+      const idx = state.openFiles.findIndex((f) => f.path === path)
+      if (idx === -1) return state
+      const files = state.openFiles.slice(0, idx + 1)
+      const activePath =
+        state.activeFilePath && files.find((f) => f.path === state.activeFilePath)
+          ? state.activeFilePath
+          : path
+      return {
+        openFiles: files,
+        activeFilePath: activePath,
+        previewPath:
+          state.previewPath && files.find((f) => f.path === state.previewPath)
+            ? state.previewPath
+            : null,
+      }
+    }),
+
+  closeSaved: () =>
+    set((state) => {
+      const files = state.openFiles.filter((f) => f.isModified)
+      const activePath =
+        state.activeFilePath && files.find((f) => f.path === state.activeFilePath)
+          ? state.activeFilePath
+          : files[files.length - 1]?.path ?? null
+      return {
+        openFiles: files,
+        activeFilePath: activePath,
+        previewPath:
+          state.previewPath && files.find((f) => f.path === state.previewPath)
+            ? state.previewPath
+            : null,
+      }
+    }),
+
+  switchToNextTab: () =>
+    set((state) => {
+      if (state.openFiles.length <= 1) return state
+      const idx = state.openFiles.findIndex((f) => f.path === state.activeFilePath)
+      const nextIdx = (idx + 1) % state.openFiles.length
+      return { activeFilePath: state.openFiles[nextIdx].path }
+    }),
+
+  switchToPrevTab: () =>
+    set((state) => {
+      if (state.openFiles.length <= 1) return state
+      const idx = state.openFiles.findIndex((f) => f.path === state.activeFilePath)
+      const prevIdx = (idx - 1 + state.openFiles.length) % state.openFiles.length
+      return { activeFilePath: state.openFiles[prevIdx].path }
+    }),
 
   reorderFiles: (fromIndex, toIndex) =>
     set((state) => {

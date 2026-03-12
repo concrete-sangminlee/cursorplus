@@ -136,4 +136,35 @@ export function registerGitHandlers() {
       return { name, current: head === '*' }
     })
   })
+
+  // Return parsed diff hunks for a specific file (used for git gutter decorations)
+  ipcMain.handle('git:file-diff', async (_, cwd: string, filePath: string) => {
+    const raw = await runGit(cwd, `diff -U0 -- "${filePath}"`)
+    if (!raw) return []
+
+    const hunks: { type: 'added' | 'modified' | 'deleted'; startLine: number; count: number }[] = []
+    const lines = raw.split('\n')
+    for (const line of lines) {
+      // Parse hunk headers like @@ -oldStart,oldCount +newStart,newCount @@
+      const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
+      if (match) {
+        const oldStart = parseInt(match[1], 10)
+        const oldCount = parseInt(match[2] ?? '1', 10)
+        const newStart = parseInt(match[3], 10)
+        const newCount = parseInt(match[4] ?? '1', 10)
+
+        if (oldCount === 0 && newCount > 0) {
+          // Pure addition
+          hunks.push({ type: 'added', startLine: newStart, count: newCount })
+        } else if (newCount === 0 && oldCount > 0) {
+          // Pure deletion
+          hunks.push({ type: 'deleted', startLine: newStart, count: 1 })
+        } else {
+          // Modification (changed lines)
+          hunks.push({ type: 'modified', startLine: newStart, count: newCount })
+        }
+      }
+    }
+    return hunks
+  })
 }

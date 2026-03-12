@@ -104,6 +104,7 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
     { id: 'color-theme', label: 'Preferences: Color Theme', category: 'command', icon: <Palette size={14} />, action: () => { setThemeMode(true); setQuery(''); setSelectedIndex(0) } },
     { id: 'settings', label: 'Preferences: Open Settings', category: 'command', icon: <Settings size={14} />, shortcut: 'Ctrl+,', action: () => { onClose(); onOpenSettings() } },
     { id: 'shortcuts', label: 'Preferences: Keyboard Shortcuts', category: 'command', icon: <Keyboard size={14} />, shortcut: 'Ctrl+K Ctrl+S', action: () => { onClose(); onOpenSettings() } },
+    { id: 'snippets', label: 'Preferences: Configure User Snippets', category: 'command', icon: <Code size={14} />, action: () => { dispatch('orion:open-snippets'); onClose() } },
   ], [onClose, onOpenSettings, setThemeMode])
 
   const fileItems: PaletteItem[] = useMemo(() => {

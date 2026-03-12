@@ -950,6 +950,86 @@ export default function ChatPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Listen for AI context-menu actions from EditorPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail) return
+      const { action, selectedText, filePath, language, fullContext } = detail as {
+        action: string
+        selectedText: string
+        filePath: string
+        language: string
+        fullContext?: string
+      }
+
+      if (action === 'explain') {
+        // "AI: Explain Selection" -- send to chat as a user question
+        const fileName = filePath?.replace(/\\/g, '/').split('/').pop() || 'unknown'
+        const userMsg = `Explain this code from ${fileName}:\n\`\`\`${language}\n${selectedText}\n\`\`\``
+        addMessage({
+          id: uuid(),
+          role: 'user',
+          content: userMsg,
+          timestamp: Date.now(),
+        })
+        // Dispatch to AI backend
+        window.api?.omoSend({
+          type: 'chat',
+          payload: {
+            message: `Please explain the following code in detail:\n\`\`\`${language}\n${selectedText}\n\`\`\``,
+            mode: 'chat',
+            model: selectedModel,
+          },
+        })
+      } else if (action === 'refactor' || action === 'add-comments' || action === 'fix-issues') {
+        // Build instruction per action type
+        let instruction = ''
+        if (action === 'refactor') {
+          instruction = 'Refactor the following code for better readability, performance, and best practices.'
+        } else if (action === 'add-comments') {
+          instruction = 'Add clear, helpful inline comments to the following code. Keep the code unchanged, only add comments.'
+        } else if (action === 'fix-issues') {
+          instruction = 'Analyze the following code for bugs, potential issues, and anti-patterns, then fix them.'
+        }
+
+        const aiMessage = `You are editing code inline. The user selected this code:\n\`\`\`\n${selectedText}\n\`\`\`\n\n${fullContext ? `From this file:\n\`\`\`${language}\n${fullContext}\n\`\`\`\n\n` : ''}Instruction: ${instruction}\n\nRespond with ONLY the replacement code, no explanation, no markdown fences. Just the raw code that should replace the selection.`
+
+        window.api?.omoSend({
+          type: 'chat',
+          payload: { message: aiMessage, mode: 'chat', model: 'inline-edit' },
+        })
+
+        // Listen for the response and forward it as a context-response event
+        const respHandler = (evt: any) => {
+          if (evt?.detail?.type === 'inline-edit-response') {
+            const suggestedCode = evt.detail.content
+            if (suggestedCode) {
+              window.dispatchEvent(
+                new CustomEvent('orion:ai-context-response', {
+                  detail: {
+                    action,
+                    suggestedCode,
+                    originalText: selectedText,
+                  },
+                }),
+              )
+            }
+            window.removeEventListener('orion:inline-edit-response', respHandler)
+          }
+        }
+        window.addEventListener('orion:inline-edit-response', respHandler)
+
+        // Timeout fallback
+        setTimeout(() => {
+          window.removeEventListener('orion:inline-edit-response', respHandler)
+        }, 30000)
+      }
+    }
+    window.addEventListener('orion:ai-context-action', handler)
+    return () => window.removeEventListener('orion:ai-context-action', handler)
+  }, [addMessage, selectedModel])
+
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
