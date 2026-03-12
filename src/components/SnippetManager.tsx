@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useCallback } from 'react'
-import { useSnippetStore, type Snippet } from '@/store/snippets'
+import { useSnippetStore, type Snippet, type VSCodeSnippetFormat } from '@/store/snippets'
 import {
   X, Plus, Trash2, Edit3, Download, Upload,
   Code, ChevronDown, ChevronRight, Save, Search,
-  Eye, Lock, Copy,
+  Eye, Lock, Copy, FileJson, Info, Zap,
 } from 'lucide-react'
 
 interface Props {
@@ -28,6 +28,46 @@ const LANGUAGE_OPTIONS = [
   { value: 'shell', label: 'Shell/Bash' },
   { value: 'sql', label: 'SQL' },
   { value: 'yaml', label: 'YAML' },
+]
+
+/** Tab stop / variable reference items shown in the editor helper panel */
+const TAB_STOP_HELP = [
+  { syntax: '$1, $2, ...', desc: 'Tab stops (cursor positions in order)' },
+  { syntax: '$0', desc: 'Final cursor position after all tab stops' },
+  { syntax: '${1:placeholder}', desc: 'Tab stop with default placeholder text' },
+  { syntax: '${1|one,two,three|}', desc: 'Tab stop with choice dropdown' },
+  { syntax: '${1:nested ${2:inner}}', desc: 'Nested placeholders' },
+]
+
+const VARIABLE_HELP = [
+  { syntax: '$TM_SELECTED_TEXT', desc: 'Currently selected text' },
+  { syntax: '$TM_CURRENT_LINE', desc: 'Contents of the current line' },
+  { syntax: '$TM_CURRENT_WORD', desc: 'Word under cursor' },
+  { syntax: '$TM_FILENAME', desc: 'Filename of the current document' },
+  { syntax: '$TM_FILENAME_BASE', desc: 'Filename without extension' },
+  { syntax: '$TM_DIRECTORY', desc: 'Directory of the current document' },
+  { syntax: '$TM_FILEPATH', desc: 'Full file path of the current document' },
+  { syntax: '$RELATIVE_FILEPATH', desc: 'Relative file path' },
+  { syntax: '$CLIPBOARD', desc: 'Contents of the clipboard' },
+  { syntax: '$WORKSPACE_NAME', desc: 'Name of the opened workspace' },
+  { syntax: '$WORKSPACE_FOLDER', desc: 'Path of the opened workspace' },
+  { syntax: '$CURRENT_YEAR', desc: 'Current year (e.g. 2026)' },
+  { syntax: '$CURRENT_YEAR_SHORT', desc: 'Current year, last two digits' },
+  { syntax: '$CURRENT_MONTH', desc: 'Month as two digits (01-12)' },
+  { syntax: '$CURRENT_MONTH_NAME', desc: 'Full month name (e.g. January)' },
+  { syntax: '$CURRENT_MONTH_NAME_SHORT', desc: 'Short month name (e.g. Jan)' },
+  { syntax: '$CURRENT_DATE', desc: 'Day of month as two digits' },
+  { syntax: '$CURRENT_DAY_NAME', desc: 'Day name (e.g. Monday)' },
+  { syntax: '$CURRENT_DAY_NAME_SHORT', desc: 'Short day name (e.g. Mon)' },
+  { syntax: '$CURRENT_HOUR', desc: 'Current hour (24h format)' },
+  { syntax: '$CURRENT_MINUTE', desc: 'Current minute' },
+  { syntax: '$CURRENT_SECOND', desc: 'Current second' },
+  { syntax: '$RANDOM', desc: 'Six random decimal digits' },
+  { syntax: '$RANDOM_HEX', desc: 'Six random hex digits' },
+  { syntax: '$UUID', desc: 'UUID v4' },
+  { syntax: '$LINE_COMMENT', desc: 'Line comment for current language' },
+  { syntax: '$BLOCK_COMMENT_START', desc: 'Block comment start for language' },
+  { syntax: '$BLOCK_COMMENT_END', desc: 'Block comment end for language' },
 ]
 
 const inputStyle: React.CSSProperties = {
@@ -69,13 +109,38 @@ const smallBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
+const pillBtnStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  padding: '4px 10px',
+  fontSize: 11,
+  fontWeight: 500,
+  color: 'var(--text-secondary)',
+  background: 'var(--bg-tertiary)',
+  border: '1px solid var(--border)',
+  borderRadius: 5,
+  cursor: 'pointer',
+}
+
 /** Render snippet body as a preview, replacing tab-stop syntax with visual hints */
 function renderPreview(body: string): string {
   let out = body
   // Replace ${N:placeholder} with the placeholder text styled
   out = out.replace(/\$\{(\d+):([^}]+)\}/g, (_m, _n, placeholder) => placeholder)
+  // Replace ${N|choice1,choice2|} with first choice
+  out = out.replace(/\$\{(\d+)\|([^}]+)\|\}/g, (_m, _n, choices) => choices.split(',')[0] || '')
   // Replace $N with an empty cursor marker
   out = out.replace(/\$(\d+)/g, (_m, n) => (n === '0' ? '|' : ''))
+  // Replace variable references with example values
+  out = out.replace(/\$TM_FILENAME/g, 'example.ts')
+  out = out.replace(/\$TM_FILENAME_BASE/g, 'example')
+  out = out.replace(/\$CLIPBOARD/g, '<clipboard>')
+  out = out.replace(/\$CURRENT_YEAR/g, new Date().getFullYear().toString())
+  out = out.replace(/\$CURRENT_MONTH/g, String(new Date().getMonth() + 1).padStart(2, '0'))
+  out = out.replace(/\$CURRENT_DATE/g, String(new Date().getDate()).padStart(2, '0'))
+  out = out.replace(/\$UUID/g, 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx')
+  out = out.replace(/\$\w+/g, '')
   // Convert tabs to spaces for display
   out = out.replace(/\t/g, '  ')
   return out
@@ -84,8 +149,8 @@ function renderPreview(body: string): string {
 /** Highlight tab-stop syntax in the body for the code view */
 function highlightBody(body: string): React.ReactNode[] {
   const parts: React.ReactNode[] = []
-  // Split on tab-stop patterns
-  const regex = /(\$\{\d+:[^}]+\}|\$\d+)/g
+  // Split on tab-stop patterns and variable references
+  const regex = /(\$\{\d+\|[^}]+\|\}|\$\{\d+:[^}]+\}|\$\d+|\$[A-Z_]+)/g
   let lastIndex = 0
   let match: RegExpExecArray | null
   let key = 0
@@ -93,14 +158,17 @@ function highlightBody(body: string): React.ReactNode[] {
     if (match.index > lastIndex) {
       parts.push(<span key={key++}>{body.slice(lastIndex, match.index)}</span>)
     }
+    const isVariable = /^\$[A-Z_]+$/.test(match[0])
     parts.push(
       <span
         key={key++}
         style={{
-          color: 'var(--accent)',
-          background: 'rgba(var(--accent-rgb, 59,130,246), 0.12)',
+          color: isVariable ? 'var(--text-warning, #e5a84b)' : 'var(--accent)',
+          background: isVariable
+            ? 'rgba(229, 168, 75, 0.1)'
+            : 'rgba(var(--accent-rgb, 59,130,246), 0.12)',
           borderRadius: 2,
-          padding: '0 1px',
+          padding: '0 2px',
         }}
       >
         {match[0]}
@@ -136,11 +204,28 @@ function SnippetForm({
 }) {
   const [data, setData] = useState<SnippetFormData>(initial)
   const [showPreview, setShowPreview] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
+  const [helpTab, setHelpTab] = useState<'tabstops' | 'variables'>('tabstops')
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const update = (key: keyof SnippetFormData, value: string) =>
     setData((prev) => ({ ...prev, [key]: value }))
 
   const valid = data.name.trim() && data.prefix.trim() && data.body.trim()
+
+  /** Insert text at the current cursor position in the body textarea */
+  const insertAtCursor = useCallback((text: string) => {
+    const ta = bodyRef.current
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const newBody = data.body.slice(0, start) + text + data.body.slice(end)
+    setData((prev) => ({ ...prev, body: newBody }))
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.selectionStart = ta.selectionEnd = start + text.length
+    })
+  }, [data.body])
 
   return (
     <div
@@ -201,36 +286,150 @@ function SnippetForm({
         />
       </div>
 
-      {/* Row 3: body with preview toggle */}
+      {/* Row 3: body with preview toggle + help toggle */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <label style={labelStyle}>
             Body (use $1, $2 for tab stops, {'${1:placeholder}'} for defaults, $0 for final cursor)
           </label>
-          <button
-            onClick={() => setShowPreview(!showPreview)}
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => { setShowHelp(!showHelp); if (showHelp) setShowPreview(false) }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                fontSize: 10,
+                color: showHelp ? 'var(--accent)' : 'var(--text-muted)',
+                background: showHelp ? 'var(--bg-active)' : 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 3,
+                cursor: 'pointer',
+              }}
+            >
+              <Info size={10} /> Reference
+            </button>
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                fontSize: 10,
+                color: showPreview ? 'var(--accent)' : 'var(--text-muted)',
+                background: showPreview ? 'var(--bg-active)' : 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 3,
+                cursor: 'pointer',
+              }}
+            >
+              <Eye size={10} /> Preview
+            </button>
+          </div>
+        </div>
+
+        {/* Reference helper panel */}
+        {showHelp && (
+          <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '2px 8px',
-              fontSize: 10,
-              color: showPreview ? 'var(--accent)' : 'var(--text-muted)',
-              background: showPreview ? 'var(--bg-active)' : 'transparent',
+              marginTop: 4,
+              marginBottom: 6,
               border: '1px solid var(--border)',
-              borderRadius: 3,
-              cursor: 'pointer',
+              borderRadius: 4,
+              background: 'var(--bg-primary)',
+              overflow: 'hidden',
             }}
           >
-            <Eye size={10} /> Preview
-          </button>
-        </div>
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setHelpTab('tabstops')}
+                style={{
+                  flex: 1,
+                  padding: '5px 10px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: helpTab === 'tabstops' ? 'var(--accent)' : 'var(--text-muted)',
+                  background: helpTab === 'tabstops' ? 'var(--bg-active)' : 'transparent',
+                  border: 'none',
+                  borderRight: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                Tab Stops
+              </button>
+              <button
+                onClick={() => setHelpTab('variables')}
+                style={{
+                  flex: 1,
+                  padding: '5px 10px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: helpTab === 'variables' ? 'var(--accent)' : 'var(--text-muted)',
+                  background: helpTab === 'variables' ? 'var(--bg-active)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Variables
+              </button>
+            </div>
+            <div
+              style={{
+                maxHeight: 140,
+                overflowY: 'auto',
+                padding: '6px 10px',
+              }}
+            >
+              {(helpTab === 'tabstops' ? TAB_STOP_HELP : VARIABLE_HELP).map((item, i) => (
+                <div
+                  key={i}
+                  onClick={() => insertAtCursor(item.syntax)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '3px 4px',
+                    cursor: 'pointer',
+                    borderRadius: 3,
+                    fontSize: 11,
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-active)')}
+                  onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <code
+                    style={{
+                      fontFamily: "'Cascadia Code', 'Fira Code', monospace",
+                      fontSize: 10,
+                      color: helpTab === 'variables' ? 'var(--text-warning, #e5a84b)' : 'var(--accent)',
+                      background: 'var(--bg-tertiary)',
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                      flexShrink: 0,
+                      minWidth: helpTab === 'variables' ? 180 : 140,
+                    }}
+                  >
+                    {item.syntax}
+                  </code>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{item.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <textarea
+            ref={bodyRef}
             value={data.body}
             onChange={(e) => update('body', e.target.value)}
             placeholder={"e.g. const ${1:name} = (${2:params}) => {\n\t$0\n};"}
-            rows={5}
+            rows={6}
             style={{
               flex: 1,
               padding: '6px 8px',
@@ -325,6 +524,204 @@ function SnippetForm({
   )
 }
 
+// ── Import/Export Format Selector ─────────────────────────────────────
+
+type ImportFormat = 'orion' | 'vscode'
+
+function ImportFormatDialog({
+  onImport,
+  onCancel,
+}: {
+  onImport: (format: ImportFormat) => void
+  onCancel: () => void
+}) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 50,
+        right: 80,
+        zIndex: 220,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border-bright)',
+        borderRadius: 6,
+        boxShadow: 'var(--shadow-xl)',
+        padding: 12,
+        width: 260,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>
+        Import Snippets
+      </div>
+      <button
+        onClick={() => onImport('orion')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '8px 10px',
+          fontSize: 11,
+          color: 'var(--text-primary)',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          cursor: 'pointer',
+          marginBottom: 6,
+          textAlign: 'left',
+        }}
+      >
+        <FileJson size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Orion Format</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+            Array of snippet objects (Orion export)
+          </div>
+        </div>
+      </button>
+      <button
+        onClick={() => onImport('vscode')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '8px 10px',
+          fontSize: 11,
+          color: 'var(--text-primary)',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <Code size={14} style={{ color: 'var(--text-warning, #e5a84b)', flexShrink: 0 }} />
+        <div>
+          <div style={{ fontWeight: 600 }}>VS Code Format</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+            VS Code snippet JSON (e.g. javascript.json)
+          </div>
+        </div>
+      </button>
+      <button
+        onClick={onCancel}
+        style={{
+          width: '100%',
+          marginTop: 8,
+          padding: '4px 8px',
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          background: 'transparent',
+          border: '1px solid var(--border)',
+          borderRadius: 3,
+          cursor: 'pointer',
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+function ExportFormatDialog({
+  onExport,
+  onCancel,
+}: {
+  onExport: (format: 'orion' | 'vscode') => void
+  onCancel: () => void
+}) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 50,
+        right: 120,
+        zIndex: 220,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border-bright)',
+        borderRadius: 6,
+        boxShadow: 'var(--shadow-xl)',
+        padding: 12,
+        width: 260,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>
+        Export Snippets
+      </div>
+      <button
+        onClick={() => onExport('orion')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '8px 10px',
+          fontSize: 11,
+          color: 'var(--text-primary)',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          cursor: 'pointer',
+          marginBottom: 6,
+          textAlign: 'left',
+        }}
+      >
+        <FileJson size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Orion Format</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+            Array of snippet objects
+          </div>
+        </div>
+      </button>
+      <button
+        onClick={() => onExport('vscode')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '8px 10px',
+          fontSize: 11,
+          color: 'var(--text-primary)',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <Code size={14} style={{ color: 'var(--text-warning, #e5a84b)', flexShrink: 0 }} />
+        <div>
+          <div style={{ fontWeight: 600 }}>VS Code Format</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+            Compatible with VS Code snippet files
+          </div>
+        </div>
+      </button>
+      <button
+        onClick={onCancel}
+        style={{
+          width: '100%',
+          marginTop: 8,
+          padding: '4px 8px',
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          background: 'transparent',
+          border: '1px solid var(--border)',
+          borderRadius: 3,
+          cursor: 'pointer',
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────
 
 export default function SnippetManager({ open, onClose }: Props) {
@@ -335,7 +732,10 @@ export default function SnippetManager({ open, onClose }: Props) {
     updateSnippet,
     deleteSnippet,
     importSnippets,
+    importVSCodeSnippets,
     exportSnippets,
+    exportVSCodeFormat,
+    insertSnippetAtCursor,
   } = useSnippetStore()
 
   const [filterLang, setFilterLang] = useState<string>('all')
@@ -344,7 +744,11 @@ export default function SnippetManager({ open, onClose }: Props) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [collapsedLangs, setCollapsedLangs] = useState<Set<string>>(new Set())
   const [selectedSnippetId, setSelectedSnippetId] = useState<string | null>(null)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [showExportDialog, setShowExportDialog] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const importFormatRef = useRef<ImportFormat>('orion')
 
   const filteredSnippets = useMemo(() => {
     let result = snippets
@@ -357,7 +761,8 @@ export default function SnippetManager({ open, onClose }: Props) {
         (s) =>
           s.name.toLowerCase().includes(q) ||
           s.prefix.toLowerCase().includes(q) ||
-          s.description.toLowerCase().includes(q)
+          s.description.toLowerCase().includes(q) ||
+          s.language.toLowerCase().includes(q)
       )
     }
     return result
@@ -425,18 +830,31 @@ export default function SnippetManager({ open, onClose }: Props) {
     [editingId, updateSnippet]
   )
 
-  const handleExport = useCallback(() => {
-    const data = exportSnippets()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const handleExport = useCallback((format: 'orion' | 'vscode') => {
+    let json: string
+    let filename: string
+    if (format === 'vscode') {
+      const data = exportVSCodeFormat()
+      json = JSON.stringify(data, null, 2)
+      filename = 'snippets.code-snippets'
+    } else {
+      const data = exportSnippets()
+      json = JSON.stringify(data, null, 2)
+      filename = 'orion-snippets.json'
+    }
+    const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'orion-snippets.json'
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
-  }, [exportSnippets])
+    setShowExportDialog(false)
+  }, [exportSnippets, exportVSCodeFormat])
 
-  const handleImport = useCallback(() => {
+  const handleImportClick = useCallback((format: ImportFormat) => {
+    importFormatRef.current = format
+    setShowImportDialog(false)
     fileInputRef.current?.click()
   }, [])
 
@@ -447,18 +865,47 @@ export default function SnippetManager({ open, onClose }: Props) {
       const reader = new FileReader()
       reader.onload = (ev) => {
         try {
-          const data = JSON.parse(ev.target?.result as string)
-          if (Array.isArray(data)) {
-            importSnippets(data)
+          const raw = ev.target?.result as string
+          const data = JSON.parse(raw)
+
+          if (importFormatRef.current === 'vscode') {
+            // VS Code format: object with named entries
+            if (data && typeof data === 'object' && !Array.isArray(data)) {
+              const count = importVSCodeSnippets(data as VSCodeSnippetFormat)
+              setImportMsg(`Imported ${count} snippet${count !== 1 ? 's' : ''} from VS Code format`)
+              setTimeout(() => setImportMsg(null), 3000)
+            } else {
+              setImportMsg('Invalid VS Code snippet format (expected JSON object)')
+              setTimeout(() => setImportMsg(null), 3000)
+            }
+          } else {
+            // Orion format: array of snippet objects
+            if (Array.isArray(data)) {
+              importSnippets(data)
+              setImportMsg(`Imported ${data.length} snippet${data.length !== 1 ? 's' : ''}`)
+              setTimeout(() => setImportMsg(null), 3000)
+            } else {
+              setImportMsg('Invalid Orion format (expected JSON array)')
+              setTimeout(() => setImportMsg(null), 3000)
+            }
           }
         } catch {
-          /* ignore invalid JSON */
+          setImportMsg('Failed to parse JSON file')
+          setTimeout(() => setImportMsg(null), 3000)
         }
       }
       reader.readAsText(file)
       e.target.value = ''
     },
-    [importSnippets]
+    [importSnippets, importVSCodeSnippets]
+  )
+
+  /** Double-click handler: insert snippet at editor cursor */
+  const handleDoubleClick = useCallback(
+    (snippet: Snippet) => {
+      insertSnippetAtCursor(snippet)
+    },
+    [insertSnippetAtCursor]
   )
 
   const langLabel = (lang: string) => {
@@ -491,8 +938,8 @@ export default function SnippetManager({ open, onClose }: Props) {
         className="anim-scale-in"
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 900,
-          maxHeight: '85vh',
+          width: 960,
+          maxHeight: '88vh',
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-bright)',
           borderRadius: 'var(--radius-lg)',
@@ -500,6 +947,7 @@ export default function SnippetManager({ open, onClose }: Props) {
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
         {/* Header */}
@@ -523,40 +971,16 @@ export default function SnippetManager({ open, onClose }: Props) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button
-              onClick={handleImport}
-              title="Import user snippets from JSON"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 10px',
-                fontSize: 11,
-                fontWeight: 500,
-                color: 'var(--text-secondary)',
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border)',
-                borderRadius: 5,
-                cursor: 'pointer',
-              }}
+              onClick={() => { setShowImportDialog(!showImportDialog); setShowExportDialog(false) }}
+              title="Import snippets from JSON"
+              style={pillBtnStyle}
             >
               <Upload size={12} /> Import
             </button>
             <button
-              onClick={handleExport}
+              onClick={() => { setShowExportDialog(!showExportDialog); setShowImportDialog(false) }}
               title="Export user snippets as JSON"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 10px',
-                fontSize: 11,
-                fontWeight: 500,
-                color: 'var(--text-secondary)',
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border)',
-                borderRadius: 5,
-                cursor: 'pointer',
-              }}
+              style={pillBtnStyle}
             >
               <Download size={12} /> Export
             </button>
@@ -581,11 +1005,45 @@ export default function SnippetManager({ open, onClose }: Props) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json"
+            accept=".json,.code-snippets"
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
         </div>
+
+        {/* Import/Export format dialogs */}
+        {showImportDialog && (
+          <ImportFormatDialog
+            onImport={handleImportClick}
+            onCancel={() => setShowImportDialog(false)}
+          />
+        )}
+        {showExportDialog && (
+          <ExportFormatDialog
+            onExport={handleExport}
+            onCancel={() => setShowExportDialog(false)}
+          />
+        )}
+
+        {/* Import status message */}
+        {importMsg && (
+          <div
+            style={{
+              padding: '6px 18px',
+              fontSize: 11,
+              fontWeight: 500,
+              color: importMsg.startsWith('Failed') || importMsg.startsWith('Invalid')
+                ? 'var(--text-error, #f87171)'
+                : 'var(--text-success, #4ade80)',
+              background: importMsg.startsWith('Failed') || importMsg.startsWith('Invalid')
+                ? 'rgba(248,113,113,0.08)'
+                : 'rgba(74,222,128,0.08)',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            {importMsg}
+          </div>
+        )}
 
         {/* Toolbar: search + filter + add */}
         <div
@@ -613,7 +1071,7 @@ export default function SnippetManager({ open, onClose }: Props) {
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or prefix..."
+              placeholder="Search by name, prefix, or language..."
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -781,6 +1239,8 @@ export default function SnippetManager({ open, onClose }: Props) {
                                 selectedSnippetId === snippet.id ? null : snippet.id
                               )
                             }
+                            onDoubleClick={() => handleDoubleClick(snippet)}
+                            title="Click to preview, double-click to insert at cursor"
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -894,7 +1354,7 @@ export default function SnippetManager({ open, onClose }: Props) {
           {selectedSnippet && (
             <div
               style={{
-                width: 340,
+                width: 360,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -922,22 +1382,40 @@ export default function SnippetManager({ open, onClose }: Props) {
                 >
                   Preview
                 </span>
-                <button
-                  onClick={() => handleCopyBody(selectedSnippet.body)}
-                  title="Copy snippet body"
-                  style={{
-                    ...smallBtnStyle,
-                    gap: 4,
-                    width: 'auto',
-                    padding: '2px 8px',
-                    fontSize: 10,
-                    color: 'var(--text-muted)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 3,
-                  }}
-                >
-                  <Copy size={10} /> Copy
-                </button>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    onClick={() => handleDoubleClick(selectedSnippet)}
+                    title="Insert snippet at editor cursor"
+                    style={{
+                      ...smallBtnStyle,
+                      gap: 4,
+                      width: 'auto',
+                      padding: '2px 8px',
+                      fontSize: 10,
+                      color: 'var(--accent)',
+                      border: '1px solid var(--accent)',
+                      borderRadius: 3,
+                    }}
+                  >
+                    <Zap size={10} /> Insert
+                  </button>
+                  <button
+                    onClick={() => handleCopyBody(selectedSnippet.body)}
+                    title="Copy snippet body"
+                    style={{
+                      ...smallBtnStyle,
+                      gap: 4,
+                      width: 'auto',
+                      padding: '2px 8px',
+                      fontSize: 10,
+                      color: 'var(--text-muted)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 3,
+                    }}
+                  >
+                    <Copy size={10} /> Copy
+                  </button>
+                </div>
               </div>
 
               {/* Snippet details */}
@@ -1027,6 +1505,40 @@ export default function SnippetManager({ open, onClose }: Props) {
                     {renderPreview(selectedSnippet.body)}
                   </pre>
                 </div>
+
+                {/* Quick insert hint */}
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: '8px 10px',
+                    background: 'rgba(var(--accent-rgb, 59,130,246), 0.06)',
+                    borderRadius: 4,
+                    border: '1px solid rgba(var(--accent-rgb, 59,130,246), 0.15)',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Zap size={10} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                  <span>
+                    <strong style={{ color: 'var(--text-secondary)' }}>Double-click</strong> any snippet
+                    to insert at the current editor cursor position, or type{' '}
+                    <code
+                      style={{
+                        fontFamily: "'Cascadia Code', 'Fira Code', monospace",
+                        color: 'var(--accent)',
+                        background: 'var(--bg-active)',
+                        padding: '0 3px',
+                        borderRadius: 2,
+                      }}
+                    >
+                      {selectedSnippet.prefix}
+                    </code>{' '}
+                    in the editor.
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1054,6 +1566,9 @@ export default function SnippetManager({ open, onClose }: Props) {
             </span>
             <span>
               <code style={{ color: 'var(--text-secondary)' }}>$0</code> final cursor
+            </span>
+            <span>
+              <code style={{ color: 'var(--text-warning, #e5a84b)' }}>$TM_FILENAME</code> variable
             </span>
           </div>
           <span>VS Code snippet syntax compatible</span>

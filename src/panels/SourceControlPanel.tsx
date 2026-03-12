@@ -172,7 +172,7 @@ export default function SourceControlPanel() {
   const [inlineDiffs, setInlineDiffs] = useState<Record<string, string>>({})
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [loadingInlineDiffs, setLoadingInlineDiffs] = useState<Set<string>>(new Set())
-  const [hunkSelections, setHunkSelections] = useState<Record<string, Set<number>>>(new Set() as any)
+  const [hunkSelections] = useState<Record<string, Set<number>>>({})
 
   // Branch management enhancements
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
@@ -657,7 +657,8 @@ export default function SourceControlPanel() {
   // Stage all checked files
   const handleStageChecked = async () => {
     if (!rootPath || selectedFileChecks.size === 0) return
-    for (const filePath of selectedFileChecks) {
+    const filesToStage = Array.from(selectedFileChecks)
+    for (const filePath of filesToStage) {
       try {
         await (window as any).api.gitStage(rootPath, filePath)
         appendOutput('Git', `[stage] Staged: ${filePath}`, 'info')

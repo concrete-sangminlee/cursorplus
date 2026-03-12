@@ -1,8 +1,9 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   AlertCircle, AlertTriangle, Info, CheckCircle2,
   Search, FileText, ChevronRight, ChevronDown,
-  Lightbulb, Copy, X,
+  Lightbulb, Copy, X, ChevronsDownUp, ChevronsUpDown,
+  FileCode2, Check,
 } from 'lucide-react'
 import {
   useProblemsStore,
@@ -41,15 +42,30 @@ const severityConfig: Record<
 /* ── Source badge colors ───────────────────────────────── */
 
 const sourceBadgeColors: Record<string, { bg: string; fg: string }> = {
-  eslint:        { bg: 'rgba(130,80,223,0.15)', fg: '#b392f0' },
-  typescript:    { bg: 'rgba(49,120,198,0.15)', fg: '#79b8ff' },
-  'todo-scanner':{ bg: 'rgba(227,179,65,0.12)', fg: '#e3b341' },
-  'code-quality':{ bg: 'rgba(248,81,73,0.12)',  fg: '#f97583' },
-  style:         { bg: 'rgba(88,166,255,0.10)', fg: '#58a6ff' },
+  eslint:           { bg: 'rgba(130,80,223,0.15)', fg: '#b392f0' },
+  typescript:       { bg: 'rgba(49,120,198,0.15)', fg: '#79b8ff' },
+  'todo-scanner':   { bg: 'rgba(227,179,65,0.12)', fg: '#e3b341' },
+  'code-quality':   { bg: 'rgba(248,81,73,0.12)',  fg: '#f97583' },
+  style:            { bg: 'rgba(88,166,255,0.10)', fg: '#58a6ff' },
+  'bracket-matcher':{ bg: 'rgba(248,81,73,0.12)',  fg: '#f97583' },
+  imports:          { bg: 'rgba(227,179,65,0.12)', fg: '#e3b341' },
 }
 
 function getSourceColors(source: string) {
   return sourceBadgeColors[source] || { bg: 'rgba(139,148,158,0.12)', fg: '#8b949e' }
+}
+
+/* ── File extension to icon color mapping ─────────────── */
+
+function getFileIconColor(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  const map: Record<string, string> = {
+    ts: '#3178c6', tsx: '#3178c6', js: '#f1e05a', jsx: '#f1e05a',
+    css: '#563d7c', scss: '#c6538c', html: '#e34c26', json: '#292929',
+    md: '#083fa1', py: '#3572a5', rs: '#dea584', go: '#00add8',
+    vue: '#41b883', svelte: '#ff3e00',
+  }
+  return map[ext] || 'var(--text-muted)'
 }
 
 /* ── Types ─────────────────────────────────────────────── */
@@ -57,6 +73,7 @@ function getSourceColors(source: string) {
 interface FileGroup {
   filePath: string
   fileName: string
+  dirPath: string
   problems: Problem[]
   errorCount: number
   warningCount: number
@@ -67,6 +84,7 @@ interface FileGroup {
 
 export default function ProblemsPanel() {
   const problems = useProblemsStore((s) => s.problems)
+  const activeFilePath = useEditorStore((s) => s.activeFilePath)
   const { openFile } = useEditorStore()
 
   // Filter toggles
@@ -76,6 +94,9 @@ export default function ProblemsPanel() {
 
   // Search filter
   const [filterText, setFilterText] = useState('')
+
+  // Current file only toggle
+  const [currentFileOnly, setCurrentFileOnly] = useState(false)
 
   // Collapsed file groups
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set())
@@ -87,6 +108,15 @@ export default function ProblemsPanel() {
   const [contextMenu, setContextMenu] = useState<{
     x: number; y: number; problem: Problem
   } | null>(null)
+
+  // Auto-refresh marker for forcing re-render on markers-changed events
+  const [, setMarkerTick] = useState(0)
+
+  useEffect(() => {
+    const handler = () => setMarkerTick((t) => t + 1)
+    window.addEventListener('orion:markers-changed', handler)
+    return () => window.removeEventListener('orion:markers-changed', handler)
+  }, [])
 
   // Counts from all problems (unfiltered)
   const counts = useMemo(() => getProblemsCount(problems), [problems])
@@ -102,6 +132,10 @@ export default function ProblemsPanel() {
 
     return problems
       .filter((p) => activeSeverities.has(p.severity))
+      .filter((p) => {
+        if (currentFileOnly && activeFilePath && p.file !== activeFilePath) return false
+        return true
+      })
       .filter((p) => {
         if (!lowerFilter) return true
         const fileName = p.file.replace(/\\/g, '/').split('/').pop() || ''
@@ -119,7 +153,7 @@ export default function ProblemsPanel() {
         if (w !== 0) return w
         return a.line - b.line
       })
-  }, [problems, showErrors, showWarnings, showInfo, filterText])
+  }, [problems, showErrors, showWarnings, showInfo, filterText, currentFileOnly, activeFilePath])
 
   // Group by file
   const fileGroups = useMemo<FileGroup[]>(() => {
@@ -129,14 +163,21 @@ export default function ProblemsPanel() {
       if (list) list.push(p)
       else map.set(p.file, [p])
     }
-    return Array.from(map.entries()).map(([filePath, probs]) => ({
-      filePath,
-      fileName: filePath.replace(/\\/g, '/').split('/').pop() || filePath,
-      problems: probs,
-      errorCount: probs.filter((p) => p.severity === 'error').length,
-      warningCount: probs.filter((p) => p.severity === 'warning').length,
-      infoCount: probs.filter((p) => p.severity === 'info').length,
-    }))
+    return Array.from(map.entries()).map(([filePath, probs]) => {
+      const normalized = filePath.replace(/\\/g, '/')
+      const parts = normalized.split('/')
+      const fileName = parts.pop() || filePath
+      const dirPath = parts.length > 2 ? '.../' + parts.slice(-2).join('/') : parts.join('/')
+      return {
+        filePath,
+        fileName,
+        dirPath,
+        problems: probs,
+        errorCount: probs.filter((p) => p.severity === 'error').length,
+        warningCount: probs.filter((p) => p.severity === 'warning').length,
+        infoCount: probs.filter((p) => p.severity === 'info').length,
+      }
+    })
   }, [filtered])
 
   // Toggle file group collapse
@@ -149,9 +190,19 @@ export default function ProblemsPanel() {
     })
   }, [])
 
+  // Collapse all
+  const collapseAll = useCallback(() => {
+    setCollapsedFiles(new Set(fileGroups.map((g) => g.filePath)))
+  }, [fileGroups])
+
+  // Expand all
+  const expandAll = useCallback(() => {
+    setCollapsedFiles(new Set())
+  }, [])
+
   // Navigate to file/line on click
   const handleNavigate = useCallback(
-    async (filePath: string, line: number) => {
+    async (filePath: string, line: number, column?: number) => {
       const fileName = filePath.replace(/\\/g, '/').split('/').pop() || ''
       const editorState = useEditorStore.getState()
       const existing = editorState.openFiles.find((f) => f.path === filePath)
@@ -178,7 +229,7 @@ export default function ProblemsPanel() {
 
       setTimeout(() => {
         window.dispatchEvent(
-          new CustomEvent('orion:go-to-line', { detail: { line } })
+          new CustomEvent('orion:go-to-line', { detail: { line, column: column || 1 } })
         )
       }, 50)
     },
@@ -187,11 +238,28 @@ export default function ProblemsPanel() {
 
   // Copy problem text
   const handleCopy = useCallback((problem: Problem) => {
-    const text = `${problem.message} [${problem.source}] (${problem.file}:${problem.line})`
+    const col = problem.column ? `:${problem.column}` : ''
+    const text = `${problem.message} [${problem.source}] (${problem.file}:${problem.line}${col})`
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(problem.id)
       setTimeout(() => setCopiedId(null), 1500)
     })
+  }, [])
+
+  // Apply quick fix
+  const handleQuickFix = useCallback((problem: Problem) => {
+    if (!problem.quickFix) return
+    window.dispatchEvent(
+      new CustomEvent('orion:apply-quick-fix', {
+        detail: {
+          file: problem.file,
+          line: problem.line,
+          column: problem.column,
+          fix: problem.quickFix,
+          problemId: problem.id,
+        },
+      })
+    )
   }, [])
 
   // Context menu handler
@@ -204,6 +272,7 @@ export default function ProblemsPanel() {
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
 
   const hasProblems = problems.length > 0
+  const allCollapsed = fileGroups.length > 0 && fileGroups.every((g) => collapsedFiles.has(g.filePath))
 
   return (
     <div
@@ -215,10 +284,11 @@ export default function ProblemsPanel() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '4px 10px',
+          gap: 4,
+          padding: '4px 8px',
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
+          minHeight: 30,
         }}
       >
         {/* Severity toggle buttons */}
@@ -250,12 +320,13 @@ export default function ProblemsPanel() {
           title="Toggle info"
         />
 
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />
+
         {/* Filter input */}
         <div
           style={{
-            marginLeft: 8,
             flex: 1,
-            maxWidth: 280,
+            maxWidth: 260,
             display: 'flex',
             alignItems: 'center',
             background: 'var(--bg-primary)',
@@ -274,12 +345,13 @@ export default function ProblemsPanel() {
             placeholder="Filter (message, file, source)..."
             style={{
               flex: 1,
-              padding: '4px 6px 4px 0',
+              padding: '3px 6px 3px 0',
               background: 'transparent',
               border: 'none',
               outline: 'none',
               fontSize: 11,
               color: 'var(--text-primary)',
+              fontFamily: 'var(--font-sans, sans-serif)',
             }}
           />
           {filterText && (
@@ -305,28 +377,23 @@ export default function ProblemsPanel() {
           )}
         </div>
 
-        {/* Summary counts */}
-        <div
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            fontSize: 11,
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}
-        >
-          <span style={{ color: counts.errors > 0 ? 'var(--accent-red)' : 'var(--text-muted)' }}>
-            {counts.errors} Error{counts.errors !== 1 ? 's' : ''}
-          </span>
-          <span style={{ color: counts.warnings > 0 ? 'var(--accent-orange)' : 'var(--text-muted)' }}>
-            {counts.warnings} Warning{counts.warnings !== 1 ? 's' : ''}
-          </span>
-          <span style={{ color: counts.info > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
-            {counts.info} Info
-          </span>
-        </div>
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />
+
+        {/* Current file only toggle */}
+        <ToolbarButton
+          Icon={FileCode2}
+          active={currentFileOnly}
+          onClick={() => setCurrentFileOnly((v) => !v)}
+          title={currentFileOnly ? 'Show all files' : 'Show current file only'}
+        />
+
+        {/* Collapse / Expand all */}
+        <ToolbarButton
+          Icon={allCollapsed ? ChevronsUpDown : ChevronsDownUp}
+          active={false}
+          onClick={allCollapsed ? expandAll : collapseAll}
+          title={allCollapsed ? 'Expand all' : 'Collapse all'}
+        />
       </div>
 
       {/* ── Problem list ────────────────────────────────── */}
@@ -409,12 +476,56 @@ export default function ProblemsPanel() {
               onToggle={() => toggleFileGroup(group.filePath)}
               onNavigate={handleNavigate}
               onCopy={handleCopy}
+              onQuickFix={handleQuickFix}
               onContextMenu={handleContextMenu}
               copiedId={copiedId}
             />
           ))
         )}
       </div>
+
+      {/* ── Summary bar ────────────────────────────────── */}
+      {hasProblems && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '4px 10px',
+            borderTop: '1px solid var(--border)',
+            background: 'var(--bg-primary)',
+            flexShrink: 0,
+            minHeight: 26,
+            fontSize: 11,
+            fontFamily: 'var(--font-sans, sans-serif)',
+          }}
+        >
+          <SummaryBadge
+            Icon={AlertCircle}
+            label="Errors"
+            count={counts.errors}
+            color="var(--accent-red)"
+            bgColor="rgba(248,81,73,0.12)"
+          />
+          <SummaryBadge
+            Icon={AlertTriangle}
+            label="Warnings"
+            count={counts.warnings}
+            color="var(--accent-orange)"
+            bgColor="rgba(227,179,65,0.12)"
+          />
+          <SummaryBadge
+            Icon={Info}
+            label="Info"
+            count={counts.info}
+            color="var(--accent)"
+            bgColor="rgba(88,166,255,0.12)"
+          />
+          <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 10 }}>
+            {filtered.length} shown{currentFileOnly ? ' (current file)' : ''}
+          </span>
+        </div>
+      )}
 
       {/* ── Context menu ──────────────────────────────── */}
       {contextMenu && (
@@ -427,13 +538,104 @@ export default function ProblemsPanel() {
             setContextMenu(null)
           }}
           onNavigate={() => {
-            handleNavigate(contextMenu.problem.file, contextMenu.problem.line)
+            handleNavigate(contextMenu.problem.file, contextMenu.problem.line, contextMenu.problem.column)
             setContextMenu(null)
           }}
+          onQuickFix={
+            contextMenu.problem.quickFix
+              ? () => {
+                  handleQuickFix(contextMenu.problem)
+                  setContextMenu(null)
+                }
+              : undefined
+          }
           onClose={() => setContextMenu(null)}
         />
       )}
     </div>
+  )
+}
+
+/* ── Summary badge ─────────────────────────────────────── */
+
+function SummaryBadge({
+  Icon,
+  label,
+  count,
+  color,
+  bgColor,
+}: {
+  Icon: typeof AlertCircle
+  label: string
+  count: number
+  color: string
+  bgColor: string
+}) {
+  const isActive = count > 0
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '1px 8px 1px 5px',
+        borderRadius: 10,
+        background: isActive ? bgColor : 'transparent',
+        color: isActive ? color : 'var(--text-muted)',
+        fontSize: 11,
+        fontWeight: 500,
+        whiteSpace: 'nowrap',
+        transition: 'all 0.15s',
+      }}
+    >
+      <Icon size={11} />
+      <span>{label}:</span>
+      <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 600 }}>{count}</span>
+    </span>
+  )
+}
+
+/* ── Toolbar icon button ──────────────────────────────── */
+
+function ToolbarButton({
+  Icon,
+  active,
+  onClick,
+  title,
+}: {
+  Icon: typeof AlertCircle
+  active: boolean
+  onClick: () => void
+  title: string
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 24,
+        height: 22,
+        border: 'none',
+        borderRadius: 3,
+        cursor: 'pointer',
+        color: active ? 'var(--accent)' : 'var(--text-muted)',
+        background: active
+          ? 'rgba(88,166,255,0.12)'
+          : hovered
+            ? 'rgba(255,255,255,0.06)'
+            : 'transparent',
+        transition: 'background 0.1s, color 0.1s',
+        flexShrink: 0,
+      }}
+    >
+      <Icon size={14} />
+    </button>
   )
 }
 
@@ -445,31 +647,37 @@ function FileGroupSection({
   onToggle,
   onNavigate,
   onCopy,
+  onQuickFix,
   onContextMenu,
   copiedId,
 }: {
   group: FileGroup
   collapsed: boolean
   onToggle: () => void
-  onNavigate: (file: string, line: number) => void
+  onNavigate: (file: string, line: number, column?: number) => void
   onCopy: (problem: Problem) => void
+  onQuickFix: (problem: Problem) => void
   onContextMenu: (e: React.MouseEvent, problem: Problem) => void
   copiedId: string | null
 }) {
   const Chevron = collapsed ? ChevronRight : ChevronDown
+  const [headerHovered, setHeaderHovered] = useState(false)
+  const fileIconColor = getFileIconColor(group.fileName)
 
   return (
     <div>
       {/* File header */}
       <div
         onClick={onToggle}
+        onMouseEnter={() => setHeaderHovered(true)}
+        onMouseLeave={() => setHeaderHovered(false)}
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '4px 10px',
+          gap: 5,
+          padding: '3px 10px',
           cursor: 'pointer',
-          background: 'var(--bg-primary)',
+          background: headerHovered ? 'rgba(255,255,255,0.04)' : 'var(--bg-primary)',
           borderBottom: '1px solid var(--border)',
           fontFamily: 'var(--font-sans, sans-serif)',
           fontSize: 11,
@@ -479,19 +687,32 @@ function FileGroupSection({
           position: 'sticky',
           top: 0,
           zIndex: 1,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'var(--bg-primary)'
+          transition: 'background 0.08s',
         }}
       >
         <Chevron size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <FileText size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <FileText size={12} style={{ color: fileIconColor, flexShrink: 0 }} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {group.fileName}
         </span>
+        {group.dirPath && (
+          <span
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: 10,
+              fontWeight: 400,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              opacity: 0.7,
+              marginLeft: 2,
+            }}
+          >
+            {group.dirPath}
+          </span>
+        )}
+
+        <div style={{ flex: 1 }} />
 
         {/* Per-file severity counts */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -535,6 +756,7 @@ function FileGroupSection({
             index={idx}
             onNavigate={onNavigate}
             onCopy={onCopy}
+            onQuickFix={onQuickFix}
             onContextMenu={onContextMenu}
             isCopied={copiedId === problem.id}
           />
@@ -550,19 +772,22 @@ function ProblemRow({
   index,
   onNavigate,
   onCopy,
+  onQuickFix,
   onContextMenu,
   isCopied,
 }: {
   problem: Problem
   index: number
-  onNavigate: (file: string, line: number) => void
+  onNavigate: (file: string, line: number, column?: number) => void
   onCopy: (problem: Problem) => void
+  onQuickFix: (problem: Problem) => void
   onContextMenu: (e: React.MouseEvent, problem: Problem) => void
   isCopied: boolean
 }) {
   const cfg = severityConfig[problem.severity]
   const sourceColors = getSourceColors(problem.source)
   const [hovered, setHovered] = useState(false)
+  const hasQuickFix = !!problem.quickFix
 
   const isOdd = index % 2 === 1
 
@@ -570,7 +795,7 @@ function ProblemRow({
     <div
       onClick={(e) => {
         e.stopPropagation()
-        onNavigate(problem.file, problem.line)
+        onNavigate(problem.file, problem.line, problem.column)
       }}
       onContextMenu={(e) => onContextMenu(e, problem)}
       onMouseEnter={() => setHovered(true)}
@@ -579,7 +804,7 @@ function ProblemRow({
         display: 'flex',
         alignItems: 'flex-start',
         gap: 8,
-        padding: '5px 10px 5px 30px',
+        padding: '4px 10px 4px 30px',
         cursor: 'pointer',
         transition: 'background 0.08s',
         background: hovered
@@ -599,39 +824,38 @@ function ProblemRow({
         }}
       />
 
-      {/* Message */}
-      <span
-        style={{
-          flex: 1,
-          color: 'var(--text-secondary)',
-          lineHeight: 1.5,
-          wordBreak: 'break-word',
-          fontFamily: 'var(--font-sans, sans-serif)',
-          fontSize: 12,
-        }}
-      >
-        {problem.message}
-      </span>
+      {/* Message + source */}
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <span
+          style={{
+            color: 'var(--text-secondary)',
+            lineHeight: 1.5,
+            wordBreak: 'break-word',
+            fontFamily: 'var(--font-sans, sans-serif)',
+            fontSize: 12,
+          }}
+        >
+          {problem.message}
+        </span>
+        <span
+          style={{
+            marginLeft: 6,
+            padding: '0px 5px',
+            borderRadius: 3,
+            background: sourceColors.bg,
+            color: sourceColors.fg,
+            fontSize: 10,
+            fontFamily: 'var(--font-sans, sans-serif)',
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            verticalAlign: 'middle',
+          }}
+        >
+          {problem.source}
+        </span>
+      </div>
 
-      {/* Source badge */}
-      <span
-        style={{
-          flexShrink: 0,
-          padding: '1px 6px',
-          borderRadius: 3,
-          background: sourceColors.bg,
-          color: sourceColors.fg,
-          fontSize: 10,
-          fontFamily: 'var(--font-sans, sans-serif)',
-          fontWeight: 500,
-          marginTop: 1,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {problem.source}
-      </span>
-
-      {/* File:line reference */}
+      {/* File:line:column reference */}
       <span
         style={{
           display: 'flex',
@@ -639,12 +863,16 @@ function ProblemRow({
           gap: 2,
           flexShrink: 0,
           color: 'var(--text-muted)',
-          fontSize: 11,
+          fontSize: 10,
           fontFamily: 'var(--font-mono, monospace)',
-          marginTop: 1,
+          marginTop: 2,
+          whiteSpace: 'nowrap',
         }}
       >
-        <span style={{ opacity: 0.6 }}>Ln {problem.line}</span>
+        <span style={{ opacity: 0.6 }}>
+          Ln {problem.line}
+          {problem.column != null && `, Col ${problem.column}`}
+        </span>
       </span>
 
       {/* Action icons (visible on hover) */}
@@ -658,10 +886,13 @@ function ProblemRow({
           transition: 'opacity 0.12s',
         }}
       >
-        {/* Quick fix placeholder */}
+        {/* Quick fix button */}
         <button
-          onClick={(e) => { e.stopPropagation() }}
-          title="No quick fixes available"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (hasQuickFix) onQuickFix(problem)
+          }}
+          title={hasQuickFix ? `Quick fix: ${problem.quickFix}` : 'No quick fixes available'}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -669,11 +900,18 @@ function ProblemRow({
             width: 20,
             height: 20,
             border: 'none',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            cursor: 'default',
+            background: hasQuickFix ? 'rgba(227,179,65,0.12)' : 'transparent',
+            color: hasQuickFix ? 'var(--accent-orange)' : 'var(--text-muted)',
+            cursor: hasQuickFix ? 'pointer' : 'default',
             borderRadius: 3,
-            opacity: 0.5,
+            opacity: hasQuickFix ? 1 : 0.4,
+            transition: 'background 0.1s',
+          }}
+          onMouseEnter={(e) => {
+            if (hasQuickFix) e.currentTarget.style.background = 'rgba(227,179,65,0.22)'
+          }}
+          onMouseLeave={(e) => {
+            if (hasQuickFix) e.currentTarget.style.background = 'rgba(227,179,65,0.12)'
           }}
         >
           <Lightbulb size={12} />
@@ -697,15 +935,16 @@ function ProblemRow({
             color: isCopied ? 'var(--accent-green)' : 'var(--text-muted)',
             cursor: 'pointer',
             borderRadius: 3,
+            transition: 'background 0.1s',
           }}
           onMouseEnter={(e) => {
             if (!isCopied) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
           }}
           onMouseLeave={(e) => {
-            if (!isCopied) e.currentTarget.style.background = 'transparent'
+            if (!isCopied) e.currentTarget.style.background = isCopied ? 'rgba(63,185,80,0.15)' : 'transparent'
           }}
         >
-          <Copy size={11} />
+          {isCopied ? <Check size={11} /> : <Copy size={11} />}
         </button>
       </div>
     </div>
@@ -720,6 +959,7 @@ function ContextMenuOverlay({
   problem,
   onCopy,
   onNavigate,
+  onQuickFix,
   onClose,
 }: {
   x: number
@@ -727,9 +967,26 @@ function ContextMenuOverlay({
   problem: Problem
   onCopy: () => void
   onNavigate: () => void
+  onQuickFix?: () => void
   onClose: () => void
 }) {
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Adjust menu position to stay within viewport
+  const [adjustedPos, setAdjustedPos] = useState({ x, y })
+
+  useEffect(() => {
+    if (menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect()
+      let newX = x
+      let newY = y
+      if (x + rect.width > window.innerWidth) newX = window.innerWidth - rect.width - 4
+      if (y + rect.height > window.innerHeight) newY = window.innerHeight - rect.height - 4
+      if (newX < 0) newX = 4
+      if (newY < 0) newY = 4
+      if (newX !== x || newY !== y) setAdjustedPos({ x: newX, y: newY })
+    }
+  }, [x, y])
 
   return (
     <div
@@ -737,57 +994,88 @@ function ContextMenuOverlay({
       onClick={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
-        left: x,
-        top: y,
+        left: adjustedPos.x,
+        top: adjustedPos.y,
         zIndex: 9999,
         background: 'var(--bg-secondary)',
         border: '1px solid var(--border)',
         borderRadius: 6,
         padding: '4px 0',
         boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-        minWidth: 180,
+        minWidth: 200,
         fontFamily: 'var(--font-sans, sans-serif)',
         fontSize: 12,
       }}
     >
-      <ContextMenuItem label="Go to Problem" onClick={onNavigate} />
-      <ContextMenuItem label="Copy Problem Text" onClick={onCopy} />
-      <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
       <ContextMenuItem
-        label="Quick Fix (not available)"
-        onClick={onClose}
-        disabled
+        icon={<ChevronRight size={12} />}
+        label="Go to Problem"
+        shortcut="Enter"
+        onClick={onNavigate}
       />
+      <ContextMenuItem
+        icon={<Copy size={12} />}
+        label="Copy Problem Text"
+        shortcut="Ctrl+C"
+        onClick={onCopy}
+      />
+      <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+      {onQuickFix ? (
+        <ContextMenuItem
+          icon={<Lightbulb size={12} style={{ color: 'var(--accent-orange)' }} />}
+          label="Apply Quick Fix"
+          onClick={onQuickFix}
+        />
+      ) : (
+        <ContextMenuItem
+          icon={<Lightbulb size={12} />}
+          label="No Quick Fix Available"
+          onClick={onClose}
+          disabled
+        />
+      )}
     </div>
   )
 }
 
 function ContextMenuItem({
+  icon,
   label,
+  shortcut,
   onClick,
   disabled = false,
 }: {
+  icon?: React.ReactNode
   label: string
+  shortcut?: string
   onClick: () => void
   disabled?: boolean
 }) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
         padding: '5px 14px',
         cursor: disabled ? 'default' : 'pointer',
         color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
         opacity: disabled ? 0.5 : 1,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent'
+        background: hovered && !disabled ? 'rgba(255,255,255,0.06)' : 'transparent',
+        transition: 'background 0.08s',
       }}
     >
-      {label}
+      {icon && <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, color: 'var(--text-muted)' }}>{icon}</span>}
+      <span style={{ flex: 1 }}>{label}</span>
+      {shortcut && (
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.6, flexShrink: 0 }}>
+          {shortcut}
+        </span>
+      )}
     </div>
   )
 }

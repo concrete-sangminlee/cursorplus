@@ -11,7 +11,7 @@ export interface OutputLine {
   timestamp: number
 }
 
-const DEFAULT_CHANNELS = ['Orion', 'Git', 'Extensions', 'AI', 'Tasks'] as const
+const DEFAULT_CHANNELS = ['Orion', 'Git', 'Extensions', 'Tasks', 'TypeScript', 'ESLint'] as const
 export type DefaultChannel = (typeof DEFAULT_CHANNELS)[number]
 
 const MAX_LINES_PER_CHANNEL = 1000
