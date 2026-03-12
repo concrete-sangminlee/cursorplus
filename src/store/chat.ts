@@ -18,6 +18,10 @@ interface ChatStore {
   setOllamaStatus: (available: boolean, models: string[]) => void
   loadMessages: (messages: ChatMessage[]) => void
   removeMessagesAfter: (messageId: string) => void
+  /** Record token usage for the current active conversation */
+  recordUsage: (inputTokens: number, outputTokens: number) => void
+  /** Fork the active conversation from a specific message, switching to the fork */
+  forkFromMessage: (messageId: string) => string | null
 }
 
 /** Sync current messages to the active conversation in chatHistory store. */
@@ -76,4 +80,33 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       syncToHistory(updated)
       return { messages: updated }
     }),
+
+  recordUsage: (inputTokens: number, outputTokens: number) => {
+    const historyStore = useChatHistoryStore.getState()
+    const activeId = historyStore.activeConversationId
+    if (!activeId) return
+    historyStore.recordTokenUsage(activeId, inputTokens, outputTokens, get().selectedModel)
+  },
+
+  forkFromMessage: (messageId: string): string | null => {
+    const historyStore = useChatHistoryStore.getState()
+    const activeId = historyStore.activeConversationId
+    if (!activeId) return null
+
+    const convo = historyStore.conversations.find((c) => c.id === activeId)
+    if (!convo) return null
+
+    const msgIndex = convo.messages.findIndex((m) => m.id === messageId)
+    if (msgIndex === -1) return null
+
+    const forkedId = historyStore.forkConversation(activeId, msgIndex)
+    if (forkedId) {
+      // Load the forked messages into the chat store
+      const forkedConvo = useChatHistoryStore.getState().conversations.find((c) => c.id === forkedId)
+      if (forkedConvo) {
+        set({ messages: forkedConvo.messages })
+      }
+    }
+    return forkedId
+  },
 }))

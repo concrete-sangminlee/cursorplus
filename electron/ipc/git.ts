@@ -1,10 +1,28 @@
 import { ipcMain } from 'electron'
-import { exec } from 'child_process'
+import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+/**
+ * Run git using execFile with an array of arguments.
+ * Throws on non-zero exit so callers can report errors.
+ */
+async function runGitExec(
+  cwd: string,
+  args: string[],
+  options?: { timeout?: number; maxBuffer?: number }
+): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, {
+    cwd,
+    timeout: options?.timeout ?? 10000,
+    maxBuffer: options?.maxBuffer ?? 1024 * 1024 * 5,
+  })
+  return stdout.trim()
+}
 
 async function runGit(cwd: string, args: string, options?: { timeout?: number; maxBuffer?: number }): Promise<string> {
   try {
