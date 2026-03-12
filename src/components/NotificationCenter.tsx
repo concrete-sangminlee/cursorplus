@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { useToastStore, type Notification } from '@/store/toast'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { useToastStore, type Notification, type NotificationCategory } from '@/store/toast'
 import {
   CheckCircle,
   AlertCircle,
@@ -7,6 +7,10 @@ import {
   Info,
   Trash2,
   BellOff,
+  GitBranch,
+  Edit3,
+  Cpu,
+  Settings,
 } from 'lucide-react'
 
 const typeIcons = {
@@ -23,6 +27,34 @@ const typeColors: Record<Notification['type'], string> = {
   info: 'var(--accent)',
 }
 
+const categoryIcons: Record<NotificationCategory, React.ReactNode> = {
+  Git: <GitBranch size={11} />,
+  Editor: <Edit3 size={11} />,
+  AI: <Cpu size={11} />,
+  System: <Settings size={11} />,
+}
+
+const ALL_CATEGORIES: NotificationCategory[] = ['Git', 'Editor', 'AI', 'System']
+
+// Inject pulse animation
+const PULSE_STYLE_ID = 'notification-pulse-style'
+function ensurePulseStyle() {
+  if (document.getElementById(PULSE_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = PULSE_STYLE_ID
+  style.textContent = `
+    @keyframes badge-pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.5); }
+      50% { transform: scale(1.25); box-shadow: 0 0 0 4px rgba(88, 166, 255, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(88, 166, 255, 0); }
+    }
+    .badge-pulse {
+      animation: badge-pulse 0.6s ease-out;
+    }
+  `
+  document.head.appendChild(style)
+}
+
 function formatRelativeTime(timestamp: number): string {
   const now = Date.now()
   const diff = now - timestamp
@@ -37,6 +69,34 @@ function formatRelativeTime(timestamp: number): string {
   return `${days}d ago`
 }
 
+type DateGroup = 'Today' | 'Yesterday' | 'Earlier'
+
+function getDateGroup(timestamp: number): DateGroup {
+  const now = new Date()
+  const date = new Date(timestamp)
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const yesterdayStart = todayStart - 86400000
+  if (timestamp >= todayStart) return 'Today'
+  if (timestamp >= yesterdayStart) return 'Yesterday'
+  return 'Earlier'
+}
+
+function groupNotifications(
+  notifications: Notification[]
+): { group: DateGroup; items: Notification[] }[] {
+  const groups: Record<DateGroup, Notification[]> = { Today: [], Yesterday: [], Earlier: [] }
+  for (const n of notifications) {
+    groups[getDateGroup(n.timestamp)].push(n)
+  }
+  const result: { group: DateGroup; items: Notification[] }[] = []
+  for (const group of ['Today', 'Yesterday', 'Earlier'] as DateGroup[]) {
+    if (groups[group].length > 0) {
+      result.push({ group, items: groups[group] })
+    }
+  }
+  return result
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -48,6 +108,38 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
   const clearAll = useToastStore((s) => s.clearAllNotifications)
   const markAllRead = useToastStore((s) => s.markAllRead)
   const panelRef = useRef<HTMLDivElement>(null)
+  const [activeFilter, setActiveFilter] = useState<NotificationCategory | null>(null)
+
+  // Pulse badge on new notifications
+  const prevCountRef = useRef(notifications.length)
+  const [pulsing, setPulsing] = useState(false)
+
+  useEffect(() => {
+    ensurePulseStyle()
+  }, [])
+
+  useEffect(() => {
+    if (notifications.length > prevCountRef.current) {
+      setPulsing(true)
+      const timer = setTimeout(() => setPulsing(false), 600)
+      prevCountRef.current = notifications.length
+      return () => clearTimeout(timer)
+    }
+    prevCountRef.current = notifications.length
+  }, [notifications.length])
+
+  // Expose pulse class name for external badge usage
+  useEffect(() => {
+    if (!pulsing) return
+    // Find the badge element near the anchor and add pulse class
+    const badge = anchorRef.current?.querySelector('[data-notification-badge]')
+    if (badge) {
+      badge.classList.add('badge-pulse')
+      const handler = () => badge.classList.remove('badge-pulse')
+      badge.addEventListener('animationend', handler)
+      return () => badge.removeEventListener('animationend', handler)
+    }
+  }, [pulsing, anchorRef])
 
   // Mark all as read when opening
   useEffect(() => {
@@ -69,7 +161,6 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
         onClose()
       }
     }
-    // Close on Escape
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
@@ -83,11 +174,14 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
 
   if (!open) return null
 
-  // Position above the status bar, anchored to the bell icon
   const anchorRect = anchorRef.current?.getBoundingClientRect()
-  const right = anchorRect
-    ? window.innerWidth - anchorRect.right
-    : 120
+  const right = anchorRect ? window.innerWidth - anchorRect.right : 120
+
+  const filtered = activeFilter
+    ? notifications.filter((n) => n.category === activeFilter)
+    : notifications
+
+  const grouped = groupNotifications(filtered)
 
   return (
     <div
@@ -97,8 +191,8 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
         position: 'fixed',
         bottom: 28,
         right: Math.max(4, right),
-        width: 360,
-        maxHeight: 420,
+        width: 380,
+        maxHeight: 480,
         background: 'var(--bg-secondary)',
         border: '1px solid var(--border-bright)',
         borderRadius: 'var(--radius-lg)',
@@ -141,6 +235,9 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
               color: 'var(--text-muted)',
               padding: '3px 8px',
               borderRadius: 'var(--radius-sm)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
               transition: 'background 0.1s, color 0.1s',
             }}
             onMouseEnter={(e) => {
@@ -159,6 +256,33 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
         )}
       </div>
 
+      {/* Category filter bar */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          padding: '6px 14px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+          flexWrap: 'wrap',
+        }}
+      >
+        <FilterChip
+          label="All"
+          active={activeFilter === null}
+          onClick={() => setActiveFilter(null)}
+        />
+        {ALL_CATEGORIES.map((cat) => (
+          <FilterChip
+            key={cat}
+            label={cat}
+            icon={categoryIcons[cat]}
+            active={activeFilter === cat}
+            onClick={() => setActiveFilter(activeFilter === cat ? null : cat)}
+          />
+        ))}
+      </div>
+
       {/* Notification list */}
       <div
         style={{
@@ -167,7 +291,7 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
           overflowX: 'hidden',
         }}
       >
-        {notifications.length === 0 ? (
+        {filtered.length === 0 ? (
           <div
             style={{
               display: 'flex',
@@ -180,11 +304,35 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
             }}
           >
             <BellOff size={28} style={{ opacity: 0.4 }} />
-            <span style={{ fontSize: 12 }}>No notifications</span>
+            <span style={{ fontSize: 12 }}>
+              {activeFilter ? `No ${activeFilter} notifications` : 'No notifications'}
+            </span>
           </div>
         ) : (
-          notifications.map((n) => (
-            <NotificationItem key={n.id} notification={n} />
+          grouped.map(({ group, items }) => (
+            <div key={group}>
+              {/* Date group header */}
+              <div
+                style={{
+                  padding: '6px 14px',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.8,
+                  background: 'var(--bg-tertiary)',
+                  borderBottom: '1px solid var(--border)',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                }}
+              >
+                {group}
+              </div>
+              {items.map((n) => (
+                <NotificationItem key={n.id} notification={n} />
+              ))}
+            </div>
           ))
         )}
       </div>
@@ -201,28 +349,71 @@ export default function NotificationCenter({ open, onClose, anchorRef }: Props) 
             flexShrink: 0,
           }}
         >
-          {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
+          {filtered.length} notification{filtered.length !== 1 ? 's' : ''}
+          {activeFilter && ` in ${activeFilter}`}
         </div>
       )}
     </div>
   )
 }
 
+function FilterChip({
+  label,
+  icon,
+  active,
+  onClick,
+}: {
+  label: string
+  icon?: React.ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 3,
+        fontSize: 10,
+        padding: '2px 8px',
+        borderRadius: 10,
+        border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+        background: active ? 'rgba(88, 166, 255, 0.12)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
 function NotificationItem({ notification }: { notification: Notification }) {
   const color = typeColors[notification.type]
+  const markRead = useToastStore((s) => s.markRead)
+
+  const handleClick = useCallback(() => {
+    if (!notification.read) {
+      markRead(notification.id)
+    }
+  }, [notification.id, notification.read, markRead])
 
   return (
     <div
+      onClick={handleClick}
       style={{
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
         padding: '10px 14px',
         borderBottom: '1px solid var(--border)',
-        background: notification.read
-          ? 'transparent'
-          : 'rgba(88, 166, 255, 0.03)',
+        background: notification.read ? 'transparent' : 'rgba(88, 166, 255, 0.03)',
         transition: 'background 0.1s',
+        cursor: notification.read ? 'default' : 'pointer',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = 'var(--bg-hover)'
@@ -247,12 +438,10 @@ function NotificationItem({ notification }: { notification: Notification }) {
           />
         )}
         {notification.read && <div style={{ width: 6 }} />}
-        <span style={{ color, display: 'flex' }}>
-          {typeIcons[notification.type]}
-        </span>
+        <span style={{ color, display: 'flex' }}>{typeIcons[notification.type]}</span>
       </div>
 
-      {/* Message + timestamp */}
+      {/* Message + timestamp + category */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -266,12 +455,33 @@ function NotificationItem({ notification }: { notification: Notification }) {
         </div>
         <div
           style={{
-            fontSize: 10,
-            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
             marginTop: 3,
           }}
         >
-          {formatRelativeTime(notification.timestamp)}
+          <span
+            style={{
+              fontSize: 10,
+              color: 'var(--text-muted)',
+            }}
+          >
+            {formatRelativeTime(notification.timestamp)}
+          </span>
+          <span
+            style={{
+              fontSize: 9,
+              color: 'var(--text-muted)',
+              opacity: 0.7,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            {categoryIcons[notification.category]}
+            {notification.category}
+          </span>
         </div>
       </div>
     </div>

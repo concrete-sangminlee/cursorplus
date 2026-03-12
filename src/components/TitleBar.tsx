@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Minus, Square, X, Zap } from 'lucide-react'
+import { ChevronRight, Minus, Square, X, Zap } from 'lucide-react'
 import { useFileStore } from '@/store/files'
 import { useEditorStore } from '@/store/editor'
+import { useRecentFilesStore } from '@/store/recentFiles'
 
 /* ------------------------------------------------------------------ */
 /*  Menu definitions                                                   */
@@ -9,6 +10,7 @@ import { useEditorStore } from '@/store/editor'
 
 type MenuItem =
   | { type: 'action'; label: string; shortcut?: string; action: () => void }
+  | { type: 'submenu'; label: string; children: MenuItem[] }
   | { type: 'separator' }
 
 type MenuDef = { label: string; items: MenuItem[] }
@@ -16,6 +18,7 @@ type MenuDef = { label: string; items: MenuItem[] }
 function buildMenus(
   fileStore: ReturnType<typeof useFileStore>,
   editorStore: ReturnType<typeof useEditorStore>,
+  recentFiles: { path: string; name: string }[],
 ): MenuDef[] {
   /* ---------- helpers ------------------------------------------------ */
   const saveActiveFile = () => {
@@ -35,8 +38,36 @@ function buildMenus(
     })
   }
 
+  const dispatch = (name: string, detail?: unknown) =>
+    window.dispatchEvent(detail ? new CustomEvent(name, { detail }) : new Event(name))
+
+  /* ---------- recent files submenu ----------------------------------- */
+  const recentFilesItems: MenuItem[] =
+    recentFiles.length > 0
+      ? [
+          ...recentFiles.map((f) => ({
+            type: 'action' as const,
+            label: f.name,
+            action: () => dispatch('orion:open-recent-file', { path: f.path, name: f.name }),
+          })),
+          { type: 'separator' as const },
+          {
+            type: 'action' as const,
+            label: 'Clear Recently Opened',
+            action: () => useRecentFilesStore.getState().clearRecent(),
+          },
+        ]
+      : [
+          {
+            type: 'action' as const,
+            label: '(No Recent Files)',
+            action: () => {},
+          },
+        ]
+
   /* ---------- menus -------------------------------------------------- */
   return [
+    /* ======================== File ======================== */
     {
       label: 'File',
       items: [
@@ -57,11 +88,21 @@ function buildMenus(
         },
         {
           type: 'action',
+          label: 'New Window',
+          shortcut: 'Ctrl+Shift+N',
+          action: () => dispatch('orion:new-window'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
           label: 'Open Folder...',
-          shortcut: 'Ctrl+K Ctrl+O',
-          action: () => {
-            window.api?.openFolder?.()
-          },
+          shortcut: 'Ctrl+O',
+          action: () => window.api?.openFolder?.(),
+        },
+        {
+          type: 'submenu',
+          label: 'Open Recent',
+          children: recentFilesItems,
         },
         { type: 'separator' },
         {
@@ -72,9 +113,56 @@ function buildMenus(
         },
         {
           type: 'action',
+          label: 'Save As...',
+          shortcut: 'Ctrl+Shift+S',
+          action: () => dispatch('orion:save-file-as'),
+        },
+        {
+          type: 'action',
           label: 'Save All',
-          shortcut: 'Ctrl+K S',
           action: saveAllFiles,
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Revert File',
+          action: () => dispatch('orion:revert-file'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Close Tab',
+          shortcut: 'Ctrl+W',
+          action: () => dispatch('orion:close-tab'),
+        },
+        {
+          type: 'action',
+          label: 'Close All Tabs',
+          action: () => dispatch('orion:close-all-tabs'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Auto Save',
+          action: () => dispatch('orion:toggle-auto-save'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Preferences: Settings',
+          shortcut: 'Ctrl+,',
+          action: () => dispatch('orion:open-settings'),
+        },
+        {
+          type: 'action',
+          label: 'Preferences: Keyboard Shortcuts',
+          shortcut: 'Ctrl+K Ctrl+S',
+          action: () => dispatch('orion:keyboard-shortcuts'),
+        },
+        {
+          type: 'action',
+          label: 'Preferences: Color Theme',
+          action: () => dispatch('orion:open-palette'),
         },
         { type: 'separator' },
         {
@@ -85,6 +173,7 @@ function buildMenus(
         },
       ],
     },
+    /* ======================== Edit ======================== */
     {
       label: 'Edit',
       items: [
@@ -92,13 +181,13 @@ function buildMenus(
           type: 'action',
           label: 'Undo',
           shortcut: 'Ctrl+Z',
-          action: () => document.execCommand('undo'),
+          action: () => dispatch('orion:undo'),
         },
         {
           type: 'action',
           label: 'Redo',
           shortcut: 'Ctrl+Y',
-          action: () => document.execCommand('redo'),
+          action: () => dispatch('orion:redo'),
         },
         { type: 'separator' },
         {
@@ -124,10 +213,75 @@ function buildMenus(
           type: 'action',
           label: 'Find',
           shortcut: 'Ctrl+F',
-          action: () => window.dispatchEvent(new CustomEvent('orion:find')),
+          action: () => dispatch('orion:editor-find'),
+        },
+        {
+          type: 'action',
+          label: 'Replace',
+          shortcut: 'Ctrl+H',
+          action: () => dispatch('orion:editor-replace'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Find in Files',
+          shortcut: 'Ctrl+Shift+F',
+          action: () => dispatch('orion:show-search'),
         },
       ],
     },
+    /* ======================== Selection ======================== */
+    {
+      label: 'Selection',
+      items: [
+        {
+          type: 'action',
+          label: 'Select All',
+          shortcut: 'Ctrl+A',
+          action: () => document.execCommand('selectAll'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Expand Selection',
+          shortcut: 'Shift+Alt+Right',
+          action: () => dispatch('orion:expand-selection'),
+        },
+        {
+          type: 'action',
+          label: 'Shrink Selection',
+          shortcut: 'Shift+Alt+Left',
+          action: () => dispatch('orion:shrink-selection'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Add Cursor Above',
+          shortcut: 'Ctrl+Alt+Up',
+          action: () => dispatch('orion:add-cursor-above'),
+        },
+        {
+          type: 'action',
+          label: 'Add Cursor Below',
+          shortcut: 'Ctrl+Alt+Down',
+          action: () => dispatch('orion:add-cursor-below'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Select All Occurrences',
+          shortcut: 'Ctrl+Shift+L',
+          action: () => dispatch('orion:select-all-occurrences'),
+        },
+        {
+          type: 'action',
+          label: 'Add Next Occurrence',
+          shortcut: 'Ctrl+D',
+          action: () => dispatch('orion:add-selection-next-match'),
+        },
+      ],
+    },
+    /* ======================== View ======================== */
     {
       label: 'View',
       items: [
@@ -135,98 +289,212 @@ function buildMenus(
           type: 'action',
           label: 'Command Palette',
           shortcut: 'Ctrl+Shift+P',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:command-palette')),
+          action: () => dispatch('orion:open-palette'),
         },
         { type: 'separator' },
         {
           type: 'action',
           label: 'Explorer',
           shortcut: 'Ctrl+Shift+E',
-          action: () =>
-            window.dispatchEvent(
-              new CustomEvent('orion:toggle-panel', { detail: 'explorer' }),
-            ),
+          action: () => dispatch('orion:show-explorer'),
         },
         {
           type: 'action',
           label: 'Search',
           shortcut: 'Ctrl+Shift+F',
-          action: () =>
-            window.dispatchEvent(
-              new CustomEvent('orion:toggle-panel', { detail: 'search' }),
-            ),
+          action: () => dispatch('orion:show-search'),
         },
         {
           type: 'action',
           label: 'Source Control',
           shortcut: 'Ctrl+Shift+G',
-          action: () =>
-            window.dispatchEvent(
-              new CustomEvent('orion:toggle-panel', {
-                detail: 'source-control',
-              }),
-            ),
+          action: () => dispatch('orion:show-git'),
+        },
+        {
+          type: 'action',
+          label: 'Extensions',
+          shortcut: 'Ctrl+Shift+X',
+          action: () => dispatch('orion:show-extensions'),
+        },
+        { type: 'separator' },
+        {
+          type: 'submenu',
+          label: 'Appearance',
+          children: [
+            {
+              type: 'action',
+              label: 'Zen Mode',
+              shortcut: 'Ctrl+K Z',
+              action: () => dispatch('orion:zen-mode'),
+            },
+            {
+              type: 'action',
+              label: 'Toggle Full Screen',
+              shortcut: 'F11',
+              action: () => dispatch('orion:toggle-fullscreen'),
+            },
+            { type: 'separator' },
+            {
+              type: 'action',
+              label: 'Toggle Status Bar',
+              action: () => dispatch('orion:toggle-statusbar'),
+            },
+            {
+              type: 'action',
+              label: 'Toggle Activity Bar',
+              action: () => dispatch('orion:toggle-activitybar'),
+            },
+            {
+              type: 'action',
+              label: 'Toggle Sidebar',
+              shortcut: 'Ctrl+B',
+              action: () => dispatch('orion:toggle-sidebar'),
+            },
+            {
+              type: 'action',
+              label: 'Toggle Panel',
+              shortcut: 'Ctrl+J',
+              action: () => dispatch('orion:toggle-panel'),
+            },
+          ],
+        },
+        {
+          type: 'submenu',
+          label: 'Editor Layout',
+          children: [
+            {
+              type: 'action',
+              label: 'Split Right',
+              shortcut: 'Ctrl+\\',
+              action: () => dispatch('orion:split-right'),
+            },
+            {
+              type: 'action',
+              label: 'Split Down',
+              action: () => dispatch('orion:split-down'),
+            },
+          ],
         },
         { type: 'separator' },
         {
           type: 'action',
-          label: 'Toggle Terminal',
+          label: 'Terminal',
           shortcut: 'Ctrl+`',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:toggle-terminal')),
-        },
-        {
-          type: 'action',
-          label: 'Toggle Sidebar',
-          shortcut: 'Ctrl+B',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:toggle-sidebar')),
+          action: () => dispatch('orion:toggle-terminal'),
         },
         { type: 'separator' },
-        {
-          type: 'action',
-          label: 'Toggle Word Wrap',
-          shortcut: 'Alt+Z',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:toggle-wordwrap')),
-        },
         {
           type: 'action',
           label: 'Toggle Minimap',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:toggle-minimap')),
+          action: () => dispatch('orion:toggle-minimap'),
         },
         {
           type: 'action',
-          label: 'Zen Mode',
-          shortcut: 'Ctrl+K Z',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:zen-mode')),
+          label: 'Word Wrap',
+          shortcut: 'Alt+Z',
+          action: () => dispatch('orion:toggle-wordwrap'),
         },
       ],
     },
+    /* ======================== Go ======================== */
+    {
+      label: 'Go',
+      items: [
+        {
+          type: 'action',
+          label: 'Go to File...',
+          shortcut: 'Ctrl+P',
+          action: () => dispatch('orion:open-palette'),
+        },
+        {
+          type: 'action',
+          label: 'Go to Line...',
+          shortcut: 'Ctrl+G',
+          action: () => dispatch('orion:go-to-line'),
+        },
+        {
+          type: 'action',
+          label: 'Go to Symbol...',
+          shortcut: 'Ctrl+Shift+O',
+          action: () => dispatch('orion:show-outline'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Go to Definition',
+          shortcut: 'F12',
+          action: () => dispatch('orion:go-to-definition'),
+        },
+        {
+          type: 'action',
+          label: 'Go to References',
+          shortcut: 'Shift+F12',
+          action: () => dispatch('orion:go-to-references'),
+        },
+      ],
+    },
+    /* ======================== Run ======================== */
+    {
+      label: 'Run',
+      items: [
+        {
+          type: 'action',
+          label: 'Run Build Task',
+          shortcut: 'Ctrl+Shift+B',
+          action: () => dispatch('orion:run-build'),
+        },
+        {
+          type: 'action',
+          label: 'Run Task...',
+          action: () => dispatch('orion:run-task'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Toggle Breakpoint',
+          shortcut: 'F9',
+          action: () => dispatch('orion:toggle-breakpoint'),
+        },
+      ],
+    },
+    /* ======================== Terminal ======================== */
     {
       label: 'Terminal',
       items: [
         {
           type: 'action',
           label: 'New Terminal',
-          shortcut: 'Ctrl+Shift+`',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:new-terminal')),
+          shortcut: 'Ctrl+`',
+          action: () => dispatch('orion:toggle-terminal'),
+        },
+        {
+          type: 'action',
+          label: 'Split Terminal',
+          action: () => dispatch('orion:split-terminal'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Clear Terminal',
+          action: () => dispatch('orion:clear-terminal'),
         },
       ],
     },
+    /* ======================== Help ======================== */
     {
       label: 'Help',
       items: [
         {
           type: 'action',
-          label: 'Keyboard Shortcuts',
+          label: 'Welcome',
+          action: () => dispatch('orion:show-welcome'),
+        },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Keyboard Shortcuts Reference',
           shortcut: 'Ctrl+K Ctrl+S',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:keyboard-shortcuts')),
+          action: () => dispatch('orion:keyboard-shortcuts'),
         },
         {
           type: 'action',
@@ -234,6 +502,12 @@ function buildMenus(
           action: () =>
             window.open('https://github.com/concrete-sangminlee/orion', '_blank'),
         },
+        {
+          type: 'action',
+          label: 'Release Notes',
+          action: () => dispatch('orion:show-release-notes'),
+        },
+        { type: 'separator' },
         {
           type: 'action',
           label: 'Report Issue',
@@ -244,12 +518,136 @@ function buildMenus(
         {
           type: 'action',
           label: 'About Orion',
-          action: () =>
-            window.dispatchEvent(new CustomEvent('orion:about')),
+          action: () => dispatch('orion:show-about'),
         },
       ],
     },
   ]
+}
+
+/* ------------------------------------------------------------------ */
+/*  Submenu component                                                  */
+/* ------------------------------------------------------------------ */
+
+function SubMenu({
+  items,
+  onClose,
+}: {
+  items: MenuItem[]
+  onClose: () => void
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: -4,
+        left: '100%',
+        marginLeft: 2,
+        minWidth: 200,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3)',
+        padding: 4,
+        zIndex: 10000,
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {items.map((item, idx) => {
+        if (item.type === 'separator') {
+          return (
+            <div
+              key={`sep-${idx}`}
+              style={{
+                height: 1,
+                background: 'var(--border)',
+                margin: '4px 8px',
+              }}
+            />
+          )
+        }
+
+        if (item.type === 'submenu') {
+          const isHovered = hoveredIdx === idx
+          return (
+            <div
+              key={item.label}
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoveredIdx(idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  fontSize: 12,
+                  padding: '5px 8px',
+                  borderRadius: 4,
+                  color: isHovered ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  background: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                  cursor: 'default',
+                  lineHeight: '18px',
+                  transition: 'background 0.08s, color 0.08s',
+                }}
+              >
+                <span>{item.label}</span>
+                <ChevronRight size={12} style={{ opacity: 0.5, flexShrink: 0, marginLeft: 16 }} />
+              </div>
+              {isHovered && <SubMenu items={item.children} onClose={onClose} />}
+            </div>
+          )
+        }
+
+        const isHovered = hoveredIdx === idx
+        return (
+          <button
+            key={item.label}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              fontSize: 12,
+              padding: '5px 8px',
+              borderRadius: 4,
+              color: isHovered ? 'var(--text-primary)' : 'var(--text-secondary)',
+              background: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+              border: 'none',
+              cursor: 'default',
+              textAlign: 'left',
+              lineHeight: '18px',
+              transition: 'background 0.08s, color 0.08s',
+            }}
+            onMouseEnter={() => setHoveredIdx(idx)}
+            onMouseLeave={() => setHoveredIdx(null)}
+            onClick={() => {
+              item.action()
+              onClose()
+            }}
+          >
+            <span>{item.label}</span>
+            {item.shortcut && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  marginLeft: 32,
+                  flexShrink: 0,
+                  opacity: 0.7,
+                }}
+              >
+                {item.shortcut}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -272,7 +670,7 @@ function DropdownMenu({
         top: '100%',
         left: 0,
         marginTop: 2,
-        minWidth: 220,
+        minWidth: 240,
         background: 'var(--bg-secondary)',
         border: '1px solid var(--border)',
         borderRadius: 6,
@@ -296,6 +694,39 @@ function DropdownMenu({
           )
         }
 
+        if (item.type === 'submenu') {
+          const isHovered = hoveredIdx === idx
+          return (
+            <div
+              key={item.label}
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoveredIdx(idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  fontSize: 12,
+                  padding: '5px 8px',
+                  borderRadius: 4,
+                  color: isHovered ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  background: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                  cursor: 'default',
+                  lineHeight: '18px',
+                  transition: 'background 0.08s, color 0.08s',
+                }}
+              >
+                <span>{item.label}</span>
+                <ChevronRight size={12} style={{ opacity: 0.5, flexShrink: 0, marginLeft: 16 }} />
+              </div>
+              {isHovered && <SubMenu items={item.children} onClose={onClose} />}
+            </div>
+          )
+        }
+
         const isHovered = hoveredIdx === idx
         return (
           <button
@@ -306,7 +737,7 @@ function DropdownMenu({
               justifyContent: 'space-between',
               width: '100%',
               fontSize: 12,
-              padding: '5px 24px 5px 8px',
+              padding: '5px 8px',
               borderRadius: 4,
               color: isHovered ? 'var(--text-primary)' : 'var(--text-secondary)',
               background: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
@@ -355,7 +786,8 @@ export default function TitleBar() {
 
   const fileStore = useFileStore()
   const editorStore = useEditorStore()
-  const menus = buildMenus(fileStore, editorStore)
+  const recentFiles = useRecentFilesStore((s) => s.getRecent(5))
+  const menus = buildMenus(fileStore, editorStore, recentFiles)
 
   /* Close dropdown on outside click */
   const handleClickOutside = useCallback(

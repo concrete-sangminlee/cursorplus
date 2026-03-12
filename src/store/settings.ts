@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AppSettings, ModelConfig } from '@shared/types'
 import { DEFAULT_FONT_SIZE, DEFAULT_FONT_FAMILY } from '@shared/constants'
+import { useWorkspaceStore } from './workspace'
 
 interface SettingsStore {
   settings: AppSettings
@@ -40,3 +41,18 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       settings: { ...state.settings, activeModelId: modelId },
     })),
 }))
+
+/**
+ * Get the effective value for a setting key.
+ * Workspace-level overrides (from .orion/settings.json) take priority over
+ * global app settings. Falls back to the global setting value if no workspace
+ * override exists for the given key.
+ */
+export function getEffectiveSetting(key: string): any {
+  const { workspaceOverrides } = useWorkspaceStore.getState()
+  if (key in workspaceOverrides) {
+    return workspaceOverrides[key]
+  }
+  const appSettings = useSettingsStore.getState().settings as Record<string, any>
+  return appSettings[key]
+}

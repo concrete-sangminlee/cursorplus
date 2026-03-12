@@ -36,6 +36,8 @@ export interface OpenFile {
   isModified: boolean
   aiModified: boolean
   isPinned?: boolean
+  hasExternalChange?: boolean
+  isDeletedOnDisk?: boolean
 }
 
 // Chat types
@@ -61,6 +63,7 @@ export interface TerminalSession {
   id: string
   name: string
   type: 'shell' | 'agent-output'
+  shellPath?: string
 }
 
 // Settings types

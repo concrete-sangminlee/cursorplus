@@ -4,7 +4,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { IPC } from '../../shared/ipc-channels'
 import { readFileContent, writeFileContent, deleteItem, renameItem, buildFileTree, detectLanguage } from '../filesystem/operations'
-import { startWatching, stopWatching } from '../filesystem/watcher'
+import { startWatching, stopWatching, markRecentWrite } from '../filesystem/watcher'
 import { setProjectPath } from '../terminal/manager'
 
 export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
@@ -21,6 +21,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
 
   ipcMain.handle(IPC.FS_WRITE_FILE, async (_event, filePath: string, content: string) => {
     try {
+      markRecentWrite(filePath)
       await writeFileContent(filePath, content)
       return { success: true }
     } catch (err: any) {

@@ -60,7 +60,13 @@ html, body, #root {
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   user-select: none;
+}
+
+/* Re-enable text selection inside editor, terminal, and chat content */
+.monaco-editor, .xterm, .markdown-body, textarea, input {
+  user-select: text;
 }
 
 /* Selection */
@@ -137,7 +143,17 @@ button {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes slide-down {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
 
+.anim-pulse { animation: pulse 2s ease-in-out infinite; }
+.anim-slide-down { animation: slide-down 0.2s ease-out; }
 .anim-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
 .anim-spin { animation: spin 1s linear infinite; }
 .anim-slide-up { animation: slide-up 0.2s ease-out; }
@@ -147,6 +163,68 @@ button {
   background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.03) 50%, transparent 75%);
   background-size: 200% 100%;
   animation: shimmer 2s infinite;
+}
+
+/* ── Activity Bar ────────────────────────────────────────────── */
+
+/* Rich tooltip */
+.activity-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  animation: fade-in 0.12s ease-out;
+}
+.activity-tooltip-label {
+  color: var(--text-primary);
+}
+.activity-tooltip-shortcut {
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+}
+
+/* Icon hover: subtle scale + brightness */
+.activity-bar-item .activity-bar-icon {
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.activity-bar-item:hover .activity-bar-icon {
+  transform: scale(1.1);
+  filter: brightness(1.25);
+}
+
+/* Badge pulse animation on count change */
+@keyframes badge-pulse {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.35); }
+  60% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+.activity-badge-pulse {
+  animation: badge-pulse 0.4s ease-out;
+}
+
+/* Drag reorder: smooth item transitions */
+.activity-bar-item {
+  transition: transform 0.2s ease, color 0.15s ease, border-color 0.2s ease, background 0.2s ease, opacity 0.15s ease;
+}
+.activity-bar-item[draggable="true"] {
+  cursor: grab;
+}
+.activity-bar-item[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 /* Glass effect */
@@ -504,12 +582,72 @@ button {
   opacity: 0.7;
 }
 
+/* Open Editors section in File Explorer */
+.explorer-file-item:hover .open-editor-close-btn { opacity: 1 !important; }
+.open-editor-close-btn:hover { background: var(--bg-hover) !important; color: var(--text-primary) !important; }
+.explorer-file-item:hover { background: rgba(255,255,255,0.04); }
+
 /* File explorer folder drop indicator */
 .folder-drop-target {
   background: rgba(88, 166, 255, 0.12) !important;
   outline: 1px dashed var(--accent);
   outline-offset: -1px;
   border-radius: 3px;
+}
+
+/* ── Zen Mode ────────────────────────────────────────── */
+
+/* Invisible hover zone at the top center to trigger exit hint */
+.zen-exit-zone {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 36px;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 8px;
+}
+
+.zen-exit-hint {
+  padding: 4px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.3s ease, transform 0.3s ease, background 0.15s, color 0.15s;
+  pointer-events: none;
+}
+
+.zen-exit-hint--visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.zen-exit-hint:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Centered editor layout for zen mode readability */
+.zen-editor-container {
+  display: flex;
+  justify-content: center;
+}
+
+.zen-editor-container > * {
+  width: 100%;
+  max-width: 900px;
 }
 
 /* ── Editor Decorations ──────────────────────────────── */
@@ -545,7 +683,33 @@ button {
   background: transparent !important;
 }
 
-/* Color decorator swatch */
+/* Error Lens - inline diagnostic decorations */
+.error-lens-error {
+  color: rgba(248, 81, 73, 0.7) !important;
+  font-style: italic;
+  font-size: 12px !important;
+}
+.error-lens-warning {
+  color: rgba(210, 153, 34, 0.7) !important;
+  font-style: italic;
+  font-size: 12px !important;
+}
+.error-lens-info {
+  color: rgba(88, 166, 255, 0.6) !important;
+  font-style: italic;
+  font-size: 12px !important;
+}
+.error-lens-line-error {
+  background: rgba(248, 81, 73, 0.06) !important;
+}
+.error-lens-line-warning {
+  background: rgba(210, 153, 34, 0.06) !important;
+}
+.error-lens-line-info {
+  background: rgba(88, 166, 255, 0.04) !important;
+}
+
+/* Color decorator swatch (base class kept for backwards compat, dynamic classes are orion-cdeco-*) */
 .orion-color-swatch {
   display: inline-block;
   width: 10px;
@@ -554,4 +718,115 @@ button {
   border-radius: 2px;
   margin-right: 4px;
   vertical-align: middle;
+}
+
+/* Ensure dynamically-injected color decoration pseudo-elements render correctly inside Monaco */
+[class*='orion-cdeco-'] {
+  cursor: pointer;
+}
+
+/* ── Chat panel animations ──────────────────────────── */
+
+/* Chat streaming dots animation */
+@keyframes chat-streaming-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Chat stop button pulse */
+@keyframes stop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.3); }
+  50% { box-shadow: 0 0 0 4px rgba(248, 81, 73, 0); }
+}
+.chat-stop-btn {
+  animation: stop-pulse 2s ease-in-out infinite;
+}
+.chat-stop-btn:hover {
+  animation: none;
+  background: rgba(248, 81, 73, 0.25) !important;
+}
+
+/* Chat suggestion chip hover animation */
+.chat-suggestion-chip {
+  transition: all 0.15s ease, transform 0.1s ease !important;
+}
+.chat-suggestion-chip:active {
+  transform: scale(0.97);
+}
+
+/* ── Accessibility ──────────────────────────────────── */
+
+/* Screen reader only - visually hidden but accessible */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip navigation link - visible on focus */
+.skip-nav {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  z-index: 10000;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  outline: none;
+  transition: top 0.15s ease;
+}
+.skip-nav:focus {
+  top: 8px;
+}
+
+/* Minimum touch target size for interactive elements */
+button, [role="button"], [role="tab"], [role="menuitem"] {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  :root {
+    --border: #6e7681;
+    --border-bright: #8b949e;
+    --text-primary: #ffffff;
+    --text-secondary: #d1d5da;
+    --text-muted: #8b949e;
+    --bg-hover: #30363d;
+    --bg-active: #3d444d;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  button, [role="button"] {
+    border: 1px solid var(--border);
+  }
+
+  .context-menu, .dropdown-menu {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

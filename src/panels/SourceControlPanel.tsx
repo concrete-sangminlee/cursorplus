@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useFileStore } from '@/store/files'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
 import { useOutputStore } from '@/store/output'
-import { GitBranch, Check, Plus, Minus, RotateCw, FileText, Trash2, ChevronRight, ChevronDown, X, Clock, GitCommit, User } from 'lucide-react'
+import { GitBranch, Check, Plus, Minus, RotateCw, FileText, Trash2, ChevronRight, ChevronDown, X, Clock, GitCommit, User, ArrowUp, ArrowDown, Download, Archive, Plus as PlusIcon, AlertTriangle, Package, Play, XCircle } from 'lucide-react'
 
 interface GitFile {
   path: string
@@ -15,7 +15,25 @@ interface GitLogEntry {
   hash: string
   message: string
   author: string
+  email: string
   date: string
+}
+
+interface StashEntry {
+  index: number
+  hash: string
+  message: string
+}
+
+interface CommitDetail {
+  fullHash: string
+  hash: string
+  author: string
+  email: string
+  date: string
+  message: string
+  filesChanged: { file: string; changes: string }[]
+  summary: string
 }
 
 const STATUS_COLORS: Record<GitFile['state'], string> = {
@@ -44,16 +62,35 @@ export default function SourceControlPanel() {
   const [stagedExpanded, setStagedExpanded] = useState(true)
   const [changesExpanded, setChangesExpanded] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [ahead, setAhead] = useState(0)
+  const [behind, setBehind] = useState(0)
   const [selectedDiff, setSelectedDiff] = useState<{ path: string; diff: string } | null>(null)
   const [isDiffLoading, setIsDiffLoading] = useState(false)
+
+  // Branch management state
+  const [showCreateBranch, setShowCreateBranch] = useState(false)
+  const [newBranchName, setNewBranchName] = useState('')
+  const [branches, setBranches] = useState<{ name: string; current: boolean }[]>([])
+  const [showBranchPicker, setShowBranchPicker] = useState(false)
+  const branchPickerRef = useRef<HTMLDivElement>(null)
 
   // History tab state
   const [activeTab, setActiveTab] = useState<ActiveTab>('changes')
   const [logEntries, setLogEntries] = useState<GitLogEntry[]>([])
   const [isLoadingLog, setIsLoadingLog] = useState(false)
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null)
-  const [commitDetail, setCommitDetail] = useState<string | null>(null)
+  const [commitDetail, setCommitDetail] = useState<CommitDetail | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+
+  // Stash management state
+  const [stashes, setStashes] = useState<StashEntry[]>([])
+  const [stashExpanded, setStashExpanded] = useState(false)
+  const [stashMessage, setStashMessage] = useState('')
+  const [showStashInput, setShowStashInput] = useState(false)
+
+  // Merge conflict state
+  const [isMerging, setIsMerging] = useState(false)
+  const [conflictFiles, setConflictFiles] = useState<string[]>([])
 
   const rootPath = useFileStore((s) => s.rootPath)
   const openFile = useEditorStore((s) => s.openFile)
@@ -69,6 +106,8 @@ export default function SourceControlPanel() {
         setStagedFiles(status.staged || [])
         setUnstagedFiles(status.unstaged || [])
         if (status.branch) setBranch(status.branch)
+        if (status.ahead !== undefined) setAhead(status.ahead)
+        if (status.behind !== undefined) setBehind(status.behind)
         const total = (status.staged?.length || 0) + (status.unstaged?.length || 0)
         if (total > 0) {
           appendOutput('Git', `[status] Branch: ${status.branch || 'unknown'} | ${total} changed file(s)`, 'info')
@@ -81,6 +120,33 @@ export default function SourceControlPanel() {
       setIsRefreshing(false)
     }
   }, [rootPath, appendOutput])
+
+  const refreshStashes = useCallback(async () => {
+    if (!rootPath) return
+    try {
+      const list = await (window as any).api.gitStashList(rootPath)
+      setStashes(list || [])
+    } catch {
+      setStashes([])
+    }
+  }, [rootPath])
+
+  const refreshMergeStatus = useCallback(async () => {
+    if (!rootPath) return
+    try {
+      const status = await (window as any).api.gitMergeStatus(rootPath)
+      setIsMerging(status?.merging || false)
+      if (status?.merging) {
+        const files = await (window as any).api.gitConflictFiles(rootPath)
+        setConflictFiles(files || [])
+      } else {
+        setConflictFiles([])
+      }
+    } catch {
+      setIsMerging(false)
+      setConflictFiles([])
+    }
+  }, [rootPath])
 
   const fetchLog = useCallback(async () => {
     if (!rootPath) return
@@ -98,9 +164,15 @@ export default function SourceControlPanel() {
 
   useEffect(() => {
     refreshStatus()
-    const interval = setInterval(refreshStatus, 5000)
+    refreshStashes()
+    refreshMergeStatus()
+    const interval = setInterval(() => {
+      refreshStatus()
+      refreshStashes()
+      refreshMergeStatus()
+    }, 5000)
     return () => clearInterval(interval)
-  }, [refreshStatus])
+  }, [refreshStatus, refreshStashes, refreshMergeStatus])
 
   // Fetch log when History tab is activated
   useEffect(() => {
@@ -108,6 +180,26 @@ export default function SourceControlPanel() {
       fetchLog()
     }
   }, [activeTab, fetchLog])
+
+  // Listen for command palette event to switch to history tab
+  useEffect(() => {
+    const handler = () => setActiveTab('history')
+    window.addEventListener('orion:git-show-history', handler)
+    return () => window.removeEventListener('orion:git-show-history', handler)
+  }, [])
+
+  // Click outside handler for branch picker
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (branchPickerRef.current && !branchPickerRef.current.contains(e.target as Node)) {
+        setShowBranchPicker(false)
+      }
+    }
+    if (showBranchPicker) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showBranchPicker])
 
   const handleCommit = async () => {
     if (!commitMessage.trim() || !rootPath) return
@@ -174,20 +266,20 @@ export default function SourceControlPanel() {
     }
   }
 
-  const handleCommitClick = async (hash: string) => {
+  const handleCommitClick = async (fullHash: string, shortHash: string) => {
     if (!rootPath) return
-    if (selectedCommit === hash) {
+    if (selectedCommit === shortHash) {
       setSelectedCommit(null)
       setCommitDetail(null)
       return
     }
-    setSelectedCommit(hash)
+    setSelectedCommit(shortHash)
     setIsLoadingDetail(true)
     try {
-      const detail = await (window as any).api.gitShow(rootPath, hash)
-      setCommitDetail(detail || 'No details available')
+      const detail = await (window as any).api.gitShow(rootPath, fullHash)
+      setCommitDetail(detail || null)
     } catch {
-      setCommitDetail('Failed to load commit details')
+      setCommitDetail(null)
     } finally {
       setIsLoadingDetail(false)
     }
@@ -198,6 +290,206 @@ export default function SourceControlPanel() {
       e.preventDefault()
       handleCommit()
     }
+  }
+
+  const handlePush = async () => {
+    if (!rootPath) return
+    appendOutput('Git', '[push] Pushing to remote...', 'info')
+    try {
+      await (window as any).api.gitPush(rootPath)
+      appendOutput('Git', '[push] Push successful', 'success')
+      addToast({ type: 'success', message: 'Pushed to remote successfully' })
+      refreshStatus()
+    } catch (err: any) {
+      appendOutput('Git', `[push] Failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Push failed' })
+    }
+  }
+
+  const handlePull = async () => {
+    if (!rootPath) return
+    appendOutput('Git', '[pull] Pulling from remote...', 'info')
+    try {
+      await (window as any).api.gitPull(rootPath)
+      appendOutput('Git', '[pull] Pull successful', 'success')
+      addToast({ type: 'success', message: 'Pulled from remote successfully' })
+      refreshStatus()
+    } catch (err: any) {
+      appendOutput('Git', `[pull] Failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Pull failed' })
+    }
+  }
+
+  const handleFetch = async () => {
+    if (!rootPath) return
+    appendOutput('Git', '[fetch] Fetching from all remotes...', 'info')
+    try {
+      await (window as any).api.gitFetch(rootPath)
+      appendOutput('Git', '[fetch] Fetch successful', 'success')
+      addToast({ type: 'success', message: 'Fetched from remote' })
+      refreshStatus()
+    } catch (err: any) {
+      appendOutput('Git', `[fetch] Failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Fetch failed' })
+    }
+  }
+
+  const fetchBranches = async () => {
+    if (!rootPath) return
+    try {
+      const result = await (window as any).api.gitBranches(rootPath)
+      setBranches(result || [])
+    } catch {
+      setBranches([])
+    }
+  }
+
+  const handleCreateBranch = async () => {
+    if (!rootPath || !newBranchName.trim()) return
+    try {
+      await (window as any).api.gitCreateBranch(rootPath, newBranchName.trim())
+      addToast({ type: 'success', message: `Created and switched to branch: ${newBranchName.trim()}` })
+      appendOutput('Git', `[branch] Created: ${newBranchName.trim()}`, 'success')
+      setNewBranchName('')
+      setShowCreateBranch(false)
+      refreshStatus()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err?.message || 'Failed to create branch' })
+    }
+  }
+
+  const handleSwitchBranch = async (branchName: string) => {
+    if (!rootPath) return
+    try {
+      await (window as any).api.gitCheckout(rootPath, branchName)
+      addToast({ type: 'success', message: `Switched to branch: ${branchName}` })
+      appendOutput('Git', `[checkout] Switched to: ${branchName}`, 'info')
+      setShowBranchPicker(false)
+      refreshStatus()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err?.message || 'Failed to switch branch' })
+    }
+  }
+
+  const handleStageAll = async () => {
+    if (!rootPath) return
+    try {
+      await (window as any).api.gitStageAll(rootPath)
+      appendOutput('Git', '[stage] Staged all changes', 'info')
+      refreshStatus()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err?.message || 'Failed to stage all' })
+    }
+  }
+
+  const handleUnstageAll = async () => {
+    if (!rootPath) return
+    try {
+      await (window as any).api.gitUnstageAll(rootPath)
+      appendOutput('Git', '[unstage] Unstaged all changes', 'info')
+      refreshStatus()
+    } catch (err: any) {
+      addToast({ type: 'error', message: err?.message || 'Failed to unstage all' })
+    }
+  }
+
+  const handleStashSave = async () => {
+    if (!rootPath) return
+    const msg = stashMessage.trim()
+    try {
+      if (msg) {
+        await (window as any).api.gitStashSave(rootPath, msg)
+        appendOutput('Git', `[stash] Stashed with message: "${msg}"`, 'info')
+      } else {
+        await (window as any).api.gitStash(rootPath)
+        appendOutput('Git', '[stash] Stashed all changes', 'info')
+      }
+      addToast({ type: 'success', message: 'Changes stashed' })
+      setStashMessage('')
+      setShowStashInput(false)
+      refreshStatus()
+      refreshStashes()
+    } catch (err: any) {
+      appendOutput('Git', `[stash] Failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Stash failed' })
+    }
+  }
+
+  const handleStashApply = async (index: number) => {
+    if (!rootPath) return
+    try {
+      await (window as any).api.gitStashApply(rootPath, index)
+      appendOutput('Git', `[stash] Applied stash@{${index}}`, 'info')
+      addToast({ type: 'success', message: `Applied stash@{${index}}` })
+      refreshStatus()
+      refreshMergeStatus()
+    } catch (err: any) {
+      appendOutput('Git', `[stash] Apply failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Stash apply failed' })
+    }
+  }
+
+  const handleStashPop = async (index: number) => {
+    if (!rootPath) return
+    try {
+      // Pop uses drop after apply for specific index
+      if (index === 0) {
+        await (window as any).api.gitStashPop(rootPath)
+      } else {
+        await (window as any).api.gitStashApply(rootPath, index)
+        await (window as any).api.gitStashDrop(rootPath, index)
+      }
+      appendOutput('Git', `[stash] Popped stash@{${index}}`, 'info')
+      addToast({ type: 'success', message: `Popped stash@{${index}}` })
+      refreshStatus()
+      refreshStashes()
+      refreshMergeStatus()
+    } catch (err: any) {
+      appendOutput('Git', `[stash] Pop failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Stash pop failed' })
+    }
+  }
+
+  const handleStashDrop = async (index: number) => {
+    if (!rootPath) return
+    try {
+      await (window as any).api.gitStashDrop(rootPath, index)
+      appendOutput('Git', `[stash] Dropped stash@{${index}}`, 'warn')
+      addToast({ type: 'info', message: `Dropped stash@{${index}}` })
+      refreshStashes()
+    } catch (err: any) {
+      appendOutput('Git', `[stash] Drop failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Stash drop failed' })
+    }
+  }
+
+  const handleMergeAbort = async () => {
+    if (!rootPath) return
+    try {
+      await (window as any).api.gitMergeAbort(rootPath)
+      appendOutput('Git', '[merge] Merge aborted', 'warn')
+      addToast({ type: 'info', message: 'Merge aborted' })
+      refreshStatus()
+      refreshMergeStatus()
+    } catch (err: any) {
+      appendOutput('Git', `[merge] Abort failed: ${err?.message || 'Unknown error'}`, 'error')
+      addToast({ type: 'error', message: err?.message || 'Merge abort failed' })
+    }
+  }
+
+  const handleConflictFileClick = (filePath: string) => {
+    if (!rootPath) return
+    const fullPath = rootPath + '/' + filePath
+    openFile(fullPath)
+  }
+
+  const handleConflictAction = (filePath: string, action: 'accept-current' | 'accept-incoming' | 'accept-both') => {
+    if (!rootPath) return
+    const fullPath = rootPath + '/' + filePath
+    window.dispatchEvent(new CustomEvent('orion:resolve-conflict', {
+      detail: { path: fullPath, action }
+    }))
+    openFile(fullPath)
   }
 
   const fileName = (filePath: string) => {
@@ -372,8 +664,180 @@ export default function SourceControlPanel() {
     )
   }
 
+  // Generate a consistent color from a string (for author avatars)
+  const avatarColor = (name: string): string => {
+    const colors = ['#f85149', '#3fb950', '#388bfd', '#d29922', '#d2a8ff', '#f78166', '#a5d6ff', '#7ee787', '#ff7b72', '#79c0ff']
+    let hash = 0
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    return colors[Math.abs(hash) % colors.length]
+  }
+
+  // Format ISO date string to relative time
+  const formatRelativeDate = (dateStr: string): string => {
+    try {
+      const date = new Date(dateStr)
+      const now = new Date()
+      const diffMs = now.getTime() - date.getTime()
+      const diffSecs = Math.floor(diffMs / 1000)
+      const diffMins = Math.floor(diffSecs / 60)
+      const diffHours = Math.floor(diffMins / 60)
+      const diffDays = Math.floor(diffHours / 24)
+      const diffWeeks = Math.floor(diffDays / 7)
+      const diffMonths = Math.floor(diffDays / 30)
+      const diffYears = Math.floor(diffDays / 365)
+
+      if (diffSecs < 60) return 'just now'
+      if (diffMins < 60) return `${diffMins} min ago`
+      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+      if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+      if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks > 1 ? 's' : ''} ago`
+      if (diffMonths < 12) return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`
+      return `${diffYears} year${diffYears > 1 ? 's' : ''} ago`
+    } catch {
+      return dateStr
+    }
+  }
+
   const renderChangesTab = () => (
     <>
+      {/* Merge conflict banner */}
+      {isMerging && (
+        <div
+          style={{
+            padding: '8px 12px',
+            background: 'rgba(210, 153, 34, 0.12)',
+            borderBottom: '1px solid rgba(210, 153, 34, 0.3)',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <AlertTriangle size={14} style={{ color: '#d29922', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#d29922' }}>
+              Merge in progress {conflictFiles.length > 0 ? `\u2014 ${conflictFiles.length} conflict${conflictFiles.length !== 1 ? 's' : ''} to resolve` : ''}
+            </span>
+          </div>
+
+          {/* Conflicted files list */}
+          {conflictFiles.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {conflictFiles.map((file) => (
+                <div
+                  key={file}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '3px 0',
+                    fontSize: 12,
+                    gap: 6,
+                  }}
+                >
+                  <AlertTriangle size={12} style={{ color: '#d29922', flexShrink: 0 }} />
+                  <span
+                    style={{
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      cursor: 'pointer',
+                      color: 'var(--text-primary)',
+                    }}
+                    title={file}
+                    onClick={() => handleConflictFileClick(file)}
+                    className="source-control-file-item"
+                  >
+                    {fileName(file)}
+                    {dirName(file) && (
+                      <span style={{ opacity: 0.5, marginLeft: 4 }}>{dirName(file)}</span>
+                    )}
+                  </span>
+
+                  {/* Quick resolve actions */}
+                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleConflictAction(file, 'accept-current')}
+                      title="Accept Current"
+                      style={{
+                        background: 'none',
+                        border: '1px solid rgba(210, 153, 34, 0.3)',
+                        cursor: 'pointer',
+                        padding: '1px 5px',
+                        fontSize: 10,
+                        fontWeight: 500,
+                        borderRadius: 3,
+                        color: '#d29922',
+                      }}
+                      className="source-control-action-btn"
+                    >
+                      Current
+                    </button>
+                    <button
+                      onClick={() => handleConflictAction(file, 'accept-incoming')}
+                      title="Accept Incoming"
+                      style={{
+                        background: 'none',
+                        border: '1px solid rgba(56, 139, 253, 0.3)',
+                        cursor: 'pointer',
+                        padding: '1px 5px',
+                        fontSize: 10,
+                        fontWeight: 500,
+                        borderRadius: 3,
+                        color: '#388bfd',
+                      }}
+                      className="source-control-action-btn"
+                    >
+                      Incoming
+                    </button>
+                    <button
+                      onClick={() => handleConflictAction(file, 'accept-both')}
+                      title="Accept Both"
+                      style={{
+                        background: 'none',
+                        border: '1px solid rgba(139, 148, 158, 0.3)',
+                        cursor: 'pointer',
+                        padding: '1px 5px',
+                        fontSize: 10,
+                        fontWeight: 500,
+                        borderRadius: 3,
+                        color: '#8b949e',
+                      }}
+                      className="source-control-action-btn"
+                    >
+                      Both
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Abort merge button */}
+          <button
+            onClick={handleMergeAbort}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              fontSize: 11,
+              fontWeight: 600,
+              background: 'rgba(248, 81, 73, 0.15)',
+              border: '1px solid rgba(248, 81, 73, 0.3)',
+              borderRadius: 4,
+              color: '#f85149',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+            }}
+            className="source-control-action-btn"
+          >
+            <XCircle size={12} />
+            Abort Merge
+          </button>
+        </div>
+      )}
+
       {/* Commit section */}
       <div
         style={{
@@ -465,9 +929,28 @@ export default function SourceControlPanel() {
             >
               {stagedExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               <span style={{ marginLeft: 4 }}>Staged Changes</span>
+              <span style={{ flex: 1 }} />
+              <button
+                onClick={(e) => { e.stopPropagation(); handleUnstageAll() }}
+                title="Unstage All"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 3,
+                  color: 'var(--text-secondary)',
+                  marginRight: 4,
+                }}
+                className="source-control-action-btn"
+              >
+                <Minus size={14} />
+              </button>
               <span
                 style={{
-                  marginLeft: 'auto',
                   fontSize: 10,
                   background: 'var(--bg-tertiary, #2d333b)',
                   borderRadius: 10,
@@ -503,9 +986,28 @@ export default function SourceControlPanel() {
           >
             {changesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <span style={{ marginLeft: 4 }}>Changes</span>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={(e) => { e.stopPropagation(); handleStageAll() }}
+              title="Stage All"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 3,
+                color: 'var(--text-secondary)',
+                marginRight: 4,
+              }}
+              className="source-control-action-btn"
+            >
+              <Plus size={14} />
+            </button>
             <span
               style={{
-                marginLeft: 'auto',
                 fontSize: 10,
                 background: 'var(--bg-tertiary, #2d333b)',
                 borderRadius: 10,
@@ -518,6 +1020,220 @@ export default function SourceControlPanel() {
           </div>
           {changesExpanded &&
             unstagedFiles.map((file) => renderFileItem(file, false))}
+        </div>
+
+        {/* Stashes Section */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              height: 26,
+              padding: '0 8px',
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={() => { setStashExpanded(!stashExpanded); if (!stashExpanded) refreshStashes() }}
+          >
+            {stashExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span style={{ marginLeft: 4 }}>Stashes</span>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowStashInput(!showStashInput) }}
+              title="Stash All Changes"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 3,
+                color: 'var(--text-secondary)',
+                marginRight: 4,
+              }}
+              className="source-control-action-btn"
+            >
+              <Archive size={14} />
+            </button>
+            {stashes.length > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  background: 'var(--bg-tertiary, #2d333b)',
+                  borderRadius: 10,
+                  padding: '0 6px',
+                  lineHeight: '16px',
+                }}
+              >
+                {stashes.length}
+              </span>
+            )}
+          </div>
+
+          {/* Stash message input */}
+          {showStashInput && (
+            <div style={{ padding: '4px 12px 4px 24px', display: 'flex', gap: 4 }}>
+              <input
+                autoFocus
+                value={stashMessage}
+                onChange={(e) => setStashMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleStashSave()
+                  if (e.key === 'Escape') { setShowStashInput(false); setStashMessage('') }
+                }}
+                placeholder="Stash message (optional)..."
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  fontSize: 11,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                onClick={handleStashSave}
+                title="Stash"
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  background: 'var(--bg-tertiary, #2d333b)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                className="source-control-action-btn"
+              >
+                Stash
+              </button>
+            </div>
+          )}
+
+          {/* Stash entries */}
+          {stashExpanded && stashes.map((stash) => (
+            <div
+              key={stash.index}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                height: 26,
+                paddingLeft: 24,
+                paddingRight: 8,
+                fontSize: 12,
+                cursor: 'default',
+                userSelect: 'none',
+              }}
+              className="source-control-file-item"
+            >
+              <Package size={13} style={{ marginRight: 6, flexShrink: 0, opacity: 0.5, color: '#d2a8ff' }} />
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace)',
+                  fontSize: 10,
+                  color: '#d2a8ff',
+                  marginRight: 6,
+                  flexShrink: 0,
+                  opacity: 0.7,
+                }}
+              >
+                {'{'}{ stash.index }{'}'}
+              </span>
+              <span
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={stash.message}
+              >
+                {stash.message}
+              </span>
+
+              {/* Stash action buttons */}
+              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => handleStashApply(stash.index)}
+                  title="Apply (keep stash)"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 3,
+                    color: 'var(--text-secondary)',
+                  }}
+                  className="source-control-action-btn"
+                >
+                  <Play size={12} />
+                </button>
+                <button
+                  onClick={() => handleStashPop(stash.index)}
+                  title="Pop (apply & remove)"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 3,
+                    color: 'var(--text-secondary)',
+                  }}
+                  className="source-control-action-btn"
+                >
+                  <ArrowUp size={12} />
+                </button>
+                <button
+                  onClick={() => handleStashDrop(stash.index)}
+                  title="Drop (delete stash)"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 3,
+                    color: 'var(--text-secondary)',
+                  }}
+                  className="source-control-action-btn"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {stashExpanded && stashes.length === 0 && (
+            <div
+              style={{
+                padding: '8px 24px',
+                fontSize: 11,
+                color: 'var(--text-disabled, #545d68)',
+              }}
+            >
+              No stashes
+            </div>
+          )}
         </div>
 
         {/* Empty state */}
@@ -729,9 +1445,11 @@ export default function SourceControlPanel() {
           logEntries.map((entry, idx) => {
             const isSelected = selectedCommit === entry.hash
             const isLast = idx === logEntries.length - 1
+            const color = avatarColor(entry.author)
+            const initial = (entry.author || '?')[0].toUpperCase()
             return (
               <div
-                key={entry.hash}
+                key={entry.fullHash || entry.hash + idx}
                 className="source-control-commit-item"
                 style={{
                   display: 'flex',
@@ -741,7 +1459,7 @@ export default function SourceControlPanel() {
                   userSelect: 'none',
                   background: isSelected ? 'var(--bg-hover, rgba(255,255,255,0.05))' : 'transparent',
                 }}
-                onClick={() => handleCommitClick(entry.hash)}
+                onClick={() => handleCommitClick(entry.fullHash || entry.hash, entry.hash)}
               >
                 {/* Timeline */}
                 <div
@@ -760,8 +1478,8 @@ export default function SourceControlPanel() {
                       width: 8,
                       height: 8,
                       borderRadius: '50%',
-                      background: isSelected ? 'var(--accent-blue, #388bfd)' : '#8b949e',
-                      border: `2px solid ${isSelected ? 'var(--accent-blue, #388bfd)' : '#3d444d'}`,
+                      background: isSelected ? 'var(--accent-blue, #388bfd)' : color,
+                      border: `2px solid ${isSelected ? 'var(--accent-blue, #388bfd)' : 'rgba(255,255,255,0.1)'}`,
                       flexShrink: 0,
                       zIndex: 1,
                     }}
@@ -788,23 +1506,27 @@ export default function SourceControlPanel() {
                     borderBottom: !isLast ? '1px solid rgba(255,255,255,0.03)' : 'none',
                   }}
                 >
-                  {/* Hash + Message row */}
+                  {/* Hash pill + Message row */}
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      marginBottom: 2,
+                      marginBottom: 3,
                     }}
                   >
                     <span
                       style={{
                         fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace)',
-                        fontSize: 11,
+                        fontSize: 10,
                         color: '#d2a8ff',
                         fontWeight: 600,
                         flexShrink: 0,
                         letterSpacing: '0.3px',
+                        background: 'rgba(210, 168, 255, 0.1)',
+                        padding: '1px 6px',
+                        borderRadius: 8,
+                        border: '1px solid rgba(210, 168, 255, 0.15)',
                       }}
                     >
                       {entry.hash}
@@ -817,6 +1539,7 @@ export default function SourceControlPanel() {
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                         flex: 1,
+                        fontWeight: 500,
                       }}
                       title={entry.message}
                     >
@@ -824,23 +1547,41 @@ export default function SourceControlPanel() {
                     </span>
                   </div>
 
-                  {/* Author + Date row */}
+                  {/* Author avatar + name + Date row */}
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 6,
                       fontSize: 11,
                       color: 'var(--text-disabled, #545d68)',
                     }}
                   >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <User size={10} />
+                    {/* Author avatar circle */}
+                    <div
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: '50%',
+                        background: color,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: '#fff',
+                        flexShrink: 0,
+                        lineHeight: 1,
+                      }}
+                      title={entry.email || entry.author}
+                    >
+                      {initial}
+                    </div>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {entry.author}
                     </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <Clock size={10} />
-                      {entry.date}
+                    <span style={{ flexShrink: 0, opacity: 0.7 }}>
+                      {formatRelativeDate(entry.date)}
                     </span>
                   </div>
                 </div>
@@ -880,11 +1621,29 @@ export default function SourceControlPanel() {
                 fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace)',
                 color: '#d2a8ff',
                 fontSize: 11,
+                background: 'rgba(210, 168, 255, 0.1)',
+                padding: '1px 6px',
+                borderRadius: 8,
               }}
             >
               {selectedCommit}
             </span>
-            <span style={{ flex: 1 }} />
+            {commitDetail && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-secondary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flex: 1,
+                  fontWeight: 400,
+                }}
+              >
+                {commitDetail.message}
+              </span>
+            )}
+            {!commitDetail && <span style={{ flex: 1 }} />}
             <button
               onClick={() => { setSelectedCommit(null); setCommitDetail(null) }}
               title="Close"
@@ -915,7 +1674,6 @@ export default function SourceControlPanel() {
               background: 'var(--bg-primary)',
               fontSize: 12,
               lineHeight: 1.5,
-              fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace)',
             }}
           >
             {isLoadingDetail ? (
@@ -929,31 +1687,121 @@ export default function SourceControlPanel() {
                 Loading commit details...
               </div>
             ) : commitDetail ? (
-              commitDetail.split('\n').map((line, idx) => {
-                let lineColor = 'var(--text-primary)'
-                let lineBg = 'transparent'
-                if (line.includes('|')) {
-                  lineColor = 'var(--text-secondary)'
-                } else if (line.includes('insertion') || line.includes('deletion') || line.includes('file changed') || line.includes('files changed')) {
-                  lineColor = '#3fb950'
-                  lineBg = 'rgba(63, 185, 80, 0.06)'
-                }
-                return (
+              <div style={{ padding: '8px 0' }}>
+                {/* Commit metadata */}
+                <div style={{ padding: '0 12px 8px', borderBottom: '1px solid var(--border, #3d444d)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <div
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        background: avatarColor(commitDetail.author),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: '#fff',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {(commitDetail.author || '?')[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {commitDetail.author}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-disabled, #545d68)' }}>
+                        {commitDetail.email} · {formatRelativeDate(commitDetail.date)}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
+                    {commitDetail.message}
+                  </div>
+                </div>
+
+                {/* Files changed list */}
+                {commitDetail.filesChanged.length > 0 && (
+                  <div style={{ padding: '6px 0' }}>
+                    <div style={{
+                      padding: '2px 12px 4px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      color: 'var(--text-disabled, #545d68)',
+                    }}>
+                      Files Changed ({commitDetail.filesChanged.length})
+                    </div>
+                    {commitDetail.filesChanged.map((fc, idx) => {
+                      // Parse changes like "10 ++++----" into insertions/deletions
+                      const plusCount = (fc.changes.match(/\+/g) || []).length
+                      const minusCount = (fc.changes.match(/-/g) || []).length
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '2px 12px',
+                            fontSize: 12,
+                            gap: 8,
+                          }}
+                          className="source-control-file-item"
+                        >
+                          <FileText size={13} style={{ opacity: 0.5, flexShrink: 0 }} />
+                          <span
+                            style={{
+                              flex: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              color: 'var(--text-primary)',
+                              fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace)',
+                              fontSize: 11,
+                            }}
+                            title={fc.file}
+                          >
+                            {fc.file}
+                          </span>
+                          <span style={{ display: 'flex', gap: 2, flexShrink: 0, fontSize: 11 }}>
+                            {plusCount > 0 && <span style={{ color: '#3fb950' }}>+{plusCount}</span>}
+                            {minusCount > 0 && <span style={{ color: '#f85149' }}>-{minusCount}</span>}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Summary line */}
+                {commitDetail.summary && (
                   <div
-                    key={idx}
                     style={{
-                      padding: '0 12px',
-                      minHeight: 18,
-                      color: lineColor,
-                      background: lineBg,
-                      whiteSpace: 'pre',
+                      padding: '6px 12px',
+                      fontSize: 11,
+                      color: '#3fb950',
+                      background: 'rgba(63, 185, 80, 0.06)',
+                      borderTop: '1px solid var(--border, #3d444d)',
                     }}
                   >
-                    {line}
+                    {commitDetail.summary}
                   </div>
-                )
-              })
-            ) : null}
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: '16px',
+                  color: 'var(--text-disabled, #545d68)',
+                  textAlign: 'center',
+                }}
+              >
+                No details available
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1006,21 +1854,58 @@ export default function SourceControlPanel() {
         </div>
       </div>
 
-      {/* Branch indicator */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 12px',
-          fontSize: 12,
-          color: 'var(--text-secondary)',
-          borderBottom: '1px solid var(--border)',
-          flexShrink: 0,
-        }}
-      >
-        <GitBranch size={14} />
-        <span style={{ fontWeight: 500 }}>{branch}</span>
+      {/* Branch indicator - enhanced */}
+      <div ref={branchPickerRef} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, borderBottom: '1px solid var(--border)', flexShrink: 0, position: 'relative' }}>
+        <GitBranch size={14} style={{ color: 'var(--text-secondary)' }} />
+        <button
+          onClick={() => { setShowBranchPicker(!showBranchPicker); if (!showBranchPicker) fetchBranches() }}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-primary)',
+            fontWeight: 500,
+            fontSize: 12,
+            padding: '2px 4px',
+            borderRadius: 3,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+          className="source-control-action-btn"
+        >
+          {branch}
+          <ChevronDown size={10} />
+        </button>
+
+        {/* Create branch button */}
+        <button
+          onClick={() => setShowCreateBranch(!showCreateBranch)}
+          title="Create Branch"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 2,
+            borderRadius: 3,
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+          className="source-control-action-btn"
+        >
+          <Plus size={12} />
+        </button>
+
+        {/* Ahead/Behind indicators */}
+        {(ahead > 0 || behind > 0) && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+            {behind > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}><ArrowDown size={10} />{behind}</span>}
+            {ahead > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}><ArrowUp size={10} />{ahead}</span>}
+          </span>
+        )}
+
+        {/* Change count badge */}
         {totalChanges > 0 && (
           <span
             style={{
@@ -1037,6 +1922,154 @@ export default function SourceControlPanel() {
             {totalChanges}
           </span>
         )}
+
+        {/* Branch picker dropdown */}
+        {showBranchPicker && (
+          <div style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            top: '100%',
+            maxHeight: 200,
+            overflowY: 'auto',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            zIndex: 50,
+            padding: 4,
+          }}>
+            {branches.map((b) => (
+              <div
+                key={b.name}
+                onClick={() => handleSwitchBranch(b.name)}
+                className="source-control-file-item"
+                style={{
+                  padding: '5px 10px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  color: b.current ? 'var(--accent-blue, #388bfd)' : 'var(--text-primary)',
+                  fontWeight: b.current ? 600 : 400,
+                }}
+              >
+                <GitBranch size={12} style={{ opacity: 0.6 }} />
+                {b.name}
+                {b.current && <Check size={12} style={{ marginLeft: 'auto', color: 'var(--accent-green, #3fb950)' }} />}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Branch create input */}
+      {showCreateBranch && (
+        <div style={{ padding: '4px 12px', borderBottom: '1px solid var(--border)' }}>
+          <input
+            autoFocus
+            value={newBranchName}
+            onChange={(e) => setNewBranchName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreateBranch()
+              if (e.key === 'Escape') { setShowCreateBranch(false); setNewBranchName('') }
+            }}
+            placeholder="New branch name..."
+            style={{
+              width: '100%',
+              padding: '5px 8px',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--accent-blue, #388bfd)',
+              borderRadius: 4,
+              color: 'var(--text-primary)',
+              fontSize: 12,
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+      )}
+
+      {/* Action toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          padding: '4px 8px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}
+      >
+        <button
+          onClick={handlePull}
+          title="Pull"
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            padding: '4px 8px',
+            fontSize: 11,
+            fontWeight: 500,
+            background: 'var(--bg-tertiary, #2d333b)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+          className="source-control-action-btn"
+        >
+          <ArrowDown size={12} />
+          Pull
+        </button>
+        <button
+          onClick={handlePush}
+          title="Push"
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            padding: '4px 8px',
+            fontSize: 11,
+            fontWeight: 500,
+            background: 'var(--bg-tertiary, #2d333b)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+          className="source-control-action-btn"
+        >
+          <ArrowUp size={12} />
+          Push
+        </button>
+        <button
+          onClick={handleFetch}
+          title="Fetch"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px 6px',
+            background: 'var(--bg-tertiary, #2d333b)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+          className="source-control-action-btn"
+        >
+          <Download size={12} />
+        </button>
       </div>
 
       {/* Tab switcher */}

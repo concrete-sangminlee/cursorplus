@@ -4,6 +4,7 @@ import { useEditorStore } from '@/store/editor'
 import { useChatStore } from '@/store/chat'
 import { useFileStore } from '@/store/files'
 import { useToastStore } from '@/store/toast'
+import { useCompletionStore } from '@/store/completion'
 import NotificationCenter from '@/components/NotificationCenter'
 import {
   GitBranch,
@@ -297,12 +298,31 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
   const errorCount = logs.filter((l) => l.type === 'error').length
   const warningCount = logs.filter((l) => l.type === 'action').length
   const storeUnreadCount = useToastStore((s) => s.getUnreadCount)()
+
+  // Auto-saved indicator: shows briefly when auto-save triggers
+  const [autoSavedVisible, setAutoSavedVisible] = useState(false)
+  const autoSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const handler = () => {
+      setAutoSavedVisible(true)
+      if (autoSavedTimerRef.current) clearTimeout(autoSavedTimerRef.current)
+      autoSavedTimerRef.current = setTimeout(() => setAutoSavedVisible(false), 2000)
+    }
+    window.addEventListener('orion:auto-saved', handler)
+    return () => {
+      window.removeEventListener('orion:auto-saved', handler)
+      if (autoSavedTimerRef.current) clearTimeout(autoSavedTimerRef.current)
+    }
+  }, [])
   const unreadNotifications = storeUnreadCount > 0 ? storeUnreadCount : errorCount + activeAgents
+  const completionEnabled = useCompletionStore((s) => s.enabled)
+  const completionLoading = useCompletionStore((s) => s.isLoading)
+  const setCompletionEnabled = useCompletionStore((s) => s.setEnabled)
   const [notifCenterOpen, setNotifCenterOpen] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
-  const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 })
-  const [selectionInfo, setSelectionInfo] = useState<{ chars: number; lines: number } | null>(null)
+  const [cursorInfo, setCursorInfo] = useState({ line: 1, column: 1, selectedChars: 0, selectedLines: 0, totalLines: 0 })
 
   // Dropdown states
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
@@ -337,28 +357,43 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
 
   // Listen for cursor position changes from EditorPanel
   useEffect(() => {
-    const handleCursorChange = (e: Event) => {
+    const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      if (detail) {
-        setCursorPos({ line: detail.line, column: detail.column })
-      }
+      if (detail) setCursorInfo(detail)
     }
-    const handleSelectionChange = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      setSelectionInfo(detail)
-    }
-    window.addEventListener('orion:cursor-change', handleCursorChange)
-    window.addEventListener('orion:selection-change', handleSelectionChange)
-    return () => {
-      window.removeEventListener('orion:cursor-change', handleCursorChange)
-      window.removeEventListener('orion:selection-change', handleSelectionChange)
-    }
+    window.addEventListener('orion:cursor-position', handler)
+    return () => window.removeEventListener('orion:cursor-position', handler)
   }, [])
 
   // Reset cursor position when the active file changes
   useEffect(() => {
-    setCursorPos({ line: 1, column: 1 })
-    setSelectionInfo(null)
+    setCursorInfo({ line: 1, column: 1, selectedChars: 0, selectedLines: 0, totalLines: 0 })
+  }, [activeFile?.path])
+
+  // Listen for file-info events from EditorPanel to sync indent/EOL/language
+  const [editorLanguageId, setEditorLanguageId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail) return
+      if (detail.useSpaces !== undefined && detail.tabSize !== undefined) {
+        setIndentConfig({ useSpaces: detail.useSpaces, size: detail.tabSize })
+      }
+      if (detail.eol) {
+        setEolSequence(detail.eol as 'LF' | 'CRLF')
+      }
+      if (detail.languageId) {
+        setEditorLanguageId(detail.languageId)
+      }
+    }
+    window.addEventListener('orion:file-info', handler)
+    return () => window.removeEventListener('orion:file-info', handler)
+  }, [])
+
+  // Reset editor language override when active file changes
+  useEffect(() => {
+    setEditorLanguageId(null)
   }, [activeFile?.path])
 
   // Derive display language from file extension
@@ -412,8 +447,9 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
     return ext ? (extMap[ext] || 'Plain Text') : 'Plain Text'
   }
 
-  // Get the current language ID from the active file
+  // Get the current language ID from the active file (prefer editor-reported)
   const getCurrentLanguageId = (): string => {
+    if (editorLanguageId) return editorLanguageId
     if (activeFile?.language) return activeFile.language
     if (!activeFile?.name) return 'plaintext'
     const ext = activeFile.name.split('.').pop()?.toLowerCase()
@@ -454,6 +490,7 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
 
   // ── Language mode action ──────────────────
   const handleLanguageSelect = useCallback((languageId: string) => {
+    setEditorLanguageId(languageId)
     window.dispatchEvent(
       new CustomEvent('orion:set-language', { detail: { languageId } })
     )
@@ -631,13 +668,21 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
       <div className="flex items-center" style={{ height: '100%' }}>
         {activeFile && (
           <>
-            {/* Cursor position */}
-            <StatusItem title={selectionInfo ? `${selectionInfo.chars} characters selected across ${selectionInfo.lines} line(s)` : `Line ${cursorPos.line}, Column ${cursorPos.column}`}>
-              <span>
-                Ln {cursorPos.line}, Col {cursorPos.column}
-                {selectionInfo && (
-                  <span style={{ color: 'var(--accent)', marginLeft: 4 }}>
-                    ({selectionInfo.chars} selected)
+            {/* Cursor position - clickable to trigger Go to Line */}
+            <StatusItem
+              title={cursorInfo.selectedChars > 0 ? `${cursorInfo.selectedChars} characters selected across ${cursorInfo.selectedLines} line(s) - Click to Go to Line` : `Line ${cursorInfo.line}, Column ${cursorInfo.column} - Click to Go to Line (Ctrl+G)`}
+              onClick={() => window.dispatchEvent(new CustomEvent('orion:go-to-line'))}
+            >
+              <span style={{ padding: '0 4px', fontSize: 11 }}>
+                Ln {cursorInfo.line}, Col {cursorInfo.column}
+                {cursorInfo.totalLines > 0 && (
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 4 }}>
+                    / {cursorInfo.totalLines}
+                  </span>
+                )}
+                {cursorInfo.selectedChars > 0 && (
+                  <span style={{ marginLeft: 6, color: 'var(--accent-blue)' }}>
+                    ({cursorInfo.selectedChars} selected{cursorInfo.selectedLines > 1 ? `, ${cursorInfo.selectedLines} lines` : ''})
                   </span>
                 )}
               </span>
@@ -715,11 +760,11 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
             {/* Language mode selector */}
             <div ref={languageRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
               <StatusItem
-                title={`Language: ${getLanguageLabel(activeFile.name, activeFile.language)} (click to change)`}
+                title={`Language: ${getLanguageLabel(activeFile.name, editorLanguageId || activeFile.language)} (click to change)`}
                 onClick={() => setLanguageDropdownOpen((v) => !v)}
               >
                 <span style={{ color: 'var(--text-secondary)' }}>
-                  {getLanguageLabel(activeFile.name, activeFile.language)}
+                  {getLanguageLabel(activeFile.name, editorLanguageId || activeFile.language)}
                 </span>
                 <ChevronDown size={9} style={{ color: 'var(--text-muted)' }} />
               </StatusItem>
@@ -745,6 +790,15 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
             </StatusItem>
           </>
         )}
+
+        {/* AI Autocomplete toggle */}
+        <StatusItem
+          title={completionEnabled ? 'AI Autocomplete: ON' : 'AI Autocomplete: OFF'}
+          onClick={() => setCompletionEnabled(!completionEnabled)}
+        >
+          <Sparkles size={12} style={{ animation: completionLoading ? 'pulse 1s infinite' : 'none', opacity: completionEnabled ? 1 : 0.5 }} />
+          <span style={{ opacity: completionEnabled ? 1 : 0.5 }}>Copilot</span>
+        </StatusItem>
 
         {/* Divider before bell */}
         <div className="status-divider" />
@@ -817,6 +871,21 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
 
         {/* Divider */}
         <div className="status-divider" />
+
+        {/* Auto-saved indicator */}
+        {autoSavedVisible && (
+          <StatusItem title="File auto-saved">
+            <CheckCircle2 size={10} style={{ color: 'var(--accent-green)' }} />
+            <span style={{
+              color: 'var(--accent-green)',
+              fontSize: 10,
+              opacity: 0.9,
+              transition: 'opacity 0.3s ease',
+            }}>
+              Auto-saved
+            </span>
+          </StatusItem>
+        )}
 
         {/* Status */}
         <StatusItem>

@@ -48,16 +48,21 @@ function saveUserSettings(settings: WorkspaceSettings) {
 
 interface WorkspaceStore {
   settings: WorkspaceSettings
+  /** Raw workspace-level overrides (only keys explicitly set in .orion/settings.json) */
+  workspaceOverrides: Record<string, any>
   /** Whether current settings were loaded from a workspace .orion/settings.json */
   isWorkspaceLevel: boolean
   setSettings: (settings: WorkspaceSettings) => void
   updateSettings: (patch: Partial<WorkspaceSettings>) => void
   loadWorkspaceSettings: (rootPath: string) => Promise<void>
   saveWorkspaceSettings: (rootPath: string) => Promise<void>
+  /** Merge a single key/value into the workspace .orion/settings.json and persist */
+  saveWorkspaceSetting: (rootPath: string, key: string, value: any) => Promise<void>
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   settings: { ...DEFAULT_WORKSPACE_SETTINGS, ...loadUserSettings() },
+  workspaceOverrides: {},
   isWorkspaceLevel: false,
 
   setSettings: (settings) => set({ settings }),
@@ -76,12 +81,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ...DEFAULT_WORKSPACE_SETTINGS,
           ...result.settings,
         }
-        set({ settings: merged, isWorkspaceLevel: true })
+        set({ settings: merged, workspaceOverrides: result.settings, isWorkspaceLevel: true })
       } else {
         // Fall back to user-level settings from localStorage
         const userSettings = loadUserSettings()
         set({
           settings: { ...DEFAULT_WORKSPACE_SETTINGS, ...userSettings },
+          workspaceOverrides: {},
           isWorkspaceLevel: false,
         })
       }
@@ -89,6 +95,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const userSettings = loadUserSettings()
       set({
         settings: { ...DEFAULT_WORKSPACE_SETTINGS, ...userSettings },
+        workspaceOverrides: {},
         isWorkspaceLevel: false,
       })
     }
@@ -104,5 +111,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
     // Also persist to localStorage as user-level fallback
     saveUserSettings(settings)
+  },
+
+  saveWorkspaceSetting: async (rootPath: string, key: string, value: any) => {
+    const { workspaceOverrides, settings } = get()
+    const newOverrides = { ...workspaceOverrides, [key]: value }
+    const newSettings = { ...settings, [key]: value } as WorkspaceSettings
+    try {
+      await window.api.workspaceWriteSettings(rootPath, newOverrides)
+      set({ settings: newSettings, workspaceOverrides: newOverrides, isWorkspaceLevel: true })
+    } catch (err) {
+      console.error('Failed to save workspace setting:', err)
+    }
   },
 }))

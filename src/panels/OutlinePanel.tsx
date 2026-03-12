@@ -1,95 +1,331 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useEditorStore } from '@/store/editor'
-import { ListTree, ChevronRight, ChevronDown, Hash, Braces, Type, Box, Variable, ArrowDownAZ, ArrowDown01, Search } from 'lucide-react'
+import { ListTree, ChevronRight, ChevronDown, Hash, Braces, Type, Box, Variable, ArrowDownAZ, ArrowDown01, Search, Layers, Code2, Package, FileCode, Shield, Navigation, Eye, Copy, PenLine, FileText, Files } from 'lucide-react'
 
-interface Symbol {
+interface DocSymbol {
   name: string
-  kind: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'import' | 'export'
+  kind: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'method' | 'property' | 'enum' | 'import' | 'export' | 'namespace'
   line: number
-  children?: Symbol[]
+  indent: number
+  children?: DocSymbol[]
+  exported?: boolean
+  params?: string
+  endLine?: number
 }
 
-// Simple regex-based symbol extraction (no LSP needed)
-function extractSymbols(content: string, language: string): Symbol[] {
-  const symbols: Symbol[] = []
+// Comprehensive regex-based symbol extraction (multi-language)
+function extractSymbols(content: string, language: string): DocSymbol[] {
+  const symbols: DocSymbol[] = []
   const lines = content.split('\n')
 
-  lines.forEach((line, idx) => {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     const trimmed = line.trim()
-    const lineNum = idx + 1
+    const indent = line.length - line.trimStart().length
 
-    // Functions
-    let match = trimmed.match(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)/)
-    if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum }); return }
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue
 
-    // Arrow functions / const functions
-    match = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\(|<)/)
-    if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum }); return }
+    // TypeScript/JavaScript patterns
+    if (['typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'tsx', 'jsx', 'ts', 'js'].includes(language)) {
+      const isExported = /^export\s+/.test(trimmed)
 
-    // Classes
-    match = trimmed.match(/^(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/)
-    if (match) { symbols.push({ name: match[1], kind: 'class', line: lineNum }); return }
+      // Extract parameters from function signatures
+      const extractParams = (str: string): string | undefined => {
+        const pMatch = str.match(/\(([^)]*)\)/)
+        if (pMatch && pMatch[1].trim()) return `(${pMatch[1].trim()})`
+        return undefined
+      }
 
-    // Interfaces
-    match = trimmed.match(/^(?:export\s+)?interface\s+(\w+)/)
-    if (match) { symbols.push({ name: match[1], kind: 'interface', line: lineNum }); return }
+      // Export default function
+      let match = trimmed.match(/^export\s+default\s+function\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'function', line: i + 1, indent, exported: true, params: extractParams(trimmed) }); continue }
 
-    // Type aliases
-    match = trimmed.match(/^(?:export\s+)?type\s+(\w+)\s*=/)
-    if (match) { symbols.push({ name: match[1], kind: 'type', line: lineNum }); return }
+      // Function declarations
+      match = trimmed.match(/^(export\s+)?(async\s+)?function\s+(\w+)/)
+      if (match) { symbols.push({ name: match[3], kind: 'function', line: i + 1, indent, exported: isExported, params: extractParams(trimmed) }); continue }
 
-    // Enums
-    match = trimmed.match(/^(?:export\s+)?enum\s+(\w+)/)
-    if (match) { symbols.push({ name: match[1], kind: 'class', line: lineNum }); return }
+      // Arrow functions assigned to const/let/var
+      if (/^(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s+)?\(/.test(trimmed) ||
+          /^(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s+)?\w+\s*=>/.test(trimmed) ||
+          /^(export\s+)?(const|let|var)\s+(\w+)\s*:\s*\w.*=\s*(async\s+)?\(/.test(trimmed)) {
+        match = trimmed.match(/^(export\s+)?(const|let|var)\s+(\w+)/)
+        if (match) { symbols.push({ name: match[3], kind: 'function', line: i + 1, indent, exported: isExported, params: extractParams(trimmed) }); continue }
+      }
 
-    // React components (export default function)
-    match = trimmed.match(/^export\s+default\s+function\s+(\w+)/)
-    if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum }); return }
+      // Class declarations
+      match = trimmed.match(/^(export\s+)?(abstract\s+)?class\s+(\w+)/)
+      if (match) { symbols.push({ name: match[3], kind: 'class', line: i + 1, indent, exported: isExported }); continue }
 
-    // Python functions/classes
-    if (language === 'python') {
-      match = trimmed.match(/^def\s+(\w+)/)
-      if (match) { symbols.push({ name: match[1], kind: 'function', line: lineNum }); return }
-      match = trimmed.match(/^class\s+(\w+)/)
-      if (match) { symbols.push({ name: match[1], kind: 'class', line: lineNum }); return }
-    }
+      // Interface declarations
+      match = trimmed.match(/^(export\s+)?interface\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'interface', line: i + 1, indent, exported: isExported }); continue }
 
-    // Constants / variables (top-level only - no leading whitespace in original line)
-    if (!line.startsWith(' ') && !line.startsWith('\t')) {
-      match = trimmed.match(/^(?:export\s+)?const\s+(\w+)\s*[=:]/)
-      if (match && !trimmed.includes('=>') && !trimmed.includes('function')) {
-        symbols.push({ name: match[1], kind: 'const', line: lineNum })
-        return
+      // Type declarations
+      match = trimmed.match(/^(export\s+)?type\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'type', line: i + 1, indent, exported: isExported }); continue }
+
+      // Enum declarations
+      match = trimmed.match(/^(export\s+)?enum\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'enum', line: i + 1, indent, exported: isExported }); continue }
+
+      // Namespace declarations
+      match = trimmed.match(/^(export\s+)?namespace\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'namespace', line: i + 1, indent, exported: isExported }); continue }
+
+      // Method definitions in class (indented, no keyword prefix)
+      if (indent > 0) {
+        // Skip control flow and common non-method patterns
+        const skipPatterns = ['if', 'for', 'while', 'switch', 'return', 'case', 'break', 'continue', 'throw', 'try', 'catch', 'finally', 'else', 'import', 'export', 'const', 'let', 'var']
+        const firstWord = trimmed.split(/[\s(]/)[0]
+        if (!skipPatterns.includes(firstWord) && !trimmed.startsWith('{') && !trimmed.startsWith('}')) {
+          // getter/setter
+          match = trimmed.match(/^(get|set)\s+(\w+)\s*\(/)
+          if (match) { symbols.push({ name: `${match[1]} ${match[2]}`, kind: 'property', line: i + 1, indent, params: extractParams(trimmed) }); continue }
+
+          // constructor
+          match = trimmed.match(/^constructor\s*\(/)
+          if (match) { symbols.push({ name: 'constructor', kind: 'method', line: i + 1, indent, params: extractParams(trimmed) }); continue }
+
+          // static/async/private methods
+          match = trimmed.match(/^(?:static\s+)?(?:async\s+)?(?:readonly\s+)?(?:private\s+|protected\s+|public\s+)?(?:static\s+)?(?:async\s+)?(\w+)\s*[(<]/)
+          if (match && match[1] !== 'new' && match[1] !== 'function' && match[1] !== 'class') {
+            symbols.push({ name: match[1], kind: 'method', line: i + 1, indent, params: extractParams(trimmed) })
+            continue
+          }
+        }
+      }
+
+      // Top-level constants/variables (not functions)
+      if (indent === 0) {
+        match = trimmed.match(/^(export\s+)?(const|let|var)\s+(\w+)\s*[=:]/)
+        if (match && !trimmed.includes('=>') && !trimmed.includes('function')) {
+          symbols.push({ name: match[3], kind: 'variable', line: i + 1, indent, exported: isExported })
+          continue
+        }
       }
     }
-  })
 
-  return symbols
+    // Python patterns
+    else if (language === 'python' || language === 'py') {
+      let match = trimmed.match(/^(async\s+)?def\s+(\w+)/)
+      if (match) {
+        const params = trimmed.match(/\(([^)]*)\)/)
+        symbols.push({ name: match[2], kind: indent > 0 ? 'method' : 'function', line: i + 1, indent, params: params ? `(${params[1].trim()})` : undefined })
+        continue
+      }
+      match = trimmed.match(/^class\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'class', line: i + 1, indent }); continue }
+      // Module-level variables
+      if (indent === 0) {
+        match = trimmed.match(/^([A-Z_][A-Z0-9_]*)\s*=/)
+        if (match) { symbols.push({ name: match[1], kind: 'variable', line: i + 1, indent }); continue }
+      }
+    }
+
+    // Go patterns
+    else if (language === 'go') {
+      let match = trimmed.match(/^func\s+\((\w+)\s+\*?(\w+)\)\s+(\w+)/)
+      if (match) { symbols.push({ name: `${match[2]}.${match[3]}`, kind: 'method', line: i + 1, indent }); continue }
+      match = trimmed.match(/^func\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'function', line: i + 1, indent, exported: /^[A-Z]/.test(match[1]) }); continue }
+      match = trimmed.match(/^type\s+(\w+)\s+struct/)
+      if (match) { symbols.push({ name: match[1], kind: 'class', line: i + 1, indent, exported: /^[A-Z]/.test(match[1]) }); continue }
+      match = trimmed.match(/^type\s+(\w+)\s+interface/)
+      if (match) { symbols.push({ name: match[1], kind: 'interface', line: i + 1, indent, exported: /^[A-Z]/.test(match[1]) }); continue }
+      match = trimmed.match(/^type\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'type', line: i + 1, indent, exported: /^[A-Z]/.test(match[1]) }); continue }
+    }
+
+    // Rust patterns
+    else if (language === 'rust' || language === 'rs') {
+      const isPub = /^pub\s+/.test(trimmed)
+      let match = trimmed.match(/^(pub\s+)?(?:\(crate\)\s+)?(async\s+)?fn\s+(\w+)/)
+      if (match) {
+        symbols.push({ name: match[3], kind: indent > 0 ? 'method' : 'function', line: i + 1, indent, exported: isPub })
+        continue
+      }
+      match = trimmed.match(/^(pub\s+)?struct\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'class', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^(pub\s+)?trait\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'interface', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^(pub\s+)?enum\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'enum', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^(pub\s+)?mod\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'namespace', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^(pub\s+)?type\s+(\w+)/)
+      if (match) { symbols.push({ name: match[2], kind: 'type', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^impl\s+(?:<[^>]+>\s+)?(\w+)/)
+      if (match) { symbols.push({ name: `impl ${match[1]}`, kind: 'class', line: i + 1, indent }); continue }
+    }
+
+    // Java/C# patterns
+    else if (language === 'java' || language === 'csharp' || language === 'cs') {
+      const isPub = /^public\s+/.test(trimmed)
+      let match = trimmed.match(/^(?:public|private|protected|static|final|abstract|synchronized|native|\s)*\s+class\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'class', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^(?:public|private|protected|static|final|abstract|synchronized|native|\s)*\s+interface\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'interface', line: i + 1, indent, exported: isPub }); continue }
+      match = trimmed.match(/^(?:public|private|protected|static|final|abstract|synchronized|native|\s)*\s+enum\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'enum', line: i + 1, indent, exported: isPub }); continue }
+    }
+
+    // C/C++ patterns
+    else if (language === 'c' || language === 'cpp' || language === 'h' || language === 'hpp') {
+      let match = trimmed.match(/^(?:static\s+)?(?:inline\s+)?(?:virtual\s+)?(?:const\s+)?(?:\w+[\s*&]+)+(\w+)\s*\(/)
+      if (match && indent === 0) {
+        const name = match[1]
+        if (!['if', 'for', 'while', 'switch', 'return'].includes(name)) {
+          symbols.push({ name, kind: 'function', line: i + 1, indent })
+          continue
+        }
+      }
+      match = trimmed.match(/^(?:class|struct)\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'class', line: i + 1, indent }); continue }
+      match = trimmed.match(/^enum\s+(?:class\s+)?(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'enum', line: i + 1, indent }); continue }
+      match = trimmed.match(/^namespace\s+(\w+)/)
+      if (match) { symbols.push({ name: match[1], kind: 'namespace', line: i + 1, indent }); continue }
+    }
+  }
+
+  return buildHierarchy(symbols)
 }
 
-const kindIcons: Record<Symbol['kind'], typeof Hash> = {
+// Build a tree from flat symbols using indentation levels
+function buildHierarchy(flatSymbols: DocSymbol[]): DocSymbol[] {
+  if (flatSymbols.length === 0) return []
+
+  const root: DocSymbol[] = []
+  const stack: { symbol: DocSymbol; indent: number }[] = []
+
+  for (const sym of flatSymbols) {
+    const node = { ...sym, children: undefined as DocSymbol[] | undefined }
+
+    // Pop stack until we find a parent with less indent
+    while (stack.length > 0 && stack[stack.length - 1].indent >= sym.indent) {
+      stack.pop()
+    }
+
+    if (stack.length === 0) {
+      root.push(node)
+    } else {
+      const parent = stack[stack.length - 1].symbol
+      if (!parent.children) parent.children = []
+      parent.children.push(node)
+    }
+
+    // Only push container types onto the stack
+    if (['class', 'interface', 'namespace', 'enum'].includes(sym.kind)) {
+      stack.push({ symbol: node, indent: sym.indent })
+    }
+  }
+
+  // Compute endLine for each symbol (used for "follow cursor")
+  computeEndLines(root, Infinity)
+
+  return root
+}
+
+// Estimate endLine for symbols based on the next sibling or parent's end
+function computeEndLines(symbols: DocSymbol[], parentEnd: number) {
+  for (let i = 0; i < symbols.length; i++) {
+    const nextLine = i + 1 < symbols.length ? symbols[i + 1].line - 1 : parentEnd
+    symbols[i].endLine = nextLine
+    if (symbols[i].children && symbols[i].children!.length > 0) {
+      computeEndLines(symbols[i].children!, nextLine)
+    }
+  }
+}
+
+// Flatten a symbol tree for flat list views
+function flattenSymbols(symbols: DocSymbol[]): DocSymbol[] {
+  const result: DocSymbol[] = []
+  function walk(syms: DocSymbol[]) {
+    for (const s of syms) {
+      result.push(s)
+      if (s.children) walk(s.children)
+    }
+  }
+  walk(symbols)
+  return result
+}
+
+// Find the deepest symbol containing a given line
+function findSymbolAtLine(symbols: DocSymbol[], line: number): DocSymbol | null {
+  let best: DocSymbol | null = null
+  function walk(syms: DocSymbol[]) {
+    for (const s of syms) {
+      if (line >= s.line && line <= (s.endLine || s.line)) {
+        best = s
+        if (s.children) walk(s.children)
+      }
+    }
+  }
+  walk(symbols)
+  return best
+}
+
+const kindIcons: Record<DocSymbol['kind'], typeof Hash> = {
   function: Hash,
   class: Box,
   interface: Braces,
   type: Type,
   variable: Variable,
-  const: Variable,
-  import: Variable,
-  export: Variable,
+  method: Code2,
+  property: FileCode,
+  enum: Layers,
+  import: Package,
+  export: Package,
+  namespace: Shield,
 }
 
-const kindColors: Record<Symbol['kind'], string> = {
-  function: '#dcdcaa',
-  class: '#4ec9b0',
-  interface: '#4ec9b0',
-  type: '#4ec9b0',
-  variable: '#9cdcfe',
-  const: '#4fc1ff',
+const kindColors: Record<DocSymbol['kind'], string> = {
+  function: '#b48ead',   // purple
+  class: '#d08770',      // orange
+  interface: '#5e81ac',  // blue
+  type: '#88c0d0',       // cyan
+  variable: '#ebcb8b',   // yellow
+  method: '#c8a2d0',     // lighter purple
+  property: '#9a9a9a',   // gray
+  enum: '#a3be8c',       // green
   import: '#c586c0',
   export: '#c586c0',
+  namespace: '#81a1c1',
 }
 
-type SortMode = 'position' | 'name'
+const kindLabels: Record<DocSymbol['kind'], string> = {
+  function: 'Function',
+  class: 'Class',
+  interface: 'Interface',
+  type: 'Type alias',
+  variable: 'Variable',
+  method: 'Method',
+  property: 'Property',
+  enum: 'Enum',
+  import: 'Import',
+  export: 'Export',
+  namespace: 'Namespace',
+}
+
+const groupLabels: Record<string, string> = {
+  function: 'Functions',
+  class: 'Classes',
+  interface: 'Interfaces',
+  type: 'Types',
+  variable: 'Variables',
+  method: 'Methods',
+  property: 'Properties',
+  enum: 'Enums',
+  import: 'Imports',
+  export: 'Exports',
+  namespace: 'Namespaces',
+}
+
+const kindOrder: DocSymbol['kind'][] = ['namespace', 'class', 'interface', 'enum', 'type', 'function', 'method', 'property', 'variable', 'import', 'export']
+
+type SortMode = 'position' | 'name' | 'kind'
+type OutlineScope = 'active' | 'all'
 
 export default function OutlinePanel() {
   const { openFiles, activeFilePath } = useEditorStore()
@@ -97,7 +333,21 @@ export default function OutlinePanel() {
 
   const [filter, setFilter] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('position')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['function', 'class', 'interface', 'type', 'variable', 'const']))
+  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
+  const [cursorLine, setCursorLine] = useState<number>(1)
+  const [followCursor, setFollowCursor] = useState(true)
+  const [outlineScope, setOutlineScope] = useState<OutlineScope>('active')
+  const symbolListRef = useRef<HTMLDivElement>(null)
+
+  // Listen for cursor position changes
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.line) setCursorLine(detail.line)
+    }
+    window.addEventListener('orion:cursor-position', handler)
+    return () => window.removeEventListener('orion:cursor-position', handler)
+  }, [])
 
   // Extract symbols from the active file
   const symbols = useMemo(() => {
@@ -105,64 +355,118 @@ export default function OutlinePanel() {
     return extractSymbols(activeFile.content, activeFile.language || 'typescript')
   }, [activeFile?.content, activeFile?.language])
 
+  // Multi-file symbols
+  const allFileSymbols = useMemo(() => {
+    if (outlineScope !== 'all') return null
+    const result: { file: { name: string; path: string }; symbols: DocSymbol[]; flat: DocSymbol[] }[] = []
+    for (const f of openFiles) {
+      if (!f.content) continue
+      const syms = extractSymbols(f.content, f.language || 'typescript')
+      result.push({ file: { name: f.name, path: f.path }, symbols: syms, flat: flattenSymbols(syms) })
+    }
+    return result
+  }, [openFiles, outlineScope])
+
+  const allSymbolsFlat = useMemo(() => flattenSymbols(symbols), [symbols])
+
+  // Find current symbol under cursor
+  const currentSymbol = useMemo(() => {
+    if (!followCursor) return null
+    return findSymbolAtLine(symbols, cursorLine)
+  }, [symbols, cursorLine, followCursor])
+
+  // Auto-scroll to current symbol
+  useEffect(() => {
+    if (!followCursor || !currentSymbol || !symbolListRef.current) return
+    const key = `sym-${currentSymbol.name}-${currentSymbol.line}`
+    const el = symbolListRef.current.querySelector(`[data-sym-key="${key}"]`)
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [currentSymbol, followCursor])
+
   // Filter symbols
   const filteredSymbols = useMemo(() => {
-    if (!filter.trim()) return symbols
+    if (!filter.trim()) return allSymbolsFlat
     const lower = filter.toLowerCase()
-    return symbols.filter((s) => s.name.toLowerCase().includes(lower))
-  }, [symbols, filter])
+    return allSymbolsFlat.filter((s) => s.name.toLowerCase().includes(lower))
+  }, [allSymbolsFlat, filter])
 
   // Sort symbols
   const sortedSymbols = useMemo(() => {
     const sorted = [...filteredSymbols]
     if (sortMode === 'name') {
       sorted.sort((a, b) => a.name.localeCompare(b.name))
+    } else if (sortMode === 'kind') {
+      sorted.sort((a, b) => {
+        const ai = kindOrder.indexOf(a.kind)
+        const bi = kindOrder.indexOf(b.kind)
+        if (ai !== bi) return ai - bi
+        return a.line - b.line
+      })
     }
     // 'position' keeps original order (by line number)
     return sorted
   }, [filteredSymbols, sortMode])
 
-  // Group symbols by kind
+  // Group symbols by kind (only for 'kind' sort mode)
   const groupedSymbols = useMemo(() => {
-    const groups = new Map<string, Symbol[]>()
+    if (sortMode !== 'kind') return null
+    const groups = new Map<string, DocSymbol[]>()
     for (const sym of sortedSymbols) {
       const key = sym.kind
       if (!groups.has(key)) groups.set(key, [])
       groups.get(key)!.push(sym)
     }
     return groups
-  }, [sortedSymbols])
+  }, [sortedSymbols, sortMode])
 
-  const toggleGroup = (kind: string) => {
-    setExpandedGroups((prev) => {
+  const toggleNode = useCallback((key: string) => {
+    setCollapsedNodes((prev) => {
       const next = new Set(prev)
-      if (next.has(kind)) {
-        next.delete(kind)
+      if (next.has(key)) {
+        next.delete(key)
       } else {
-        next.add(kind)
+        next.add(key)
       }
       return next
     })
-  }
+  }, [])
 
-  const goToLine = (line: number) => {
+  const cycleSortMode = useCallback(() => {
+    setSortMode((m) => {
+      if (m === 'position') return 'name'
+      if (m === 'name') return 'kind'
+      return 'position'
+    })
+  }, [])
+
+  const goToLine = useCallback((line: number) => {
     window.dispatchEvent(
       new CustomEvent('orion:go-to-line', { detail: { line } })
     )
-  }
+  }, [])
 
-  const groupLabels: Record<string, string> = {
-    function: 'Functions',
-    class: 'Classes',
-    interface: 'Interfaces',
-    type: 'Types',
-    variable: 'Variables',
-    const: 'Constants',
-    import: 'Imports',
-    export: 'Exports',
-  }
+  const copySymbolName = useCallback((name: string) => {
+    navigator.clipboard.writeText(name).catch(() => {})
+  }, [])
 
-  if (!activeFile) {
+  const peekReferences = useCallback((symbol: DocSymbol) => {
+    window.dispatchEvent(
+      new CustomEvent('orion:peek-references', { detail: { name: symbol.name, line: symbol.line } })
+    )
+  }, [])
+
+  const renameSymbol = useCallback((symbol: DocSymbol) => {
+    window.dispatchEvent(
+      new CustomEvent('orion:rename-symbol', { detail: { name: symbol.name, line: symbol.line } })
+    )
+  }, [])
+
+  const sortLabel = sortMode === 'position' ? 'By position' : sortMode === 'name' ? 'By name' : 'By kind'
+  const sortTitle = `Sort: ${sortLabel} (click to cycle)`
+
+  if (!activeFile && outlineScope === 'active') {
     return (
       <div
         style={{
@@ -184,6 +488,204 @@ export default function OutlinePanel() {
     )
   }
 
+  // Render tree view (position mode, no filter)
+  const renderTree = (syms: DocSymbol[], depth: number = 0) => {
+    return syms.map((sym, i) => {
+      const key = `${sym.name}-${sym.line}`
+      const hasChildren = sym.children && sym.children.length > 0
+      const isCollapsed = collapsedNodes.has(key)
+      const isCurrent = currentSymbol && currentSymbol.name === sym.name && currentSymbol.line === sym.line
+
+      return (
+        <div key={`${key}-${i}`}>
+          {/* Indentation guide lines */}
+          {depth > 0 && (
+            <div style={{ position: 'absolute', left: 8 + (depth - 1) * 16 + 7, top: 0, bottom: 0, width: 1, background: 'var(--border)', opacity: 0.4, pointerEvents: 'none' }} />
+          )}
+          <SymbolItem
+            symbol={sym}
+            depth={depth}
+            hasChildren={hasChildren}
+            isCollapsed={isCollapsed}
+            isCurrent={!!isCurrent}
+            onToggle={() => toggleNode(key)}
+            onClick={() => goToLine(sym.line)}
+            onCopyName={() => copySymbolName(sym.name)}
+            onPeekReferences={() => peekReferences(sym)}
+            onRename={() => renameSymbol(sym)}
+          />
+          <div style={{
+            overflow: 'hidden',
+            maxHeight: hasChildren && isCollapsed ? 0 : hasChildren ? '9999px' : 0,
+            transition: 'max-height 0.2s ease',
+            position: 'relative',
+          }}>
+            {hasChildren && !isCollapsed && (
+              <>
+                {/* Indentation guide line for this level */}
+                <div style={{
+                  position: 'absolute',
+                  left: 8 + depth * 16 + 7,
+                  top: 0,
+                  bottom: 0,
+                  width: 1,
+                  background: 'var(--border)',
+                  opacity: 0.35,
+                  pointerEvents: 'none',
+                  zIndex: 1,
+                }} />
+                {renderTree(sym.children!, depth + 1)}
+              </>
+            )}
+          </div>
+        </div>
+      )
+    })
+  }
+
+  const showTree = sortMode === 'position' && !filter.trim()
+
+  // Multi-file outline rendering
+  const renderMultiFile = () => {
+    if (!allFileSymbols || allFileSymbols.length === 0) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: 12, padding: 20, gap: 8 }}>
+          <Files size={24} strokeWidth={1} />
+          <span>No files open</span>
+        </div>
+      )
+    }
+
+    return allFileSymbols.map(({ file, symbols: fileSym, flat }) => {
+      const groupKey = `file-group-${file.path}`
+      const isCollapsed = collapsedNodes.has(groupKey)
+      const matchedSymbols = filter.trim()
+        ? flat.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()))
+        : flat
+      if (filter.trim() && matchedSymbols.length === 0) return null
+
+      return (
+        <div key={file.path}>
+          <button
+            onClick={() => toggleNode(groupKey)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              width: '100%',
+              padding: '5px 8px',
+              background: file.path === activeFilePath ? 'var(--bg-tertiary)' : 'none',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 600,
+              textAlign: 'left',
+              userSelect: 'none',
+              borderBottom: '1px solid var(--border)',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-tertiary)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = file.path === activeFilePath ? 'var(--bg-tertiary)' : 'none' }}
+          >
+            {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            <FileText size={12} style={{ color: 'var(--text-muted)' }} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{flat.length}</span>
+          </button>
+          {!isCollapsed && (
+            filter.trim() ? (
+              matchedSymbols.map((sym, idx) => (
+                <SymbolItem
+                  key={`${sym.name}-${sym.line}-${idx}`}
+                  symbol={sym}
+                  depth={1}
+                  isCurrent={false}
+                  onClick={() => {
+                    // Switch to file first if needed
+                    if (file.path !== activeFilePath) {
+                      const f = openFiles.find(of => of.path === file.path)
+                      if (f) {
+                        useEditorStore.getState().openFile(f)
+                      }
+                    }
+                    setTimeout(() => goToLine(sym.line), 50)
+                  }}
+                  onCopyName={() => copySymbolName(sym.name)}
+                  onPeekReferences={() => peekReferences(sym)}
+                  onRename={() => renameSymbol(sym)}
+                />
+              ))
+            ) : (
+              renderFileTreeSymbols(fileSym, 1, file.path)
+            )
+          )}
+        </div>
+      )
+    })
+  }
+
+  const renderFileTreeSymbols = (syms: DocSymbol[], depth: number, filePath: string): React.ReactNode => {
+    return syms.map((sym, i) => {
+      const key = `${filePath}-${sym.name}-${sym.line}`
+      const hasChildren = sym.children && sym.children.length > 0
+      const isCollapsed = collapsedNodes.has(key)
+
+      return (
+        <div key={`${key}-${i}`} style={{ position: 'relative' }}>
+          {depth > 1 && (
+            <div style={{
+              position: 'absolute',
+              left: 8 + (depth - 1) * 16 + 7,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              background: 'var(--border)',
+              opacity: 0.35,
+              pointerEvents: 'none',
+            }} />
+          )}
+          <SymbolItem
+            symbol={sym}
+            depth={depth}
+            hasChildren={hasChildren}
+            isCollapsed={isCollapsed}
+            isCurrent={false}
+            onToggle={() => toggleNode(key)}
+            onClick={() => {
+              if (filePath !== activeFilePath) {
+                const f = openFiles.find(of => of.path === filePath)
+                if (f) useEditorStore.getState().openFile(f)
+              }
+              setTimeout(() => goToLine(sym.line), 50)
+            }}
+            onCopyName={() => copySymbolName(sym.name)}
+            onPeekReferences={() => peekReferences(sym)}
+            onRename={() => renameSymbol(sym)}
+          />
+          {hasChildren && !isCollapsed && (
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                position: 'absolute',
+                left: 8 + depth * 16 + 7,
+                top: 0,
+                bottom: 0,
+                width: 1,
+                background: 'var(--border)',
+                opacity: 0.35,
+                pointerEvents: 'none',
+              }} />
+              {renderFileTreeSymbols(sym.children!, depth + 1, filePath)}
+            </div>
+          )}
+        </div>
+      )
+    })
+  }
+
+  const totalSymbolCount = outlineScope === 'all'
+    ? (allFileSymbols?.reduce((acc, f) => acc + f.flat.length, 0) || 0)
+    : allSymbolsFlat.length
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header */}
@@ -204,66 +706,159 @@ export default function OutlinePanel() {
         }}
       >
         <span>Outline</span>
-        <button
-          onClick={() => setSortMode((m) => (m === 'position' ? 'name' : 'position'))}
-          title={sortMode === 'position' ? 'Sort by name' : 'Sort by position'}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            padding: 2,
-            display: 'flex',
-            alignItems: 'center',
-            borderRadius: 3,
-          }}
-          onMouseEnter={(e) => { (e.target as HTMLElement).style.color = 'var(--text-primary)' }}
-          onMouseLeave={(e) => { (e.target as HTMLElement).style.color = 'var(--text-muted)' }}
-        >
-          {sortMode === 'position' ? <ArrowDown01 size={14} /> : <ArrowDownAZ size={14} />}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {/* Follow cursor toggle */}
+          <button
+            onClick={() => setFollowCursor(f => !f)}
+            title={followCursor ? 'Follow cursor: ON' : 'Follow cursor: OFF'}
+            style={{
+              background: followCursor ? 'var(--accent-bg, rgba(59,130,246,0.15))' : 'none',
+              border: followCursor ? '1px solid var(--accent, #3b82f6)' : '1px solid transparent',
+              color: followCursor ? 'var(--accent, #3b82f6)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 2,
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { if (!followCursor) (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)' }}
+            onMouseLeave={(e) => { if (!followCursor) (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)' }}
+          >
+            <Navigation size={13} />
+          </button>
+          <span style={{ fontSize: 9, color: 'var(--text-muted)', marginRight: 2, marginLeft: 2, textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}>
+            {sortLabel}
+          </span>
+          <button
+            onClick={cycleSortMode}
+            title={sortTitle}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 2,
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)' }}
+          >
+            {sortMode === 'position' ? <ArrowDown01 size={14} /> : sortMode === 'name' ? <ArrowDownAZ size={14} /> : <Layers size={14} />}
+          </button>
+        </div>
       </div>
 
-      {/* Search/filter input */}
-      <div
-        style={{
-          padding: '6px 8px',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'var(--bg-primary)',
-            borderRadius: 4,
-            border: '1px solid var(--border)',
-            padding: '4px 8px',
-          }}
-        >
-          <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Filter symbols..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+      {/* Scope selector + Search */}
+      <div style={{ borderBottom: '1px solid var(--border)' }}>
+        {/* Scope dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '4px 8px 0' }}>
+          <button
+            onClick={() => setOutlineScope('active')}
             style={{
               flex: 1,
-              background: 'transparent',
+              padding: '3px 0',
               border: 'none',
-              outline: 'none',
-              color: 'var(--text-primary)',
-              fontSize: 12,
-              fontFamily: 'inherit',
+              borderBottom: outlineScope === 'active' ? '2px solid var(--accent, #3b82f6)' : '2px solid transparent',
+              background: 'none',
+              color: outlineScope === 'active' ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontSize: 11,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              fontWeight: outlineScope === 'active' ? 600 : 400,
+              transition: 'all 0.15s ease',
             }}
-          />
+            title="Show outline for active file"
+          >
+            <FileText size={11} />
+            Active File
+          </button>
+          <button
+            onClick={() => setOutlineScope('all')}
+            style={{
+              flex: 1,
+              padding: '3px 0',
+              border: 'none',
+              borderBottom: outlineScope === 'all' ? '2px solid var(--accent, #3b82f6)' : '2px solid transparent',
+              background: 'none',
+              color: outlineScope === 'all' ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontSize: 11,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              fontWeight: outlineScope === 'all' ? 600 : 400,
+              transition: 'all 0.15s ease',
+            }}
+            title="Show outline for all open files"
+          >
+            <Files size={11} />
+            All Files
+          </button>
+        </div>
+
+        {/* Search/filter input */}
+        <div style={{ padding: '6px 8px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'var(--bg-primary)',
+              borderRadius: 4,
+              border: '1px solid var(--border)',
+              padding: '4px 8px',
+            }}
+          >
+            <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Filter symbols..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: 'var(--text-primary)',
+                fontSize: 12,
+                fontFamily: 'inherit',
+              }}
+            />
+            {filter && (
+              <button
+                onClick={() => setFilter('')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: 14,
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Clear filter"
+              >
+                x
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Symbol list */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
-        {sortedSymbols.length === 0 ? (
+      <div ref={symbolListRef} style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
+        {outlineScope === 'all' ? (
+          renderMultiFile()
+        ) : (showTree ? symbols.length === 0 : sortedSymbols.length === 0) ? (
           <div
             style={{
               display: 'flex',
@@ -278,17 +873,22 @@ export default function OutlinePanel() {
             }}
           >
             <ListTree size={24} strokeWidth={1} />
-            <span>No symbols found</span>
+            <span>{filter ? 'No matching symbols' : 'No symbols found'}</span>
           </div>
-        ) : (
+        ) : showTree ? (
+          <div style={{ position: 'relative' }}>
+            {renderTree(symbols)}
+          </div>
+        ) : groupedSymbols ? (
+          // Grouped by kind
           Array.from(groupedSymbols.entries()).map(([kind, syms]) => {
-            const isExpanded = expandedGroups.has(kind)
-            const GroupIcon = kindIcons[kind as Symbol['kind']] || Hash
+            const groupKey = `group-${kind}`
+            const isCollapsed = collapsedNodes.has(groupKey)
+            const GroupIcon = kindIcons[kind as DocSymbol['kind']] || Hash
             return (
               <div key={kind}>
-                {/* Group header */}
                 <button
-                  onClick={() => toggleGroup(kind)}
+                  onClick={() => toggleNode(groupKey)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -307,22 +907,49 @@ export default function OutlinePanel() {
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-tertiary)' }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                 >
-                  {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  <GroupIcon size={12} style={{ color: kindColors[kind as Symbol['kind']] || 'var(--text-muted)' }} />
+                  {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  <GroupIcon size={12} style={{ color: kindColors[kind as DocSymbol['kind']] || 'var(--text-muted)' }} />
                   <span>{groupLabels[kind] || kind}</span>
                   <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 10 }}>
                     {syms.length}
                   </span>
                 </button>
-
-                {/* Symbol items */}
-                {isExpanded &&
-                  syms.map((sym, i) => (
-                    <SymbolItem key={`${sym.name}-${sym.line}-${i}`} symbol={sym} onClick={() => goToLine(sym.line)} />
-                  ))}
+                <div style={{
+                  overflow: 'hidden',
+                  maxHeight: isCollapsed ? 0 : '9999px',
+                  transition: 'max-height 0.2s ease',
+                }}>
+                  {!isCollapsed &&
+                    syms.map((sym, idx) => (
+                      <SymbolItem
+                        key={`${sym.name}-${sym.line}-${idx}`}
+                        symbol={sym}
+                        depth={1}
+                        isCurrent={!!(currentSymbol && currentSymbol.name === sym.name && currentSymbol.line === sym.line)}
+                        onClick={() => goToLine(sym.line)}
+                        onCopyName={() => copySymbolName(sym.name)}
+                        onPeekReferences={() => peekReferences(sym)}
+                        onRename={() => renameSymbol(sym)}
+                      />
+                    ))}
+                </div>
               </div>
             )
           })
+        ) : (
+          // Flat list (name sort or filtered)
+          sortedSymbols.map((sym, idx) => (
+            <SymbolItem
+              key={`${sym.name}-${sym.line}-${idx}`}
+              symbol={sym}
+              depth={0}
+              isCurrent={!!(currentSymbol && currentSymbol.name === sym.name && currentSymbol.line === sym.line)}
+              onClick={() => goToLine(sym.line)}
+              onCopyName={() => copySymbolName(sym.name)}
+              onPeekReferences={() => peekReferences(sym)}
+              onRename={() => renameSymbol(sym)}
+            />
+          ))
         )}
       </div>
 
@@ -338,47 +965,256 @@ export default function OutlinePanel() {
           userSelect: 'none',
         }}
       >
-        <span>{symbols.length} symbol{symbols.length !== 1 ? 's' : ''}</span>
-        <span>{activeFile.name}</span>
+        <span>{totalSymbolCount} symbol{totalSymbolCount !== 1 ? 's' : ''}</span>
+        <span>{outlineScope === 'all' ? `${openFiles.length} files` : activeFile?.name || ''}</span>
       </div>
     </div>
   )
 }
 
-function SymbolItem({ symbol, onClick }: { symbol: Symbol; onClick: () => void }) {
+function SymbolItem({
+  symbol,
+  depth = 0,
+  hasChildren,
+  isCollapsed,
+  isCurrent,
+  onToggle,
+  onClick,
+  onCopyName,
+  onPeekReferences,
+  onRename,
+}: {
+  symbol: DocSymbol
+  depth?: number
+  hasChildren?: boolean
+  isCollapsed?: boolean
+  isCurrent: boolean
+  onToggle?: () => void
+  onClick: () => void
+  onCopyName?: () => void
+  onPeekReferences?: () => void
+  onRename?: () => void
+}) {
   const [hovered, setHovered] = useState(false)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const Icon = kindIcons[symbol.kind] || Hash
   const color = kindColors[symbol.kind] || 'var(--text-muted)'
+  const leftPad = 8 + depth * 16
+  const symKey = `sym-${symbol.name}-${symbol.line}`
+
+  // Show tooltip after a short hover delay
+  useEffect(() => {
+    if (hovered) {
+      hoverTimerRef.current = setTimeout(() => setTooltipVisible(true), 500)
+    } else {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+      setTooltipVisible(false)
+    }
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    }
+  }, [hovered])
 
   return (
+    <div style={{ position: 'relative' }}>
+      <button
+        data-sym-key={symKey}
+        onClick={(e) => {
+          // If clicking on the chevron area and has children, toggle
+          if (hasChildren && onToggle) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const clickX = e.clientX - rect.left
+            if (clickX < leftPad + 16) {
+              onToggle()
+              return
+            }
+          }
+          onClick()
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          width: '100%',
+          padding: `3px 8px 3px ${leftPad}px`,
+          background: isCurrent
+            ? 'var(--accent-bg, rgba(59,130,246,0.12))'
+            : hovered
+              ? 'var(--bg-tertiary)'
+              : 'transparent',
+          border: 'none',
+          borderLeft: isCurrent ? '2px solid var(--accent, #3b82f6)' : '2px solid transparent',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+          textAlign: 'left',
+          userSelect: 'none',
+          transition: 'background 0.15s ease, border-left-color 0.15s ease',
+          position: 'relative',
+        }}
+      >
+        {hasChildren ? (
+          <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            {isCollapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+          </span>
+        ) : (
+          <span style={{ width: 10, flexShrink: 0 }} />
+        )}
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 16,
+            height: 16,
+            borderRadius: 3,
+            backgroundColor: `${color}20`,
+            flexShrink: 0,
+          }}
+        >
+          <Icon size={11} style={{ color }} />
+        </span>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+          {symbol.name}
+          {/* Export badge */}
+          {symbol.exported && (
+            <span style={{
+              fontSize: 8,
+              padding: '0 3px',
+              borderRadius: 2,
+              background: 'rgba(163,190,140,0.15)',
+              color: '#a3be8c',
+              fontWeight: 600,
+              letterSpacing: '0.3px',
+              lineHeight: '14px',
+              flexShrink: 0,
+            }}>
+              export
+            </span>
+          )}
+        </span>
+        {/* Line number in muted text */}
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, opacity: hovered ? 1 : 0.5, fontFamily: 'monospace', minWidth: 28, textAlign: 'right' }}>
+          Ln {symbol.line}
+        </span>
+        {/* Inline action buttons - visible on hover */}
+        {hovered && (
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              marginLeft: 2,
+              flexShrink: 0,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <InlineActionButton title="Go to symbol" onClick={onClick}>
+              <Navigation size={11} />
+            </InlineActionButton>
+            <InlineActionButton title="Peek references" onClick={onPeekReferences}>
+              <Eye size={11} />
+            </InlineActionButton>
+            <InlineActionButton title="Copy name" onClick={onCopyName}>
+              <Copy size={11} />
+            </InlineActionButton>
+            <InlineActionButton title="Rename symbol" onClick={onRename}>
+              <PenLine size={11} />
+            </InlineActionButton>
+          </span>
+        )}
+      </button>
+
+      {/* Hover tooltip with symbol details */}
+      {tooltipVisible && (
+        <div
+          style={{
+            position: 'absolute',
+            left: leftPad + 30,
+            top: '100%',
+            zIndex: 1000,
+            background: 'var(--bg-secondary, #1e1e2e)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            padding: '8px 12px',
+            fontSize: 11,
+            color: 'var(--text-primary)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            minWidth: 180,
+            maxWidth: 300,
+            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+            <Icon size={12} style={{ color }} />
+            <span>{symbol.name}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 10, color: 'var(--text-muted)' }}>
+            <span style={{
+              padding: '1px 5px',
+              borderRadius: 3,
+              background: `${color}15`,
+              color,
+              fontWeight: 500,
+            }}>
+              {kindLabels[symbol.kind] || symbol.kind}
+            </span>
+            <span>Line {symbol.line}</span>
+            {symbol.exported && (
+              <span style={{
+                padding: '1px 5px',
+                borderRadius: 3,
+                background: 'rgba(163,190,140,0.15)',
+                color: '#a3be8c',
+                fontWeight: 500,
+              }}>
+                exported
+              </span>
+            )}
+          </div>
+          {symbol.params && (
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: "'Cascadia Code', 'Fira Code', monospace", marginTop: 2, wordBreak: 'break-all' }}>
+              {symbol.params}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InlineActionButton({ title, onClick, children }: { title: string; onClick?: () => void; children: React.ReactNode }) {
+  const [hovered, setHovered] = useState(false)
+  return (
     <button
-      onClick={onClick}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        onClick?.()
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        background: hovered ? 'var(--bg-quaternary, rgba(255,255,255,0.1))' : 'none',
+        border: 'none',
+        color: hovered ? 'var(--text-primary)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        padding: 2,
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
-        width: '100%',
-        padding: '3px 8px 3px 28px',
-        background: hovered ? 'var(--bg-tertiary)' : 'transparent',
-        border: 'none',
-        color: 'var(--text-primary)',
-        cursor: 'pointer',
-        fontSize: 12,
-        fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
-        textAlign: 'left',
-        userSelect: 'none',
-        transition: 'background 0.1s ease',
+        borderRadius: 3,
+        transition: 'all 0.1s ease',
       }}
     >
-      <Icon size={12} style={{ color, flexShrink: 0 }} />
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {symbol.name}
-      </span>
-      <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
-        :{symbol.line}
-      </span>
+      {children}
     </button>
   )
 }

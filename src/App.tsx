@@ -1,48 +1,114 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { useFileWatcher } from './hooks/useIpc'
+import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react'
+import { Upload } from 'lucide-react'
+import { useFileWatcher, useExternalFileWatcher } from './hooks/useIpc'
 import { useOmo } from './hooks/useOmo'
+import { loadLayout, useLayoutPersistence } from './hooks/useLayoutPersistence'
+import { useRecoveryCheck, clearRecovery } from './hooks/useAutoSave'
 import { useEditorStore } from '@/store/editor'
+import { useFileStore } from '@/store/files'
+import { useWorkspaceStore } from '@/store/workspace'
+import { useToastStore } from '@/store/toast'
+import ErrorBoundary from './components/ErrorBoundary'
+import SplashScreen from './components/SplashScreen'
 import TitleBar from './components/TitleBar'
 import ActivityBar, { type PanelView } from './components/ActivityBar'
 import Resizer from './components/Resizer'
 import StatusBar from './components/StatusBar'
-import SettingsModal from './components/SettingsModal'
-import AboutDialog from './components/AboutDialog'
-import KeyboardShortcuts from './components/KeyboardShortcuts'
 import CommandPalette from '@/components/CommandPalette'
-import SnippetManager from '@/components/SnippetManager'
 import ToastContainer from '@/components/Toast'
-import AgentPanel from './panels/AgentPanel'
 import FileExplorer from './panels/FileExplorer'
-import SearchPanel from '@/panels/SearchPanel'
-import SourceControlPanel from '@/panels/SourceControlPanel'
-import OutlinePanel from '@/panels/OutlinePanel'
-import ExtensionsPanel from './panels/ExtensionsPanel'
 import EditorPanel from './panels/EditorPanel'
-import ChatPanel from './panels/ChatPanel'
 import BottomPanel from './panels/BottomPanel'
 import {
   DEFAULT_SIDE_PANEL_WIDTH,
   DEFAULT_RIGHT_PANEL_WIDTH,
   DEFAULT_BOTTOM_PANEL_HEIGHT,
-  MIN_PANEL_WIDTH,
+  SIDE_PANEL_MIN,
+  SIDE_PANEL_MAX,
+  RIGHT_PANEL_MIN,
+  RIGHT_PANEL_MAX,
+  BOTTOM_PANEL_MIN,
+  BOTTOM_PANEL_MAX,
+  SIDE_PANEL_SNAP_POINTS,
+  RIGHT_PANEL_SNAP_POINTS,
+  BOTTOM_PANEL_SNAP_POINTS,
 } from '@shared/constants'
+import type { ResizerConstraints } from './components/Resizer'
+
+// Lazy-loaded panel components (not immediately visible)
+const ChatPanel = React.lazy(() => import('./panels/ChatPanel'))
+const SearchPanel = React.lazy(() => import('@/panels/SearchPanel'))
+const SourceControlPanel = React.lazy(() => import('@/panels/SourceControlPanel'))
+const ExtensionsPanel = React.lazy(() => import('./panels/ExtensionsPanel'))
+const OutlinePanel = React.lazy(() => import('@/panels/OutlinePanel'))
+const AgentPanel = React.lazy(() => import('./panels/AgentPanel'))
+const DebugPanel = React.lazy(() => import('./panels/DebugPanel'))
+const TestingPanel = React.lazy(() => import('./panels/TestingPanel'))
+
+// Lazy-loaded modal/dialog components (only shown on demand)
+const SettingsModal = React.lazy(() => import('./components/SettingsModal'))
+const KeyboardShortcuts = React.lazy(() => import('./components/KeyboardShortcuts'))
+const AboutDialog = React.lazy(() => import('./components/AboutDialog'))
+const SnippetManager = React.lazy(() => import('@/components/SnippetManager'))
+
+/** Minimal loading placeholder for lazy panels */
+function PanelFallback() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        width: '100%',
+        color: 'var(--text-muted)',
+        fontSize: 12,
+      }}
+    >
+      <span
+        style={{
+          display: 'inline-block',
+          width: 16,
+          height: 16,
+          border: '2px solid var(--border)',
+          borderTopColor: 'var(--accent)',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+          marginRight: 8,
+        }}
+      />
+      Loading...
+    </div>
+  )
+}
+
+// Compute initial layout once (before first render) so values are read synchronously
+const initialLayout = loadLayout({
+  sidePanelWidth: DEFAULT_SIDE_PANEL_WIDTH,
+  rightPanelWidth: DEFAULT_RIGHT_PANEL_WIDTH,
+  bottomPanelHeight: DEFAULT_BOTTOM_PANEL_HEIGHT,
+  sidebarVisible: true,
+  bottomVisible: true,
+  chatVisible: true,
+})
 
 export default function App() {
+  const [splashDone, setSplashDone] = useState(false)
   const [activeView, setActiveView] = useState<PanelView>('explorer')
-  const [sidePanelWidth, setSidePanelWidth] = useState(DEFAULT_SIDE_PANEL_WIDTH)
-  const [rightPanelWidth, setRightPanelWidth] = useState(DEFAULT_RIGHT_PANEL_WIDTH)
-  const [bottomPanelHeight, setBottomPanelHeight] = useState(DEFAULT_BOTTOM_PANEL_HEIGHT)
+  const [sidePanelWidth, setSidePanelWidth] = useState(initialLayout.sidePanelWidth)
+  const [rightPanelWidth, setRightPanelWidth] = useState(initialLayout.rightPanelWidth)
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(initialLayout.bottomPanelHeight)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [snippetsOpen, setSnippetsOpen] = useState(false)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
-  const [bottomVisible, setBottomVisible] = useState(true)
-  const [chatVisible, setChatVisible] = useState(true)
+  const [sidebarVisible, setSidebarVisible] = useState(initialLayout.sidebarVisible)
+  const [bottomVisible, setBottomVisible] = useState(initialLayout.bottomVisible)
+  const [chatVisible, setChatVisible] = useState(initialLayout.chatVisible)
   const [zenMode, setZenMode] = useState(false)
-  const [zenExitHovered, setZenExitHovered] = useState(false)
+  const [zenExitVisible, setZenExitVisible] = useState(false)
+  const zenExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Store pre-zen state so we can restore on exit
   const preZenState = useRef<{
@@ -80,18 +146,206 @@ export default function App() {
     })
   }, [sidebarVisible, bottomVisible, chatVisible])
 
-  const handleSideResize = useCallback((delta: number) => {
-    setSidePanelWidth((w) => Math.max(MIN_PANEL_WIDTH, w + delta))
-  }, [])
-  const handleRightResize = useCallback((delta: number) => {
-    setRightPanelWidth((w) => Math.max(MIN_PANEL_WIDTH, w - delta))
-  }, [])
-  const handleBottomResize = useCallback((delta: number) => {
-    setBottomPanelHeight((h) => Math.max(100, h - delta))
+  // Show zen exit hint for 3 seconds when entering zen mode
+  useEffect(() => {
+    if (zenMode) {
+      setZenExitVisible(true)
+      zenExitTimerRef.current = setTimeout(() => setZenExitVisible(false), 3000)
+    } else {
+      setZenExitVisible(false)
+      if (zenExitTimerRef.current) clearTimeout(zenExitTimerRef.current)
+    }
+    return () => {
+      if (zenExitTimerRef.current) clearTimeout(zenExitTimerRef.current)
+    }
+  }, [zenMode])
+
+  // ── Global drag-and-drop from OS file manager ──────────────────
+  const [globalDragOver, setGlobalDragOver] = useState(false)
+  const globalDragCounterRef = useRef(0)
+
+  const handleGlobalDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    globalDragCounterRef.current++
+    if (e.dataTransfer.types.includes('Files')) {
+      setGlobalDragOver(true)
+    }
   }, [])
 
+  const handleGlobalDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [])
+
+  const handleGlobalDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    globalDragCounterRef.current--
+    if (globalDragCounterRef.current <= 0) {
+      globalDragCounterRef.current = 0
+      setGlobalDragOver(false)
+    }
+  }, [])
+
+  const handleGlobalDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    globalDragCounterRef.current = 0
+    setGlobalDragOver(false)
+
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+
+    const { addToast } = useToastStore.getState()
+    const { openFile } = useEditorStore.getState()
+    const { setRootPath, setFileTree } = useFileStore.getState()
+
+    // Check if a single folder was dropped (Electron exposes .path on File objects)
+    // A dropped folder typically has no type or size=0 in Electron
+    if (files.length === 1) {
+      const droppedFile = files[0]
+      const filePath = (droppedFile as any).path as string | undefined
+      if (filePath) {
+        try {
+          // Try to read as directory first
+          const tree = await window.api.readDir(filePath)
+          if (tree && Array.isArray(tree) && tree.length >= 0) {
+            // It's a valid directory - set as workspace root
+            setRootPath(filePath)
+            await useWorkspaceStore.getState().loadWorkspaceSettings(filePath)
+            setFileTree(tree)
+            window.api.watchStart(filePath)
+            addToast({ type: 'success', message: `Opened folder: ${droppedFile.name}`, duration: 2000 })
+            return
+          }
+        } catch {
+          // Not a directory, fall through to open as file
+        }
+      }
+    }
+
+    // Open files in the editor
+    let openedCount = 0
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const filePath = (file as any).path as string | undefined
+      if (!filePath) continue
+
+      // Try opening as a folder first for multi-drops
+      try {
+        const tree = await window.api.readDir(filePath)
+        if (tree && Array.isArray(tree)) {
+          // Skip folders in multi-file drop (only first single folder gets set as workspace)
+          continue
+        }
+      } catch {
+        // Not a directory, open as file
+      }
+
+      try {
+        const result = await window.api.readFile(filePath)
+        openFile(
+          {
+            path: filePath,
+            name: file.name,
+            content: result.content,
+            language: result.language,
+            isModified: false,
+            aiModified: false,
+          },
+          { preview: false },
+        )
+        openedCount++
+      } catch (err: any) {
+        addToast({ type: 'error', message: `Failed to open ${file.name}: ${err?.message || err}` })
+      }
+    }
+
+    if (openedCount > 0) {
+      addToast({
+        type: 'success',
+        message: openedCount === 1
+          ? `Opened ${files[0].name}`
+          : `Opened ${openedCount} files`,
+        duration: 2000,
+      })
+    }
+  }, [])
+
+  // --- Resizer constraints ---
+  const sideConstraints: ResizerConstraints = {
+    min: SIDE_PANEL_MIN, max: SIDE_PANEL_MAX,
+    defaultSize: DEFAULT_SIDE_PANEL_WIDTH,
+    snapPoints: SIDE_PANEL_SNAP_POINTS, snapThreshold: 5,
+  }
+  const rightConstraints: ResizerConstraints = {
+    min: RIGHT_PANEL_MIN, max: RIGHT_PANEL_MAX,
+    defaultSize: DEFAULT_RIGHT_PANEL_WIDTH,
+    snapPoints: RIGHT_PANEL_SNAP_POINTS, snapThreshold: 5,
+  }
+  const bottomConstraints: ResizerConstraints = {
+    min: BOTTOM_PANEL_MIN, max: BOTTOM_PANEL_MAX,
+    defaultSize: DEFAULT_BOTTOM_PANEL_HEIGHT,
+    snapPoints: BOTTOM_PANEL_SNAP_POINTS, snapThreshold: 5,
+  }
+
+  const applySnap = (value: number, c: ResizerConstraints): number => {
+    if (!c.snapPoints) return value
+    for (const sp of c.snapPoints) {
+      if (Math.abs(value - sp) <= (c.snapThreshold ?? 5)) return sp
+    }
+    return value
+  }
+
+  const handleSideResize = useCallback((delta: number) => {
+    setSidePanelWidth((w) => {
+      const raw = w + delta
+      if (raw < SIDE_PANEL_MIN) {
+        // Collapse
+        setSidebarVisible(false)
+        return DEFAULT_SIDE_PANEL_WIDTH
+      }
+      const snapped = applySnap(raw, sideConstraints)
+      return Math.min(SIDE_PANEL_MAX, Math.max(SIDE_PANEL_MIN, snapped))
+    })
+  }, [])
+  const handleRightResize = useCallback((delta: number) => {
+    setRightPanelWidth((w) => {
+      const raw = w - delta
+      if (raw < RIGHT_PANEL_MIN) {
+        setChatVisible(false)
+        return DEFAULT_RIGHT_PANEL_WIDTH
+      }
+      const snapped = applySnap(raw, rightConstraints)
+      return Math.min(RIGHT_PANEL_MAX, Math.max(RIGHT_PANEL_MIN, snapped))
+    })
+  }, [])
+  const handleBottomResize = useCallback((delta: number) => {
+    setBottomPanelHeight((h) => {
+      const raw = h - delta
+      if (raw < BOTTOM_PANEL_MIN) {
+        setBottomVisible(false)
+        return DEFAULT_BOTTOM_PANEL_HEIGHT
+      }
+      const snapped = applySnap(raw, bottomConstraints)
+      return Math.min(BOTTOM_PANEL_MAX, Math.max(BOTTOM_PANEL_MIN, snapped))
+    })
+  }, [])
+
+  // Persist layout dimensions and panel visibility to localStorage (debounced)
+  useLayoutPersistence({
+    sidePanelWidth,
+    rightPanelWidth,
+    bottomPanelHeight,
+    sidebarVisible,
+    bottomVisible,
+    chatVisible,
+  })
+
   useFileWatcher()
+  useExternalFileWatcher()
   useOmo()
+  useRecoveryCheck()
 
   // Load saved API keys on startup
   useEffect(() => {
@@ -119,6 +373,7 @@ export default function App() {
       'orion:open-palette': () => setPaletteOpen(true),
       'orion:keyboard-shortcuts': () => setShortcutsOpen(true),
       'orion:zen-mode': () => toggleZenMode(),
+      'orion:toggle-zen-mode': () => toggleZenMode(),
       'orion:about': () => setAboutOpen(true),
       'orion:open-snippets': () => setSnippetsOpen(true),
       'orion:show-explorer': () => { setSidebarVisible(true); setActiveView('explorer') },
@@ -126,7 +381,41 @@ export default function App() {
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
       'orion:show-agents': () => { setSidebarVisible(true); setActiveView('agents') },
       'orion:show-outline': () => { setSidebarVisible(true); setActiveView('outline') },
+      'orion:show-debug': () => { setSidebarVisible(true); setActiveView('debug') },
       'orion:show-extensions': () => { setSidebarVisible(true); setActiveView('extensions') },
+      'orion:show-testing': () => { setSidebarVisible(true); setActiveView('testing') },
+      'orion:close-tab': () => {
+        const { activeFilePath, closeFile } = useEditorStore.getState()
+        if (activeFilePath) closeFile(activeFilePath)
+      },
+      'orion:close-all-tabs': () => {
+        useEditorStore.getState().closeAllFiles()
+      },
+      'orion:toggle-auto-save': () => {
+        // Toggle auto-save in workspace settings
+        window.dispatchEvent(new Event('orion:open-settings'))
+      },
+      'orion:save-all': () => {
+        const { openFiles, markSaved } = useEditorStore.getState()
+        const modified = openFiles.filter(f => f.isModified)
+        Promise.all(modified.map(async f => {
+          try {
+            await window.api.writeFile(f.path, f.content)
+            markSaved(f.path)
+            clearRecovery(f.path)
+          } catch {}
+        })).then(() => {
+          if (modified.length > 0) {
+            const { addToast } = useToastStore.getState()
+            addToast({ type: 'success', message: `Saved ${modified.length} file(s)` })
+          }
+        })
+      },
+      'orion:focus-editor': () => {
+        // Focus the Monaco editor instance when requested
+        const editorEl = document.querySelector('#editor-main .monaco-editor textarea') as HTMLElement | null
+        editorEl?.focus()
+      },
     }
     Object.entries(handlers).forEach(([event, handler]) => {
       window.addEventListener(event, handler)
@@ -138,10 +427,67 @@ export default function App() {
     }
   }, [toggleZenMode])
 
+  // Update window title based on active file
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe((state) => {
+      const activeFile = state.openFiles.find((f) => f.path === state.activeFilePath)
+      if (activeFile) {
+        const modified = activeFile.isModified ? '\u25cf ' : ''
+        document.title = `${modified}${activeFile.name} - Orion`
+      } else {
+        document.title = 'Orion'
+      }
+    })
+    return unsubscribe
+  }, [])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey
+
+      // Ctrl+Shift+S -> save all
+      if (ctrl && e.shiftKey && e.key === 'S') {
+        e.preventDefault()
+        const { openFiles, markSaved } = useEditorStore.getState()
+        const modified = openFiles.filter(f => f.isModified)
+        Promise.all(modified.map(async f => {
+          try {
+            await window.api.writeFile(f.path, f.content)
+            markSaved(f.path)
+            clearRecovery(f.path)
+          } catch {}
+        })).then(() => {
+          if (modified.length > 0) {
+            const { addToast } = useToastStore.getState()
+            addToast({ type: 'success', message: `Saved ${modified.length} file(s)` })
+          }
+        })
+        return
+      }
+
+      // Ctrl+Shift+N -> new window
+      if (ctrl && e.shiftKey && e.key === 'N') {
+        e.preventDefault()
+        window.dispatchEvent(new Event('orion:new-window'))
+        return
+      }
+
+      // Ctrl+N -> new untitled file
+      if (ctrl && e.key === 'n') {
+        e.preventDefault()
+        const { openFile } = useEditorStore.getState()
+        const id = Date.now()
+        openFile({
+          path: `untitled-${id}`,
+          name: `Untitled-${id}`,
+          content: '',
+          language: 'plaintext',
+          isModified: false,
+          aiModified: false,
+        })
+        return
+      }
 
       // Ctrl+W -> close current tab
       if (ctrl && e.key === 'w') {
@@ -223,6 +569,13 @@ export default function App() {
         setActiveView('outline')
         return
       }
+      // Ctrl+Shift+D -> debug
+      if (ctrl && e.shiftKey && e.key === 'D') {
+        e.preventDefault()
+        setSidebarVisible(true)
+        setActiveView('debug')
+        return
+      }
       // Ctrl+Shift+X -> extensions
       if (ctrl && e.shiftKey && e.key === 'X') {
         e.preventDefault()
@@ -230,19 +583,79 @@ export default function App() {
         setActiveView('extensions')
         return
       }
-      // Escape -> exit zen mode
-      if (e.key === 'Escape' && zenMode) {
+      // Ctrl+Shift+T -> testing
+      if (ctrl && e.shiftKey && e.key === 'T') {
         e.preventDefault()
-        toggleZenMode()
+        setSidebarVisible(true)
+        setActiveView('testing')
+        return
+      }
+      // Ctrl+Tab -> next tab, Ctrl+Shift+Tab -> previous tab
+      if (ctrl && e.key === 'Tab') {
+        e.preventDefault()
+        const { openFiles, activeFilePath, setActiveFile } = useEditorStore.getState()
+        if (openFiles.length > 1 && activeFilePath) {
+          const idx = openFiles.findIndex((f) => f.path === activeFilePath)
+          const next = e.shiftKey
+            ? (idx - 1 + openFiles.length) % openFiles.length
+            : (idx + 1) % openFiles.length
+          setActiveFile(openFiles[next].path)
+        }
+        return
+      }
+
+      // Escape -> close any open modal/overlay, then exit zen mode, then focus editor
+      if (e.key === 'Escape') {
+        if (settingsOpen) { e.preventDefault(); setSettingsOpen(false); return }
+        if (shortcutsOpen) { e.preventDefault(); setShortcutsOpen(false); return }
+        if (aboutOpen) { e.preventDefault(); setAboutOpen(false); return }
+        if (snippetsOpen) { e.preventDefault(); setSnippetsOpen(false); return }
+        if (paletteOpen) { e.preventDefault(); setPaletteOpen(false); return }
+        if (zenMode) { e.preventDefault(); toggleZenMode(); return }
+        // No modal open - return focus to the editor
+        window.dispatchEvent(new Event('orion:focus-editor'))
         return
       }
     }
 
+    // Ctrl+K, Ctrl+S chord for keyboard shortcuts
+    let chordPending = false
+    const handleChord = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key === 'k') {
+        chordPending = true
+        // Allow a short window for the second key
+        setTimeout(() => { chordPending = false }, 1000)
+        return
+      }
+      if (chordPending && ctrl && e.key === 's') {
+        e.preventDefault()
+        chordPending = false
+        setShortcutsOpen(true)
+        return
+      }
+      // Ctrl+K Z -> toggle zen mode
+      if (chordPending && e.key === 'z') {
+        e.preventDefault()
+        chordPending = false
+        toggleZenMode()
+        return
+      }
+      if (chordPending && !(ctrl && e.key === 'k')) {
+        chordPending = false
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [zenMode, toggleZenMode])
+    window.addEventListener('keydown', handleChord)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keydown', handleChord)
+    }
+  }, [zenMode, toggleZenMode, settingsOpen, shortcutsOpen, aboutOpen, snippetsOpen, paletteOpen])
 
   return (
+    <ErrorBoundary>
     <div
       style={{
         height: '100vh',
@@ -251,7 +664,78 @@ export default function App() {
         background: 'var(--bg-primary)',
         overflow: 'hidden',
       }}
+      onDragEnter={handleGlobalDragEnter}
+      onDragOver={handleGlobalDragOver}
+      onDragLeave={handleGlobalDragLeave}
+      onDrop={handleGlobalDrop}
     >
+      {/* Skip navigation link for keyboard/screen reader users */}
+      <a className="skip-nav" href="#editor-main">
+        Skip to editor
+      </a>
+      {/* Global drop overlay for OS file/folder drag */}
+      {globalDragOver && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backdropFilter: 'blur(2px)',
+            background: 'rgba(88, 166, 255, 0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            animation: 'fade-in 0.15s ease-out',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              inset: 16,
+              border: '2px dashed var(--accent)',
+              borderRadius: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12,
+                color: 'var(--accent)',
+                fontSize: 15,
+                fontWeight: 600,
+                userSelect: 'none',
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  background: 'rgba(88, 166, 255, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Upload size={28} style={{ opacity: 0.9 }} />
+              </div>
+              <span>Drop files to open</span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>
+                Drop a folder to open as workspace
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!splashDone && <SplashScreen onComplete={() => setSplashDone(true)} />}
+
       {/* Title Bar - hidden in zen mode with smooth transition */}
       <div
         style={{
@@ -267,6 +751,8 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Activity Bar - hidden in zen mode */}
         <div
+          role="navigation"
+          aria-label="Activity Bar"
           style={{
             overflow: 'hidden',
             maxWidth: zenMode ? 0 : 48,
@@ -292,6 +778,8 @@ export default function App() {
         {sidebarVisible && !zenMode && (
           <>
             <div
+              role="complementary"
+              aria-label="Side Panel"
               style={{
                 width: sidePanelWidth,
                 display: 'flex',
@@ -301,41 +789,92 @@ export default function App() {
                 borderRight: '1px solid var(--border)',
               }}
             >
-              {activeView === 'agents' && <AgentPanel />}
-              {activeView === 'search' && <SearchPanel />}
               {activeView === 'explorer' && <FileExplorer />}
-              {activeView === 'git' && <SourceControlPanel />}
-              {activeView === 'outline' && <OutlinePanel />}
-              {activeView === 'extensions' && <ExtensionsPanel />}
+              <Suspense fallback={<PanelFallback />}>
+                {activeView === 'agents' && <AgentPanel />}
+                {activeView === 'search' && <SearchPanel />}
+                {activeView === 'git' && <SourceControlPanel />}
+                {activeView === 'debug' && <DebugPanel />}
+                {activeView === 'outline' && <OutlinePanel />}
+                {activeView === 'extensions' && <ExtensionsPanel />}
+                {activeView === 'testing' && <TestingPanel />}
+              </Suspense>
             </div>
 
-            <Resizer direction="horizontal" onResize={handleSideResize} />
+            <Resizer
+              direction="horizontal"
+              onResize={handleSideResize}
+              currentSize={sidePanelWidth}
+              constraints={sideConstraints}
+              onCollapse={() => setSidebarVisible(false)}
+              onReset={() => setSidePanelWidth(DEFAULT_SIDE_PANEL_WIDTH)}
+            />
           </>
+        )}
+        {!sidebarVisible && !zenMode && (
+          <Resizer
+            direction="horizontal"
+            onResize={handleSideResize}
+            collapsed
+            onExpand={() => setSidebarVisible(true)}
+          />
         )}
 
         {/* Center */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div role="main" id="editor-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className={zenMode ? 'zen-editor-container' : undefined} style={{ flex: 1, overflow: 'hidden' }}>
             <EditorPanel />
           </div>
           {bottomVisible && !zenMode && (
             <>
-              <Resizer direction="vertical" onResize={handleBottomResize} />
+              <Resizer
+                direction="vertical"
+                onResize={handleBottomResize}
+                currentSize={bottomPanelHeight}
+                constraints={bottomConstraints}
+                onCollapse={() => setBottomVisible(false)}
+                onReset={() => setBottomPanelHeight(DEFAULT_BOTTOM_PANEL_HEIGHT)}
+              />
               <div style={{ height: bottomPanelHeight }}>
                 <BottomPanel />
               </div>
             </>
+          )}
+          {!bottomVisible && !zenMode && (
+            <Resizer
+              direction="vertical"
+              onResize={handleBottomResize}
+              collapsed
+              onExpand={() => setBottomVisible(true)}
+            />
           )}
         </div>
 
         {/* Right Panel: Chat */}
         {chatVisible && !zenMode && (
           <>
-            <Resizer direction="horizontal" onResize={handleRightResize} />
-            <div style={{ width: rightPanelWidth }}>
-              <ChatPanel />
+            <Resizer
+              direction="horizontal"
+              onResize={handleRightResize}
+              currentSize={rightPanelWidth}
+              constraints={rightConstraints}
+              onCollapse={() => setChatVisible(false)}
+              onReset={() => setRightPanelWidth(DEFAULT_RIGHT_PANEL_WIDTH)}
+            />
+            <div role="complementary" aria-label="Chat Panel" style={{ width: rightPanelWidth }}>
+              <Suspense fallback={<PanelFallback />}>
+                <ChatPanel />
+              </Suspense>
             </div>
           </>
+        )}
+        {!chatVisible && !zenMode && (
+          <Resizer
+            direction="horizontal"
+            onResize={handleRightResize}
+            collapsed
+            onExpand={() => setChatVisible(true)}
+          />
         )}
       </div>
 
@@ -354,44 +893,45 @@ export default function App() {
         />
       </div>
 
-      {/* Zen Mode: floating exit button */}
+      {/* Zen Mode: centered exit hint at top, auto-fades, reappears on hover */}
       {zenMode && (
-        <button
-          onClick={toggleZenMode}
-          onMouseEnter={() => setZenExitHovered(true)}
-          onMouseLeave={() => setZenExitHovered(false)}
-          style={{
-            position: 'fixed',
-            top: 10,
-            right: 10,
-            zIndex: 50,
-            padding: '5px 14px',
-            fontSize: 11,
-            fontWeight: 600,
-            color: zenExitHovered ? 'var(--text-primary)' : 'var(--text-muted)',
-            background: zenExitHovered
-              ? 'rgba(255, 255, 255, 0.12)'
-              : 'rgba(255, 255, 255, 0.06)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            cursor: 'pointer',
-            transition: 'background 0.15s, color 0.15s, opacity 0.3s',
-            opacity: zenExitHovered ? 1 : 0.6,
-            backdropFilter: 'blur(8px)',
-            animation: 'fade-in 0.3s ease-out',
-          }}
+        <div
+          className="zen-exit-zone"
+          onMouseEnter={() => setZenExitVisible(true)}
+          onMouseLeave={() => setZenExitVisible(false)}
         >
-          Exit Zen Mode
-        </button>
+          <button
+            className={`zen-exit-hint${zenExitVisible ? ' zen-exit-hint--visible' : ''}`}
+            onClick={toggleZenMode}
+          >
+            Exit Zen Mode (Esc)
+          </button>
+        </div>
       )}
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
 
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {aboutOpen && (
+        <Suspense fallback={null}>
+          <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+        </Suspense>
+      )}
 
-      <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        </Suspense>
+      )}
 
-      <SnippetManager open={snippetsOpen} onClose={() => setSnippetsOpen(false)} />
+      {snippetsOpen && (
+        <Suspense fallback={null}>
+          <SnippetManager open={snippetsOpen} onClose={() => setSnippetsOpen(false)} />
+        </Suspense>
+      )}
 
       <CommandPalette
         open={paletteOpen}
@@ -401,5 +941,6 @@ export default function App() {
 
       <ToastContainer />
     </div>
+    </ErrorBoundary>
   )
 }

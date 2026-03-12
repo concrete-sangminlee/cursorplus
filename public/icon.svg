@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="50%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="oGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C7D2FE"/>
+      <stop offset="100%" stop-color="#E0E7FF"/>
+    </linearGradient>
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="100%" stop-color="#FCD34D"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Stylized "O" ring -->
+  <circle cx="256" cy="270" r="140" fill="none" stroke="url(#oGrad)" stroke-width="36" stroke-linecap="round" opacity="0.95"/>
+
+  <!-- Gap in the O (top-right) to stylize it -->
+  <circle cx="256" cy="270" r="140" fill="none" stroke="url(#bgGrad)" stroke-width="40" stroke-dasharray="60 820" stroke-dashoffset="-40" transform="rotate(-45 256 270)"/>
+
+  <!-- Constellation stars -->
+  <!-- Main bright star (Betelgeuse - top right, in the gap) -->
+  <circle cx="348" cy="178" r="12" fill="url(#starGrad)" filter="url(#glow)"/>
+
+  <!-- Rigel - bottom left -->
+  <circle cx="164" cy="362" r="9" fill="url(#starGrad)" filter="url(#glow)"/>
+
+  <!-- Bellatrix - top left -->
+  <circle cx="178" cy="192" r="7" fill="url(#starGrad)" filter="url(#glow)" opacity="0.9"/>
+
+  <!-- Saiph - bottom right -->
+  <circle cx="340" cy="352" r="7" fill="url(#starGrad)" filter="url(#glow)" opacity="0.9"/>
+
+  <!-- Belt stars (three in a row, center) -->
+  <circle cx="222" cy="270" r="5" fill="#FDE68A" filter="url(#glow)" opacity="0.85"/>
+  <circle cx="256" cy="262" r="6" fill="#FDE68A" filter="url(#glow)" opacity="0.95"/>
+  <circle cx="290" cy="270" r="5" fill="#FDE68A" filter="url(#glow)" opacity="0.85"/>
+
+  <!-- Constellation lines (faint connections) -->
+  <line x1="178" y1="192" x2="222" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
+  <line x1="222" y1="270" x2="256" y2="262" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
+  <line x1="256" y1="262" x2="290" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
+  <line x1="290" y1="270" x2="340" y2="352" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
+  <line x1="348" y1="178" x2="290" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
+  <line x1="178" y1="192" x2="348" y2="178" stroke="#C7D2FE" stroke-width="1" opacity="0.2"/>
+  <line x1="164" y1="362" x2="222" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
+  <line x1="164" y1="362" x2="340" y2="352" stroke="#C7D2FE" stroke-width="1" opacity="0.2"/>
+
+  <!-- Small ambient stars -->
+  <circle cx="120" cy="120" r="2" fill="#E0E7FF" opacity="0.5"/>
+  <circle cx="400" cy="100" r="2.5" fill="#E0E7FF" opacity="0.4"/>
+  <circle cx="390" cy="420" r="2" fill="#E0E7FF" opacity="0.45"/>
+  <circle cx="100" cy="400" r="1.5" fill="#E0E7FF" opacity="0.35"/>
+  <circle cx="300" cy="130" r="1.5" fill="#E0E7FF" opacity="0.4"/>
+  <circle cx="430" cy="260" r="2" fill="#E0E7FF" opacity="0.3"/>
+  <circle cx="80" cy="280" r="1.5" fill="#E0E7FF" opacity="0.35"/>
+</svg>

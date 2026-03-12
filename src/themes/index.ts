@@ -1,9 +1,71 @@
+import type { editor } from 'monaco-editor'
+
 export interface Theme {
   id: string
   name: string
   type: 'dark' | 'light'
   colors: Record<string, string> // CSS variable name -> value
   monacoTheme: string // Monaco editor theme name
+  /** Optional custom Monaco theme definition. When provided the theme store will register it. */
+  monacoThemeData?: editor.IStandaloneThemeData
+}
+
+// ---------------------------------------------------------------------------
+// Helper to build a Monaco IStandaloneThemeData with the common token rules
+// ---------------------------------------------------------------------------
+function monacoThemeData(
+  base: 'vs' | 'vs-dark',
+  bg: string,
+  fg: string,
+  syntax: {
+    strings: string
+    keywords: string
+    functions: string
+    types: string
+    comments: string
+    numbers?: string
+    operators?: string
+    variables?: string
+  },
+  editorColors: Partial<Record<string, string>> = {},
+): editor.IStandaloneThemeData {
+  return {
+    base,
+    inherit: true,
+    rules: [
+      { token: '', foreground: fg.replace('#', '') },
+      { token: 'comment', foreground: syntax.comments.replace('#', ''), fontStyle: 'italic' },
+      { token: 'keyword', foreground: syntax.keywords.replace('#', '') },
+      { token: 'keyword.control', foreground: syntax.keywords.replace('#', '') },
+      { token: 'keyword.operator', foreground: (syntax.operators || syntax.keywords).replace('#', '') },
+      { token: 'string', foreground: syntax.strings.replace('#', '') },
+      { token: 'string.escape', foreground: syntax.strings.replace('#', '') },
+      { token: 'number', foreground: (syntax.numbers || syntax.types).replace('#', '') },
+      { token: 'type', foreground: syntax.types.replace('#', '') },
+      { token: 'type.identifier', foreground: syntax.types.replace('#', '') },
+      { token: 'class', foreground: syntax.types.replace('#', '') },
+      { token: 'interface', foreground: syntax.types.replace('#', '') },
+      { token: 'enum', foreground: syntax.types.replace('#', '') },
+      { token: 'function', foreground: syntax.functions.replace('#', '') },
+      { token: 'function.declaration', foreground: syntax.functions.replace('#', '') },
+      { token: 'variable', foreground: (syntax.variables || fg).replace('#', '') },
+      { token: 'variable.predefined', foreground: syntax.types.replace('#', '') },
+      { token: 'constant', foreground: (syntax.numbers || syntax.types).replace('#', '') },
+      { token: 'tag', foreground: syntax.keywords.replace('#', '') },
+      { token: 'attribute.name', foreground: syntax.functions.replace('#', '') },
+      { token: 'attribute.value', foreground: syntax.strings.replace('#', '') },
+      { token: 'delimiter', foreground: fg.replace('#', '') },
+      { token: 'operator', foreground: (syntax.operators || syntax.keywords).replace('#', '') },
+      { token: 'regexp', foreground: syntax.strings.replace('#', '') },
+      { token: 'annotation', foreground: syntax.types.replace('#', '') },
+      { token: 'metatag', foreground: syntax.keywords.replace('#', '') },
+    ],
+    colors: {
+      'editor.background': bg,
+      'editor.foreground': fg,
+      ...editorColors,
+    },
+  }
 }
 
 export const themes: Theme[] = [
@@ -68,10 +130,25 @@ export const themes: Theme[] = [
     id: 'github-dark',
     name: 'GitHub Dark',
     type: 'dark',
-    monacoTheme: 'vs-dark',
+    monacoTheme: 'github-dark',
+    monacoThemeData: monacoThemeData('vs-dark', '#0d1117', '#c9d1d9', {
+      strings: '#a5d6ff',
+      keywords: '#ff7b72',
+      functions: '#d2a8ff',
+      types: '#79c0ff',
+      comments: '#8b949e',
+      numbers: '#79c0ff',
+      operators: '#ff7b72',
+      variables: '#ffa657',
+    }, {
+      'editor.selectionBackground': '#264f78',
+      'editor.lineHighlightBackground': '#161b22',
+      'editorLineNumber.foreground': '#484f58',
+      'editorCursor.foreground': '#c9d1d9',
+    }),
     colors: {
       '--bg-primary': '#0d1117',
-      '--bg-secondary': '#161b22',
+      '--bg-secondary': '#010409',
       '--bg-tertiary': '#010409',
       '--bg-hover': '#1f242c',
       '--bg-active': '#292e36',
@@ -91,6 +168,221 @@ export const themes: Theme[] = [
     },
   },
 
+  // ---------- GitHub Light ----------
+  {
+    id: 'github-light',
+    name: 'GitHub Light',
+    type: 'light',
+    monacoTheme: 'github-light',
+    monacoThemeData: monacoThemeData('vs', '#ffffff', '#24292f', {
+      strings: '#0a3069',
+      keywords: '#cf222e',
+      functions: '#8250df',
+      types: '#0550ae',
+      comments: '#6e7781',
+      numbers: '#0550ae',
+      operators: '#cf222e',
+      variables: '#953800',
+    }, {
+      'editor.selectionBackground': '#add6ff',
+      'editor.lineHighlightBackground': '#f6f8fa',
+      'editorLineNumber.foreground': '#8c959f',
+      'editorCursor.foreground': '#24292f',
+    }),
+    colors: {
+      '--bg-primary': '#ffffff',
+      '--bg-secondary': '#f6f8fa',
+      '--bg-tertiary': '#f6f8fa',
+      '--bg-hover': '#eaeef2',
+      '--bg-active': '#dce2e8',
+      '--bg-elevated': '#ffffff',
+      '--border': '#d0d7de',
+      '--border-bright': '#afb8c1',
+      '--border-focus': '#0969da',
+      '--text-primary': '#24292f',
+      '--text-secondary': '#57606a',
+      '--text-muted': '#6e7781',
+      '--accent': '#0969da',
+      '--accent-green': '#1a7f37',
+      '--accent-orange': '#9a6700',
+      '--accent-red': '#cf222e',
+      '--accent-purple': '#8250df',
+      '--accent-cyan': '#0550ae',
+    },
+  },
+
+  // ---------- Solarized Dark ----------
+  {
+    id: 'solarized-dark',
+    name: 'Solarized Dark',
+    type: 'dark',
+    monacoTheme: 'solarized-dark',
+    monacoThemeData: monacoThemeData('vs-dark', '#002b36', '#839496', {
+      strings: '#2aa198',
+      keywords: '#859900',
+      functions: '#268bd2',
+      types: '#b58900',
+      comments: '#586e75',
+      numbers: '#d33682',
+      operators: '#859900',
+      variables: '#839496',
+    }, {
+      'editor.selectionBackground': '#073642',
+      'editor.lineHighlightBackground': '#073642',
+      'editorLineNumber.foreground': '#586e75',
+      'editorCursor.foreground': '#839496',
+    }),
+    colors: {
+      '--bg-primary': '#002b36',
+      '--bg-secondary': '#00212b',
+      '--bg-tertiary': '#00212b',
+      '--bg-hover': '#073642',
+      '--bg-active': '#0a4050',
+      '--bg-elevated': '#073642',
+      '--border': '#073642',
+      '--border-bright': '#586e75',
+      '--border-focus': '#268bd2',
+      '--text-primary': '#839496',
+      '--text-secondary': '#657b83',
+      '--text-muted': '#586e75',
+      '--accent': '#268bd2',
+      '--accent-green': '#859900',
+      '--accent-orange': '#cb4b16',
+      '--accent-red': '#dc322f',
+      '--accent-purple': '#6c71c4',
+      '--accent-cyan': '#2aa198',
+    },
+  },
+
+  // ---------- Solarized Light ----------
+  {
+    id: 'solarized-light',
+    name: 'Solarized Light',
+    type: 'light',
+    monacoTheme: 'solarized-light',
+    monacoThemeData: monacoThemeData('vs', '#fdf6e3', '#657b83', {
+      strings: '#2aa198',
+      keywords: '#859900',
+      functions: '#268bd2',
+      types: '#b58900',
+      comments: '#93a1a1',
+      numbers: '#d33682',
+      operators: '#859900',
+      variables: '#657b83',
+    }, {
+      'editor.selectionBackground': '#eee8d5',
+      'editor.lineHighlightBackground': '#eee8d5',
+      'editorLineNumber.foreground': '#93a1a1',
+      'editorCursor.foreground': '#657b83',
+    }),
+    colors: {
+      '--bg-primary': '#fdf6e3',
+      '--bg-secondary': '#eee8d5',
+      '--bg-tertiary': '#eee8d5',
+      '--bg-hover': '#e6dfcc',
+      '--bg-active': '#ded7c4',
+      '--bg-elevated': '#fdf6e3',
+      '--border': '#d6cab9',
+      '--border-bright': '#93a1a1',
+      '--border-focus': '#268bd2',
+      '--text-primary': '#657b83',
+      '--text-secondary': '#586e75',
+      '--text-muted': '#93a1a1',
+      '--accent': '#268bd2',
+      '--accent-green': '#859900',
+      '--accent-orange': '#cb4b16',
+      '--accent-red': '#dc322f',
+      '--accent-purple': '#6c71c4',
+      '--accent-cyan': '#2aa198',
+    },
+  },
+
+  // ---------- Tokyo Night ----------
+  {
+    id: 'tokyo-night',
+    name: 'Tokyo Night',
+    type: 'dark',
+    monacoTheme: 'tokyo-night',
+    monacoThemeData: monacoThemeData('vs-dark', '#1a1b26', '#a9b1d6', {
+      strings: '#9ece6a',
+      keywords: '#bb9af7',
+      functions: '#7aa2f7',
+      types: '#2ac3de',
+      comments: '#565f89',
+      numbers: '#ff9e64',
+      operators: '#89ddff',
+      variables: '#c0caf5',
+    }, {
+      'editor.selectionBackground': '#28293d',
+      'editor.lineHighlightBackground': '#1e1f2e',
+      'editorLineNumber.foreground': '#3b3d57',
+      'editorCursor.foreground': '#c0caf5',
+    }),
+    colors: {
+      '--bg-primary': '#1a1b26',
+      '--bg-secondary': '#16161e',
+      '--bg-tertiary': '#16161e',
+      '--bg-hover': '#24253a',
+      '--bg-active': '#2e2f48',
+      '--bg-elevated': '#1e1f2e',
+      '--border': '#292e42',
+      '--border-bright': '#3b3d57',
+      '--border-focus': '#7aa2f7',
+      '--text-primary': '#a9b1d6',
+      '--text-secondary': '#787c99',
+      '--text-muted': '#565f89',
+      '--accent': '#7aa2f7',
+      '--accent-green': '#9ece6a',
+      '--accent-orange': '#ff9e64',
+      '--accent-red': '#f7768e',
+      '--accent-purple': '#bb9af7',
+      '--accent-cyan': '#2ac3de',
+    },
+  },
+
+  // ---------- Catppuccin Mocha ----------
+  {
+    id: 'catppuccin-mocha',
+    name: 'Catppuccin Mocha',
+    type: 'dark',
+    monacoTheme: 'catppuccin-mocha',
+    monacoThemeData: monacoThemeData('vs-dark', '#1e1e2e', '#cdd6f4', {
+      strings: '#a6e3a1',
+      keywords: '#cba6f7',
+      functions: '#89b4fa',
+      types: '#89dceb',
+      comments: '#6c7086',
+      numbers: '#fab387',
+      operators: '#89dceb',
+      variables: '#cdd6f4',
+    }, {
+      'editor.selectionBackground': '#313244',
+      'editor.lineHighlightBackground': '#232334',
+      'editorLineNumber.foreground': '#45475a',
+      'editorCursor.foreground': '#f5e0dc',
+    }),
+    colors: {
+      '--bg-primary': '#1e1e2e',
+      '--bg-secondary': '#181825',
+      '--bg-tertiary': '#181825',
+      '--bg-hover': '#28283d',
+      '--bg-active': '#313244',
+      '--bg-elevated': '#232334',
+      '--border': '#313244',
+      '--border-bright': '#45475a',
+      '--border-focus': '#89b4fa',
+      '--text-primary': '#cdd6f4',
+      '--text-secondary': '#a6adc8',
+      '--text-muted': '#6c7086',
+      '--accent': '#89b4fa',
+      '--accent-green': '#a6e3a1',
+      '--accent-orange': '#fab387',
+      '--accent-red': '#f38ba8',
+      '--accent-purple': '#cba6f7',
+      '--accent-cyan': '#89dceb',
+    },
+  },
+
   // ---------- Monokai Pro ----------
   {
     id: 'monokai-pro',
@@ -99,12 +391,12 @@ export const themes: Theme[] = [
     monacoTheme: 'vs-dark',
     colors: {
       '--bg-primary': '#2d2a2e',
-      '--bg-secondary': '#363337',
-      '--bg-tertiary': '#221f22',
+      '--bg-secondary': '#221f22',
+      '--bg-tertiary': '#403e41',
       '--bg-hover': '#403e41',
       '--bg-active': '#4a474b',
       '--bg-elevated': '#403e41',
-      '--border': '#49464e',
+      '--border': '#49474a',
       '--border-bright': '#5b585f',
       '--border-focus': '#ffd866',
       '--text-primary': '#fcfcfa',
@@ -119,6 +411,62 @@ export const themes: Theme[] = [
     },
   },
 
+  // ---------- Dracula ----------
+  {
+    id: 'dracula',
+    name: 'Dracula',
+    type: 'dark',
+    monacoTheme: 'vs-dark',
+    colors: {
+      '--bg-primary': '#282a36',
+      '--bg-secondary': '#21222c',
+      '--bg-tertiary': '#343746',
+      '--bg-hover': '#343746',
+      '--bg-active': '#44475a',
+      '--bg-elevated': '#343746',
+      '--border': '#44475a',
+      '--border-bright': '#6272a4',
+      '--border-focus': '#bd93f9',
+      '--text-primary': '#f8f8f2',
+      '--text-secondary': '#c0c0c0',
+      '--text-muted': '#6272a4',
+      '--accent': '#bd93f9',
+      '--accent-green': '#50fa7b',
+      '--accent-orange': '#ffb86c',
+      '--accent-red': '#ff5555',
+      '--accent-purple': '#bd93f9',
+      '--accent-cyan': '#8be9fd',
+    },
+  },
+
+  // ---------- One Dark Pro ----------
+  {
+    id: 'one-dark-pro',
+    name: 'One Dark Pro',
+    type: 'dark',
+    monacoTheme: 'vs-dark',
+    colors: {
+      '--bg-primary': '#282c34',
+      '--bg-secondary': '#21252b',
+      '--bg-tertiary': '#2c313a',
+      '--bg-hover': '#2c313a',
+      '--bg-active': '#3e4452',
+      '--bg-elevated': '#2c313a',
+      '--border': '#3e4452',
+      '--border-bright': '#5c6370',
+      '--border-focus': '#61afef',
+      '--text-primary': '#abb2bf',
+      '--text-secondary': '#9da5b4',
+      '--text-muted': '#5c6370',
+      '--accent': '#61afef',
+      '--accent-green': '#98c379',
+      '--accent-orange': '#d19a66',
+      '--accent-red': '#e06c75',
+      '--accent-purple': '#c678dd',
+      '--accent-cyan': '#56b6c2',
+    },
+  },
+
   // ---------- Nord ----------
   {
     id: 'nord',
@@ -127,16 +475,16 @@ export const themes: Theme[] = [
     monacoTheme: 'vs-dark',
     colors: {
       '--bg-primary': '#2e3440',
-      '--bg-secondary': '#3b4252',
-      '--bg-tertiary': '#272c36',
+      '--bg-secondary': '#292e39',
+      '--bg-tertiary': '#3b4252',
       '--bg-hover': '#434c5e',
       '--bg-active': '#4c566a',
       '--bg-elevated': '#434c5e',
       '--border': '#3b4252',
       '--border-bright': '#4c566a',
       '--border-focus': '#88c0d0',
-      '--text-primary': '#eceff4',
-      '--text-secondary': '#d8dee9',
+      '--text-primary': '#d8dee9',
+      '--text-secondary': '#b8c5d9',
       '--text-muted': '#616e88',
       '--accent': '#88c0d0',
       '--accent-green': '#a3be8c',

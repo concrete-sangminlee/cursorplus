@@ -8,11 +8,26 @@ import path from 'path'
 export default defineConfig({
   base: './',
   build: {
+    sourcemap: true,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         format: 'es',
+        manualChunks: {
+          'monaco-editor': ['monaco-editor'],
+          'react-vendor': ['react', 'react-dom'],
+          'xterm': ['xterm', 'xterm-addon-fit', 'xterm-addon-web-links'],
+          'zustand': ['zustand'],
+          'lucide': ['lucide-react'],
+        },
       },
     },
+  },
+  css: {
+    devSourcemap: true,
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'zustand', 'lucide-react'],
   },
   plugins: [
     react(),

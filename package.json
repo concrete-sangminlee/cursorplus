@@ -1,14 +1,51 @@
 {
-  "name": "orion",
-  "version": "0.1.0",
-  "description": "Agent-First AI IDE powered by oh-my-openagent",
+  "name": "orion-ide",
+  "version": "1.0.0",
+  "description": "Orion - AI-Powered Code Editor",
+  "productName": "Orion IDE",
+  "author": "Orion Team",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:electron": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win",
+    "build:mac": "vite build && electron-builder --mac",
+    "build:linux": "vite build && electron-builder --linux",
     "preview": "vite preview",
     "test": "vitest",
     "electron:dev": "vite build && electron ."
+  },
+  "build": {
+    "appId": "com.orion.ide",
+    "productName": "Orion IDE",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "public/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "public/icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "public/icon.png",
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

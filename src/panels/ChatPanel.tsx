@@ -7,13 +7,17 @@ import {
   ArrowUp, Paperclip, AtSign, CheckCircle2, Loader2, Circle,
   ChevronDown, Copy, Check, Code, Lightbulb, Wrench, BookOpen,
   Play, Trash2, FileCode, X, Plus, PanelLeftClose, PanelLeftOpen,
-  MoreHorizontal, Pencil,
+  MoreHorizontal, Pencil, RotateCw, TextCursorInput, Eye, Settings2,
+  Square, Search, TestTube,
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { ChatMessage } from '@shared/types'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
+import { useFileStore } from '@/store/files'
+import { useSettingsStore } from '@/store/settings'
+import { getCurrentContext, buildSystemPrompt, getContextSummary, type CodeContext } from '@/utils/codeContext'
 
 /* ── Model definitions ─────────────────────────────────── */
 
@@ -283,6 +287,7 @@ function renderInline(text: string): ReactNode[] {
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false)
   const [applied, setApplied] = useState(false)
+  const [showDiffPreview, setShowDiffPreview] = useState(false)
   const { openFiles, activeFilePath, updateFileContent } = useEditorStore()
   const { addToast } = useToastStore()
 
@@ -292,12 +297,17 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleApply = async () => {
+  const handleApplyClick = () => {
     const activeFile = openFiles.find((f) => f.path === activeFilePath)
     if (!activeFile || !activeFilePath) {
       addToast({ type: 'error', message: 'No file open to apply code' })
       return
     }
+    setShowDiffPreview(true)
+  }
+
+  const handleApplyConfirm = async () => {
+    if (!activeFilePath) return
     updateFileContent(activeFilePath, code)
     try {
       await window.api.writeFile(activeFilePath, code)
@@ -307,7 +317,23 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     const filename = activeFilePath.split(/[\\/]/).pop() || activeFilePath
     addToast({ type: 'success', message: `Code applied to ${filename}` })
     setApplied(true)
+    setShowDiffPreview(false)
     setTimeout(() => setApplied(false), 2000)
+  }
+
+  const handleInsertAtCursor = () => {
+    const activeFile = openFiles.find((f) => f.path === activeFilePath)
+    if (!activeFile || !activeFilePath) {
+      addToast({ type: 'error', message: 'No file open to insert code' })
+      return
+    }
+    // Dispatch event for the editor to insert at cursor position
+    window.dispatchEvent(
+      new CustomEvent('orion:insert-at-cursor', {
+        detail: { code, filePath: activeFilePath },
+      }),
+    )
+    addToast({ type: 'success', message: 'Code inserted at cursor position' })
   }
 
   // Map common language aliases to what react-syntax-highlighter expects
@@ -343,33 +369,60 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       <div
         className="flex items-center justify-between px-3"
         style={{
-          height: 32,
+          height: 34,
           background: 'rgba(255,255,255,0.04)',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}
       >
-        <span
-          style={{
-            fontSize: 10.5,
-            color: 'var(--text-muted)',
-            fontFamily: 'var(--font-mono, monospace)',
-            textTransform: 'lowercase',
-            letterSpacing: '0.02em',
-          }}
-        >
-          {language || 'code'}
-        </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <span
+            style={{
+              fontSize: 10,
+              color: '#0d1117',
+              background: highlightLang === 'typescript' || highlightLang === 'tsx' ? '#3178c6'
+                : highlightLang === 'javascript' || highlightLang === 'jsx' ? '#f1e05a'
+                : highlightLang === 'python' ? '#3572A5'
+                : highlightLang === 'rust' ? '#dea584'
+                : highlightLang === 'go' ? '#00ADD8'
+                : highlightLang === 'java' ? '#b07219'
+                : highlightLang === 'css' ? '#563d7c'
+                : highlightLang === 'html' ? '#e34c26'
+                : highlightLang === 'bash' ? '#89e051'
+                : highlightLang === 'json' ? '#292929'
+                : 'var(--text-muted)',
+              fontFamily: 'var(--font-mono, monospace)',
+              fontWeight: 600,
+              textTransform: 'lowercase',
+              letterSpacing: '0.02em',
+              padding: '2px 7px',
+              borderRadius: 4,
+              lineHeight: 1.4,
+            }}
+          >
+            {highlightLang || 'code'}
+          </span>
+          <span
+            style={{
+              fontSize: 9.5,
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono, monospace)',
+            }}
+          >
+            {code.split('\n').length} lines
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5">
           <button
-            onClick={handleApply}
+            onClick={handleApplyClick}
             className="flex items-center gap-1 transition-colors duration-100"
+            title="Apply code to active file (shows diff preview)"
             style={{
               fontSize: 10,
               color: applied ? 'var(--accent-green)' : 'var(--accent)',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              padding: '2px 6px',
+              padding: '3px 8px',
               borderRadius: 4,
             }}
             onMouseEnter={(e) => {
@@ -383,15 +436,39 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
             {applied ? 'Applied' : 'Apply'}
           </button>
           <button
+            onClick={handleInsertAtCursor}
+            className="flex items-center gap-1 transition-colors duration-100"
+            title="Insert code at cursor position"
+            style={{
+              fontSize: 10,
+              color: 'var(--text-muted)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '3px 8px',
+              borderRadius: 4,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--accent-purple)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-muted)'
+            }}
+          >
+            <TextCursorInput size={11} />
+            Insert
+          </button>
+          <button
             onClick={handleCopy}
             className="flex items-center gap-1 transition-colors duration-100"
+            title="Copy code to clipboard"
             style={{
               fontSize: 10,
               color: copied ? 'var(--accent-green)' : 'var(--text-muted)',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              padding: '2px 6px',
+              padding: '3px 8px',
               borderRadius: 4,
             }}
             onMouseEnter={(e) => {
@@ -406,6 +483,109 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           </button>
         </div>
       </div>
+      {/* Diff preview panel */}
+      {showDiffPreview && (() => {
+        const activeFile = openFiles.find((f) => f.path === activeFilePath)
+        const currentContent = activeFile?.content || ''
+        const currentLines = currentContent.split('\n')
+        const newLines = code.split('\n')
+        return (
+          <div style={{
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(0,0,0,0.2)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 10px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Eye size={11} style={{ color: 'var(--accent)' }} />
+                <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  Diff Preview
+                </span>
+                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                  {activeFile?.name || 'file'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={handleApplyConfirm}
+                  style={{
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: '1px solid var(--accent-green)',
+                    background: 'rgba(63,185,80,0.15)',
+                    color: 'var(--accent-green)',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                  }}
+                >
+                  Confirm Apply
+                </button>
+                <button
+                  onClick={() => setShowDiffPreview(false)}
+                  style={{
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            <div style={{
+              maxHeight: 200,
+              overflow: 'auto',
+              padding: '6px 0',
+              fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+              fontSize: 11,
+              lineHeight: 1.6,
+            }}>
+              {/* Show removed lines (current file, first few lines) */}
+              {currentLines.slice(0, Math.min(currentLines.length, 8)).map((line, i) => (
+                <div key={`old-${i}`} style={{
+                  padding: '0 10px',
+                  background: 'rgba(248,81,73,0.1)',
+                  color: '#f85149',
+                }}>
+                  <span style={{ opacity: 0.5, marginRight: 8, userSelect: 'none' }}>-</span>
+                  {line}
+                </div>
+              ))}
+              {currentLines.length > 8 && (
+                <div style={{ padding: '2px 10px', color: 'var(--text-muted)', fontSize: 10 }}>
+                  ... {currentLines.length - 8} more lines removed
+                </div>
+              )}
+              {/* Show added lines (new code) */}
+              {newLines.slice(0, Math.min(newLines.length, 8)).map((line, i) => (
+                <div key={`new-${i}`} style={{
+                  padding: '0 10px',
+                  background: 'rgba(63,185,80,0.1)',
+                  color: '#3fb950',
+                }}>
+                  <span style={{ opacity: 0.5, marginRight: 8, userSelect: 'none' }}>+</span>
+                  {line}
+                </div>
+              ))}
+              {newLines.length > 8 && (
+                <div style={{ padding: '2px 10px', color: 'var(--text-muted)', fontSize: 10 }}>
+                  ... {newLines.length - 8} more lines added
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
       {/* Syntax-highlighted code */}
       <SyntaxHighlighter
         language={highlightLang}
@@ -426,7 +606,15 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
               "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
           },
         }}
-        showLineNumbers={false}
+        showLineNumbers={true}
+        lineNumberStyle={{
+          minWidth: '2.5em',
+          paddingRight: 12,
+          color: 'rgba(139,148,158,0.35)',
+          fontSize: 11,
+          userSelect: 'none',
+          textAlign: 'right',
+        }}
         wrapLongLines={false}
       >
         {code}
@@ -435,14 +623,16 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   )
 }
 
-/* ── Relative timestamp formatter ──────────────────────── */
+/* ── Timestamp formatter ──────────────────────────────── */
 
 function formatTime(ts: number) {
-  const diff = Math.floor((Date.now() - ts) / 1000)
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return new Date(ts).toLocaleDateString()
+  const d = new Date(ts)
+  const hours = d.getHours()
+  const minutes = d.getMinutes()
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  const h = hours % 12 || 12
+  const m = minutes.toString().padStart(2, '0')
+  return `${h}:${m} ${ampm}`
 }
 
 /* ── Thinking / streaming indicator ───────────────────── */
@@ -509,18 +699,73 @@ function StreamingDots() {
 
 /* ── Message bubble ────────────────────────────────────── */
 
-function MessageBubble({ message, showThinking }: { message: ChatMessage; showThinking?: boolean }) {
+function MessageBubble({
+  message,
+  showThinking,
+  onRegenerate,
+}: {
+  message: ChatMessage
+  showThinking?: boolean
+  onRegenerate?: (msgId: string) => void
+}) {
   const isUser = message.role === 'user'
+  const isAssistant = message.role === 'assistant'
+  const [msgCopied, setMsgCopied] = useState(false)
+  const { addToast } = useToastStore()
   const rendered = useMemo(
     () => (isUser ? null : renderMarkdown(message.content)),
     [message.content, isUser],
   )
 
+  const handleCopyMessage = async () => {
+    await navigator.clipboard.writeText(message.content)
+    setMsgCopied(true)
+    setTimeout(() => setMsgCopied(false), 2000)
+  }
+
+  const handleInsertCodeToEditor = () => {
+    const { activeFilePath, openFiles } = useEditorStore.getState()
+    const activeFile = openFiles.find((f) => f.path === activeFilePath)
+    if (!activeFile || !activeFilePath) {
+      addToast({ type: 'error', message: 'No file open to insert code' })
+      return
+    }
+    // Extract code blocks from the message
+    const codeBlockRegex = /```[\w]*\n([\s\S]*?)```/g
+    const matches = [...message.content.matchAll(codeBlockRegex)]
+    if (matches.length === 0) {
+      addToast({ type: 'info', message: 'No code blocks found in message' })
+      return
+    }
+    const allCode = matches.map((m) => m[1].trim()).join('\n\n')
+    window.dispatchEvent(
+      new CustomEvent('orion:insert-at-cursor', {
+        detail: { code: allCode, filePath: activeFilePath },
+      }),
+    )
+    addToast({ type: 'success', message: 'Code inserted at cursor position' })
+  }
+
+  const actionBtnStyle: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    border: '1px solid var(--border)',
+    background: 'var(--bg-tertiary)',
+    cursor: 'pointer',
+    color: 'var(--text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  }
+
   return (
     <div
-      className="group"
+      className="chat-message group"
       style={{
         padding: '10px 0',
+        position: 'relative',
         ...(isUser
           ? {
               background: 'rgba(88, 166, 255, 0.06)',
@@ -533,6 +778,53 @@ function MessageBubble({ message, showThinking }: { message: ChatMessage; showTh
           : {}),
       }}
     >
+      {/* Hover action toolbar for assistant messages */}
+      {isAssistant && message.content.trim().length > 0 && (
+        <div
+          className="chat-msg-actions"
+          style={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            display: 'flex',
+            gap: 2,
+            opacity: 0,
+            transition: 'opacity 0.15s',
+            zIndex: 5,
+          }}
+        >
+          <button
+            onClick={handleCopyMessage}
+            title={msgCopied ? 'Copied!' : 'Copy message'}
+            style={actionBtnStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+          >
+            {msgCopied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+          {onRegenerate && (
+            <button
+              onClick={() => onRegenerate(message.id)}
+              title="Regenerate response"
+              style={actionBtnStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-purple)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+            >
+              <RotateCw size={12} />
+            </button>
+          )}
+          <button
+            onClick={handleInsertCodeToEditor}
+            title="Insert code blocks to editor"
+            style={actionBtnStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+          >
+            <Code size={12} />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-start gap-2.5">
         {/* Avatar */}
         {isUser ? (
@@ -599,15 +891,6 @@ function MessageBubble({ message, showThinking }: { message: ChatMessage; showTh
                 {message.model}
               </span>
             )}
-            <span
-              style={{
-                fontSize: 10,
-                color: 'var(--text-muted)',
-                marginLeft: 'auto',
-              }}
-            >
-              {formatTime(message.timestamp)}
-            </span>
           </div>
 
           {/* Message body */}
@@ -629,6 +912,19 @@ function MessageBubble({ message, showThinking }: { message: ChatMessage; showTh
               {showThinking && <ThinkingIndicator />}
             </div>
           )}
+
+          {/* Message timestamp below content */}
+          <div
+            style={{
+              fontSize: 9.5,
+              color: 'var(--text-muted)',
+              marginTop: 4,
+              opacity: 0.7,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatTime(message.timestamp)}
+          </div>
 
           {/* Task Progress */}
           {message.taskProgress && (
@@ -1403,6 +1699,7 @@ export default function ChatPanel() {
     loadMessages,
     ollamaAvailable,
     ollamaModels,
+    removeMessagesAfter,
   } = useChatStore()
 
   const {
@@ -1410,7 +1707,10 @@ export default function ChatPanel() {
     createConversation,
   } = useChatHistoryStore()
 
+  const { addToast } = useToastStore()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [showSystemPromptEditor, setShowSystemPromptEditor] = useState(false)
 
   // On first mount, ensure there is an active conversation
   useEffect(() => {
@@ -1439,6 +1739,35 @@ export default function ChatPanel() {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const mentionRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Read settings store for the active model name
+  const settingsActiveModelId = useSettingsStore((s) => s.settings.activeModelId)
+  const settingsModels = useSettingsStore((s) => s.settings.models)
+  const settingsActiveModel = settingsModels.find((m) => m.modelId === settingsActiveModelId)
+
+  // Auto-resize textarea up to 6 lines
+  const autoResizeTextarea = useCallback(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    const lineHeight = 20
+    const maxLines = 6
+    const maxHeight = lineHeight * maxLines
+    ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px'
+    ta.style.overflowY = ta.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [])
+
+  // Approximate token count (rough: ~4 chars per token)
+  const charCount = input.length
+  const approxTokens = Math.ceil(charCount / 4)
+
+  // Stop generation handler
+  const handleStopGeneration = useCallback(() => {
+    window.api?.omoSend({ type: 'stop' })
+    useChatStore.getState().setStreaming(false)
+    addToast({ type: 'info', message: 'Generation stopped' })
+  }, [addToast])
 
   /* ── File context state ────────────────────────────────── */
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
@@ -1447,9 +1776,25 @@ export default function ChatPanel() {
 
   const [includeContext, setIncludeContext] = useState(true)
   const [selectionText, setSelectionText] = useState<string | null>(null)
+  const [codeContext, setCodeContext] = useState<CodeContext | null>(null)
+  const [contextSummary, setContextSummary] = useState<string | null>(null)
+
+  // Refresh code context when active file or selection changes
+  useEffect(() => {
+    if (!includeContext) {
+      setCodeContext(null)
+      setContextSummary(null)
+      return
+    }
+    const ctx = getCurrentContext({ selectionText })
+    setCodeContext(ctx)
+    setContextSummary(getContextSummary(ctx))
+  }, [activeFilePath, selectionText, includeContext, openFiles])
   const [showMentionDropdown, setShowMentionDropdown] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionedFiles, setMentionedFiles] = useState<string[]>([])
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [attachedFiles, setAttachedFiles] = useState<{ path: string; name: string; content?: string }[]>([])
 
   // Listen for selection context from editor
   useEffect(() => {
@@ -1573,22 +1918,36 @@ export default function ChatPanel() {
 
     // Build context-enriched message for the AI
     let aiMessage = userText
+    let contextSystemPrompt = systemPrompt.trim()
 
     if (includeContext) {
-      // Gather mentioned file contents
+      // Gather fresh context at send time
+      const ctx = getCurrentContext({ selectionText })
+
+      // Build intelligent system prompt with full code context
+      const builtPrompt = buildSystemPrompt(ctx)
+      contextSystemPrompt = contextSystemPrompt
+        ? `${builtPrompt}\n\n--- User custom instructions ---\n${contextSystemPrompt}`
+        : builtPrompt
+
+      // Gather mentioned file contents (from open files by @name)
       const mentionedFileContents = mentionedFiles
         .map((path) => openFiles.find((f) => f.path === path))
         .filter(Boolean)
         .map((f) => `[Referenced file: ${f!.name}]\n\`\`\`${f!.language}\n${f!.content}\n\`\`\``)
         .join('\n\n')
 
-      if (selectionText && activeFile) {
-        // Selection takes priority over full file content
-        aiMessage = `[Current file: ${activeFile.name} (selection)]\n\`\`\`${activeFile.language}\n${selectionText}\n\`\`\`\n\n${mentionedFileContents ? mentionedFileContents + '\n\n' : ''}User question: ${userText}`
-      } else if (activeFile) {
-        aiMessage = `[Current file: ${activeFile.name}]\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\n${mentionedFileContents ? mentionedFileContents + '\n\n' : ''}User question: ${userText}`
-      } else if (mentionedFileContents) {
-        aiMessage = `${mentionedFileContents}\n\nUser question: ${userText}`
+      // Gather attached file contents (from workspace @file picker)
+      const attachedFileContents = attachedFiles
+        .map((f) => `[File: ${f.name}]\n\`\`\`\n${f.content?.substring(0, 3000) || '(content unavailable)'}\n\`\`\``)
+        .join('\n\n')
+
+      const extraFileContext = [mentionedFileContents, attachedFileContents].filter(Boolean).join('\n\n')
+
+      // The system prompt now carries the full file context, so the user message
+      // only needs to include extra @-mentioned / attached files (if any)
+      if (extraFileContext) {
+        aiMessage = `${extraFileContext}\n\nUser question: ${userText}`
       }
     }
 
@@ -1600,14 +1959,83 @@ export default function ChatPanel() {
     })
     window.api?.omoSend({
       type: 'chat',
-      payload: { message: aiMessage, mode, model: selectedModel },
+      payload: {
+        message: aiMessage,
+        mode,
+        model: selectedModel,
+        ...(contextSystemPrompt ? { systemPrompt: contextSystemPrompt } : {}),
+      },
     })
     setInput('')
     setMentionedFiles([])
+    setAttachedFiles([])
     setSelectionText(null)
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
   }
 
+  const handleRegenerate = useCallback(
+    (msgId: string) => {
+      if (isStreaming) return
+      // Find the assistant message and the user message before it
+      const msgIdx = messages.findIndex((m) => m.id === msgId)
+      if (msgIdx === -1) return
+      // Find the last user message before this assistant message
+      let userMsg: ChatMessage | null = null
+      for (let i = msgIdx - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          userMsg = messages[i]
+          break
+        }
+      }
+      if (!userMsg) return
+      // Remove the assistant message and re-send
+      removeMessagesAfter(msgId)
+      window.api?.omoSend({
+        type: 'chat',
+        payload: { message: userMsg.content, mode, model: selectedModel },
+      })
+      addToast({ type: 'info', message: 'Regenerating response...' })
+    },
+    [messages, isStreaming, mode, selectedModel, removeMessagesAfter, addToast],
+  )
+
+  const handleClearChat = useCallback(() => {
+    clearMessages()
+    addToast({ type: 'info', message: 'Chat cleared' })
+  }, [clearMessages, addToast])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showMentionDropdown && allMentionResults.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIndex((prev) => (prev + 1) % allMentionResults.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIndex((prev) => (prev - 1 + allMentionResults.length) % allMentionResults.length)
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const selected = allMentionResults[mentionIndex]
+        if (selected) {
+          handleMentionSelect(selected)
+        }
+        return
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const selected = allMentionResults[mentionIndex]
+        if (selected) {
+          handleMentionSelect(selected)
+        }
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -1621,6 +2049,9 @@ export default function ChatPanel() {
     const val = e.target.value
     setInput(val)
 
+    // Auto-resize textarea
+    setTimeout(autoResizeTextarea, 0)
+
     // Detect @ mentions
     const cursorPos = e.target.selectionStart ?? val.length
     const textBeforeCursor = val.slice(0, cursorPos)
@@ -1629,24 +2060,46 @@ export default function ChatPanel() {
     if (atMatch) {
       setShowMentionDropdown(true)
       setMentionQuery(atMatch[1].toLowerCase())
+      setMentionIndex(0)
     } else {
       setShowMentionDropdown(false)
       setMentionQuery('')
     }
   }
 
-  const handleMentionSelect = (file: { path: string; name: string }) => {
-    // Replace the @query with @filename in the input
+  const handleMentionSelect = async (file: { path: string; name: string }) => {
+    // Remove the @query from the input
     const cursorPos = input.length
     const textBeforeCursor = input.slice(0, cursorPos)
     const atMatch = textBeforeCursor.match(/@(\S*)$/)
     if (atMatch) {
       const before = input.slice(0, atMatch.index!)
       const after = input.slice(atMatch.index! + atMatch[0].length)
-      setInput(before + '@' + file.name + ' ' + after)
+      setInput(before + after)
     }
-    if (!mentionedFiles.includes(file.path)) {
-      setMentionedFiles((prev) => [...prev, file.path])
+
+    // Check if it's an open file (use mentionedFiles path)
+    const isOpenFile = openFiles.some((f) => f.path === file.path)
+    if (isOpenFile) {
+      if (!mentionedFiles.includes(file.path)) {
+        setMentionedFiles((prev) => [...prev, file.path])
+      }
+    } else {
+      // It's a workspace file - load content and attach
+      if (!attachedFiles.some((f) => f.path === file.path)) {
+        try {
+          const result = await window.api?.readFile(file.path)
+          setAttachedFiles((prev) => [
+            ...prev,
+            { path: file.path, name: file.name, content: result?.content },
+          ])
+        } catch {
+          setAttachedFiles((prev) => [
+            ...prev,
+            { path: file.path, name: file.name, content: undefined },
+          ])
+        }
+      }
     }
     setShowMentionDropdown(false)
   }
@@ -1656,6 +2109,48 @@ export default function ChatPanel() {
       f.name.toLowerCase().includes(mentionQuery) &&
       !mentionedFiles.includes(f.path),
   )
+
+  // Workspace files from file tree (flattened)
+  const workspaceFiles = useMemo(() => {
+    const fileTree = useFileStore.getState().fileTree
+    const allFiles: { path: string; name: string }[] = []
+    const flattenTree = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (node.type !== 'directory') {
+          allFiles.push({ path: node.path, name: node.name })
+        }
+        if (node.children) flattenTree(node.children)
+      }
+    }
+    if (fileTree) flattenTree(fileTree)
+    return allFiles
+    // Re-derive when mention dropdown opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMentionDropdown])
+
+  const filteredWorkspaceFiles = useMemo(() => {
+    if (!showMentionDropdown) return []
+    const openPaths = new Set(openFiles.map((f) => f.path))
+    const attachedPaths = new Set(attachedFiles.map((f) => f.path))
+    return workspaceFiles
+      .filter((f) => {
+        if (openPaths.has(f.path) || attachedPaths.has(f.path)) return false
+        return f.name.toLowerCase().includes(mentionQuery)
+      })
+      .slice(0, 10)
+  }, [showMentionDropdown, mentionQuery, workspaceFiles, openFiles, attachedFiles])
+
+  // Combined mention results: open files first, then workspace files
+  const allMentionResults = useMemo(() => {
+    const results: { path: string; name: string; source: 'open' | 'workspace' }[] = []
+    for (const f of filteredMentionFiles) {
+      results.push({ path: f.path, name: f.name, source: 'open' })
+    }
+    for (const f of filteredWorkspaceFiles) {
+      results.push({ path: f.path, name: f.name, source: 'workspace' })
+    }
+    return results
+  }, [filteredMentionFiles, filteredWorkspaceFiles])
 
   return (
     <div
@@ -1727,6 +2222,84 @@ export default function ChatPanel() {
             </button>
           ))}
         </div>
+        {/* System prompt indicator */}
+        {systemPrompt.trim() && (
+          <button
+            onClick={() => setShowSystemPromptEditor(!showSystemPromptEditor)}
+            title={`System prompt active: "${systemPrompt.slice(0, 50)}${systemPrompt.length > 50 ? '...' : ''}"`}
+            className="flex items-center gap-1 transition-colors duration-100"
+            style={{
+              fontSize: 9,
+              padding: '2px 6px',
+              borderRadius: 4,
+              border: '1px solid rgba(188,140,255,0.3)',
+              background: 'rgba(188,140,255,0.1)',
+              color: 'var(--accent-purple)',
+              cursor: 'pointer',
+              marginLeft: 6,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Settings2 size={10} />
+            Custom
+          </button>
+        )}
+        {!systemPrompt.trim() && (
+          <button
+            onClick={() => setShowSystemPromptEditor(!showSystemPromptEditor)}
+            title="Set system prompt"
+            className="flex items-center justify-center transition-colors duration-100"
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              marginLeft: 6,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-muted)'
+              e.currentTarget.style.background = 'transparent'
+            }}
+          >
+            <Settings2 size={13} />
+          </button>
+        )}
+
+        {/* Clear chat */}
+        <button
+          onClick={handleClearChat}
+          title="Clear current chat"
+          className="flex items-center justify-center transition-colors duration-100"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            marginLeft: 2,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = '#f85149'
+            e.currentTarget.style.background = 'rgba(248,81,73,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--text-muted)'
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <Trash2 size={13} />
+        </button>
+
+        {/* New chat */}
         <button
           onClick={() => {
             createConversation()
@@ -1742,7 +2315,7 @@ export default function ChatPanel() {
             border: 'none',
             cursor: 'pointer',
             color: 'var(--text-muted)',
-            marginLeft: 6,
+            marginLeft: 2,
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = 'var(--text-secondary)'
@@ -1753,14 +2326,92 @@ export default function ChatPanel() {
             e.currentTarget.style.background = 'transparent'
           }}
         >
-          <Trash2 size={13} />
+          <Plus size={13} />
         </button>
       </div>
+
+      {/* System prompt editor */}
+      {showSystemPromptEditor && (
+        <div
+          style={{
+            padding: '8px 12px',
+            borderBottom: '1px solid var(--border)',
+            background: 'rgba(188,140,255,0.03)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent-purple)' }}>
+              System Prompt
+            </span>
+            <button
+              onClick={() => setShowSystemPromptEditor(false)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                padding: 2,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            placeholder="Enter custom instructions for the AI (e.g., 'You are a React expert. Always use TypeScript.')"
+            style={{
+              width: '100%',
+              minHeight: 60,
+              maxHeight: 120,
+              padding: '6px 8px',
+              fontSize: 11,
+              lineHeight: 1.5,
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              outline: 'none',
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent-purple)' }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
+          />
+          {systemPrompt.trim() && (
+            <button
+              onClick={() => { setSystemPrompt(''); setShowSystemPromptEditor(false) }}
+              style={{
+                fontSize: 10,
+                marginTop: 4,
+                padding: '2px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              Clear prompt
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Hover styles for message actions */}
+      <style>{`
+        .chat-message:hover .chat-msg-actions { opacity: 1 !important; }
+      `}</style>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3">
         {messages.length === 0 ? (
-          <EmptyChat />
+          <EmptyChat onInsertPrompt={(text) => {
+            setInput(text)
+            setTimeout(() => textareaRef.current?.focus(), 0)
+          }} />
         ) : (
           <>
             {messages.map((msg, idx) => {
@@ -1775,6 +2426,7 @@ export default function ChatPanel() {
                   key={msg.id}
                   message={msg}
                   showThinking={isLastAssistantEmpty}
+                  onRegenerate={handleRegenerate}
                 />
               )
             })}
@@ -1805,13 +2457,29 @@ export default function ChatPanel() {
           >
             <FileCode size={12} />
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Context: {activeFile.name}
+              Context: {contextSummary || activeFile.name}
               {selectionText && (
                 <span style={{ color: 'var(--accent-purple)', marginLeft: 4 }}>
                   (selection)
                 </span>
               )}
             </span>
+            {codeContext && codeContext.relatedFiles.length > 0 && (
+              <span
+                style={{
+                  fontSize: 9,
+                  padding: '1px 5px',
+                  borderRadius: 3,
+                  background: 'rgba(63,185,80,0.1)',
+                  color: '#3fb950',
+                  border: '1px solid rgba(63,185,80,0.2)',
+                  whiteSpace: 'nowrap',
+                }}
+                title={codeContext.relatedFiles.map((f) => f.name).join(', ')}
+              >
+                {codeContext.relatedFiles.length} import{codeContext.relatedFiles.length > 1 ? 's' : ''}
+              </span>
+            )}
             <button
               onClick={() => setIncludeContext(!includeContext)}
               style={{
@@ -1832,7 +2500,7 @@ export default function ChatPanel() {
           </div>
         )}
 
-        {/* Mentioned files badges */}
+        {/* Mentioned files badges (open files) */}
         {mentionedFiles.length > 0 && (
           <div
             style={{
@@ -1883,6 +2551,45 @@ export default function ChatPanel() {
           </div>
         )}
 
+        {/* Attached workspace file chips */}
+        {attachedFiles.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 12px' }}>
+            {attachedFiles.map((file) => (
+              <span
+                key={file.path}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 8px',
+                  background: 'rgba(88,166,255,0.12)',
+                  border: '1px solid rgba(88,166,255,0.2)',
+                  borderRadius: 12,
+                  fontSize: 11,
+                  color: '#58a6ff',
+                }}
+              >
+                <FileCode size={10} />
+                {file.name}
+                <button
+                  onClick={() => setAttachedFiles((prev) => prev.filter((f) => f.path !== file.path))}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    color: '#58a6ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div
           className="transition-colors duration-150"
           style={{
@@ -1899,7 +2606,7 @@ export default function ChatPanel() {
           }}
         >
           {/* @ mention dropdown */}
-          {showMentionDropdown && filteredMentionFiles.length > 0 && (
+          {showMentionDropdown && allMentionResults.length > 0 && (
             <div
               ref={mentionRef}
               style={{
@@ -1912,69 +2619,98 @@ export default function ChatPanel() {
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 padding: 4,
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                boxShadow: '0 -4px 16px rgba(0,0,0,0.3)',
                 zIndex: 50,
-                maxHeight: 180,
+                maxHeight: 200,
                 overflowY: 'auto',
               }}
             >
-              <div
-                style={{
-                  fontSize: 9,
-                  color: 'var(--text-muted)',
-                  padding: '4px 8px 2px',
-                  fontWeight: 600,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Open Files
-              </div>
-              {filteredMentionFiles.map((file) => (
-                <button
-                  key={file.path}
-                  onClick={() => handleMentionSelect(file)}
-                  className="flex items-center gap-2 w-full transition-colors duration-75"
+              {filteredMentionFiles.length > 0 && (
+                <div
                   style={{
-                    fontSize: 11,
-                    padding: '5px 8px',
-                    borderRadius: 5,
-                    background: 'transparent',
-                    color: 'var(--text-secondary)',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent'
+                    fontSize: 9,
+                    color: 'var(--text-muted)',
+                    padding: '4px 8px 2px',
+                    fontWeight: 600,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
                   }}
                 >
-                  <FileCode size={12} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {file.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      color: 'var(--text-muted)',
-                      fontFamily: 'var(--font-mono, monospace)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: 140,
-                    }}
-                  >
-                    {file.path}
-                  </span>
-                </button>
-              ))}
+                  Open Files
+                </div>
+              )}
+              {allMentionResults.map((item, idx) => {
+                const dir = item.path.replace(/\\/g, '/').split('/').slice(-2, -1)[0] || ''
+                // Show "Workspace Files" header before the first workspace item
+                const showWorkspaceHeader =
+                  item.source === 'workspace' &&
+                  (idx === 0 || allMentionResults[idx - 1].source !== 'workspace')
+                return (
+                  <div key={item.path}>
+                    {showWorkspaceHeader && (
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: 'var(--text-muted)',
+                          padding: '6px 8px 2px',
+                          fontWeight: 600,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          borderTop: filteredMentionFiles.length > 0 ? '1px solid var(--border)' : 'none',
+                          marginTop: filteredMentionFiles.length > 0 ? 4 : 0,
+                        }}
+                      >
+                        Workspace Files
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleMentionSelect(item)}
+                      className="mention-item flex items-center gap-2 w-full transition-colors duration-75"
+                      style={{
+                        fontSize: 11,
+                        padding: '6px 10px',
+                        borderRadius: 4,
+                        background: idx === mentionIndex ? 'var(--bg-hover, rgba(255,255,255,0.06))' : 'transparent',
+                        color: 'var(--text-primary)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                      onMouseEnter={(e) => {
+                        setMentionIndex(idx)
+                        e.currentTarget.style.background = 'var(--bg-hover, rgba(255,255,255,0.06))'
+                      }}
+                      onMouseLeave={(e) => {
+                        if (idx !== mentionIndex) {
+                          e.currentTarget.style.background = 'transparent'
+                        }
+                      }}
+                    >
+                      <FileCode
+                        size={14}
+                        style={{
+                          color: item.source === 'open' ? 'var(--accent-purple)' : '#58a6ff',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.name}
+                      </span>
+                      {dir && (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          {dir}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+              <style>{`.mention-item:hover { background: var(--bg-hover, rgba(255,255,255,0.06)) !important; }`}</style>
             </div>
           )}
 
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
@@ -1995,8 +2731,28 @@ export default function ChatPanel() {
               border: 'none',
               minHeight: 38,
               maxHeight: 120,
+              overflowY: 'hidden',
+              lineHeight: '20px',
             }}
           />
+          {/* Shift+Enter hint */}
+          {input.length > 0 && (
+            <div style={{
+              padding: '0 14px 2px',
+              fontSize: 9.5,
+              color: 'var(--text-muted)',
+              opacity: 0.6,
+            }}>
+              <kbd style={{
+                fontSize: 9,
+                padding: '0px 3px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 3,
+                fontFamily: 'var(--font-sans)',
+              }}>Shift+Enter</kbd> for newline
+            </div>
+          )}
           <div className="flex items-center px-2 pb-2">
             <button
               style={{
@@ -2049,36 +2805,91 @@ export default function ChatPanel() {
               <AtSign size={13} />
             </button>
 
+            {/* Character/token count */}
+            {input.length > 0 && (
+              <span
+                style={{
+                  fontSize: 9.5,
+                  color: 'var(--text-muted)',
+                  marginLeft: 6,
+                  fontVariantNumeric: 'tabular-nums',
+                  opacity: 0.7,
+                }}
+              >
+                {charCount} chars ~{approxTokens} tokens
+              </span>
+            )}
+
             <div className="ml-auto flex items-center gap-2">
+              {/* Model selector from settings store if available */}
+              {settingsActiveModel && (
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    color: 'var(--text-muted)',
+                    padding: '2px 6px',
+                    background: 'rgba(255,255,255,0.03)',
+                    borderRadius: 4,
+                    fontFamily: 'var(--font-mono, monospace)',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={`Settings model: ${settingsActiveModel.modelId}`}
+                >
+                  {settingsActiveModel.modelId}
+                </span>
+              )}
               <ModelDropdown
                 models={allModels}
                 selectedModel={selectedModel}
                 onSelect={setModel}
               />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className="transition-all duration-150"
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: input.trim()
-                    ? 'var(--accent)'
-                    : 'var(--bg-hover)',
-                  color: input.trim() ? '#fff' : 'var(--text-muted)',
-                  cursor: input.trim() ? 'pointer' : 'default',
-                  border: 'none',
-                  boxShadow: input.trim()
-                    ? '0 2px 8px rgba(88,166,255,0.2)'
-                    : 'none',
-                }}
-              >
-                <ArrowUp size={14} strokeWidth={2.5} />
-              </button>
+              {/* Stop generation button (visible while streaming) */}
+              {isStreaming ? (
+                <button
+                  onClick={handleStopGeneration}
+                  className="chat-stop-btn transition-all duration-150"
+                  title="Stop generation"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(248,81,73,0.15)',
+                    color: '#f85149',
+                    cursor: 'pointer',
+                    border: '1px solid rgba(248,81,73,0.3)',
+                  }}
+                >
+                  <Square size={12} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="transition-all duration-150"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: input.trim()
+                      ? 'var(--accent)'
+                      : 'var(--bg-hover)',
+                    color: input.trim() ? '#fff' : 'var(--text-muted)',
+                    cursor: input.trim() ? 'pointer' : 'default',
+                    border: 'none',
+                    boxShadow: input.trim()
+                      ? '0 2px 8px rgba(88,166,255,0.2)'
+                      : 'none',
+                  }}
+                >
+                  <ArrowUp size={14} strokeWidth={2.5} />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2090,86 +2901,100 @@ export default function ChatPanel() {
 
 /* ── Empty chat state ──────────────────────────────────── */
 
-function EmptyChat() {
+function EmptyChat({ onInsertPrompt }: { onInsertPrompt?: (text: string) => void }) {
+  const suggestions = [
+    { icon: Search, text: 'Explain this file', color: 'var(--accent)' },
+    { icon: Lightbulb, text: 'Find bugs', color: '#f78166' },
+    { icon: TestTube, text: 'Write tests', color: 'var(--accent-green)' },
+    { icon: Wrench, text: 'Refactor', color: 'var(--accent-purple)' },
+  ]
+
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-5 px-6">
+    <div className="h-full flex flex-col items-center justify-center gap-6 px-6">
       <div
         style={{
-          width: 64,
-          height: 64,
-          borderRadius: 18,
+          width: 72,
+          height: 72,
+          borderRadius: 20,
           background:
-            'linear-gradient(135deg, rgba(88,166,255,0.1), rgba(188,140,255,0.12))',
-          border: '1px solid rgba(255,255,255,0.05)',
+            'linear-gradient(135deg, rgba(88,166,255,0.12), rgba(188,140,255,0.14))',
+          border: '1px solid rgba(255,255,255,0.06)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
         }}
       >
-        <Sparkles size={28} style={{ color: 'var(--accent)' }} />
+        <Sparkles size={30} style={{ color: 'var(--accent)' }} />
       </div>
 
       <div className="text-center">
         <h3
           style={{
-            fontSize: 16,
-            fontWeight: 600,
+            fontSize: 17,
+            fontWeight: 700,
             color: 'var(--text-primary)',
             marginBottom: 6,
+            letterSpacing: '-0.01em',
           }}
         >
-          How can I help?
+          Ask anything about your code
         </h3>
         <p
           style={{
             fontSize: 12,
             color: 'var(--text-muted)',
             lineHeight: 1.5,
+            maxWidth: 240,
+            margin: '0 auto',
           }}
         >
-          Ask questions, get code help, or let agents work autonomously
+          Get explanations, find issues, generate tests, or refactor with AI assistance
         </p>
       </div>
 
+      {/* Suggestion chips */}
       <div
         style={{
-          width: '100%',
-          maxWidth: 260,
           display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
+          flexWrap: 'wrap',
+          gap: 8,
+          justifyContent: 'center',
+          maxWidth: 300,
         }}
       >
-        {[
-          { icon: Code, text: '"Explain this codebase"' },
-          { icon: Wrench, text: '"Fix the bug in auth.ts"' },
-          { icon: Lightbulb, text: '"Add dark mode support"' },
-          { icon: BookOpen, text: '"Write tests for utils.ts"' },
-        ].map(({ icon: ExIcon, text }) => (
-          <div
+        {suggestions.map(({ icon: ChipIcon, text, color }) => (
+          <button
             key={text}
-            className="flex items-center gap-2.5 transition-colors duration-100 cursor-pointer"
+            onClick={() => onInsertPrompt?.(text)}
+            className="flex items-center gap-2 transition-all duration-150 chat-suggestion-chip"
             style={{
-              fontSize: 11,
+              fontSize: 11.5,
+              fontWeight: 500,
               color: 'var(--text-secondary)',
-              background: 'rgba(255,255,255,0.02)',
-              padding: '9px 12px',
-              borderRadius: 8,
+              background: 'rgba(255,255,255,0.03)',
+              padding: '8px 14px',
+              borderRadius: 20,
+              border: '1px solid var(--border)',
+              cursor: 'pointer',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+              e.currentTarget.style.borderColor = 'var(--border-bright)'
+              e.currentTarget.style.color = 'var(--text-primary)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+              e.currentTarget.style.color = 'var(--text-secondary)'
             }}
           >
-            <ExIcon
+            <ChipIcon
               size={13}
-              style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+              style={{ color, flexShrink: 0 }}
             />
             {text}
-          </div>
+          </button>
         ))}
       </div>
     </div>

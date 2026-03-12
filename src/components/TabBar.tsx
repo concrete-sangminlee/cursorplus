@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
-import { X } from 'lucide-react'
+import { useProblemsStore, getProblemsForFile } from '@/store/problems'
+import { X, ChevronLeft, ChevronRight, Pin } from 'lucide-react'
 
 const extColors: Record<string, string> = {
   ts: '#3178c6', tsx: '#3178c6', js: '#f1e05a', jsx: '#f1e05a',
@@ -146,9 +147,13 @@ function TabContextMenu({
     closeOtherFiles,
     closeToRight,
     closeSaved,
+    pinnedTabs,
+    pinTab,
+    unpinTab,
   } = useEditorStore()
   const menuRef = useRef<HTMLDivElement>(null)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  const isTabPinned = pinnedTabs.includes(filePath)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -168,12 +173,19 @@ function TabContextMenu({
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  const dispatch = (event: string, detail?: any) => window.dispatchEvent(new CustomEvent(event, { detail }))
+
   const items = [
     { id: 'close', label: 'Close', shortcut: 'Ctrl+W', action: () => closeFile(filePath) },
     { id: 'close-others', label: 'Close Others', action: () => closeOtherFiles(filePath) },
     { id: 'close-all', label: 'Close All', action: () => closeAllFiles() },
     { id: 'close-right', label: 'Close to the Right', action: () => closeToRight(filePath) },
-    { id: 'divider', label: '', action: () => {} },
+    { id: 'divider0', label: '', action: () => {} },
+    { id: 'pin', label: isTabPinned ? 'Unpin Tab' : 'Pin Tab', action: () => isTabPinned ? unpinTab(filePath) : pinTab(filePath) },
+    { id: 'divider1', label: '', action: () => {} },
+    { id: 'split-right', label: 'Split Right', shortcut: 'Ctrl+\\', action: () => dispatch('orion:split-editor-right') },
+    { id: 'split-down', label: 'Split Down', action: () => dispatch('orion:split-editor-down') },
+    { id: 'divider2', label: '', action: () => {} },
     { id: 'close-saved', label: 'Close Saved', action: () => closeSaved() },
   ]
 
@@ -194,7 +206,7 @@ function TabContextMenu({
       }}
     >
       {items.map((item) => {
-        if (item.id === 'divider') {
+        if (item.id.startsWith('divider')) {
           return (
             <div
               key={item.id}
@@ -357,8 +369,12 @@ export default function TabBar() {
     pinFile,
     previewPath,
     markSaved,
+    pinnedTabs,
+    pinTab,
+    unpinTab,
   } = useEditorStore()
   const { addToast } = useToastStore()
+  const problems = useProblemsStore((s) => s.problems)
   const [hoveredTab, setHoveredTab] = useState<string | null>(null)
   const [hoveredCloseBtn, setHoveredCloseBtn] = useState<string | null>(null)
   const [dragOverPath, setDragOverPath] = useState<string | null>(null)
@@ -384,6 +400,38 @@ export default function TabBar() {
   const [tabSwitcher, setTabSwitcher] = useState(false)
   const [switcherIndex, setSwitcherIndex] = useState(0)
   const ctrlHeld = useRef(false)
+
+  // Tab scroll state
+  const [showScrollButtons, setShowScrollButtons] = useState(false)
+  const tabContainerRef = useRef<HTMLDivElement>(null)
+
+  // Check if tabs overflow
+  useEffect(() => {
+    const container = tabContainerRef.current
+    if (!container) return
+    const checkOverflow = () => {
+      setShowScrollButtons(container.scrollWidth > container.clientWidth)
+    }
+    checkOverflow()
+    const observer = new ResizeObserver(checkOverflow)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [openFiles])
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    const container = tabContainerRef.current
+    if (!container) return
+    container.scrollBy({ left: direction === 'left' ? -150 : 150, behavior: 'smooth' })
+  }
+
+  // Auto-scroll active tab into view
+  useEffect(() => {
+    if (!activeFilePath || !tabContainerRef.current) return
+    const activeTab = tabContainerRef.current.querySelector(`[data-path="${CSS.escape(activeFilePath)}"]`) as HTMLElement
+    if (activeTab) {
+      activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    }
+  }, [activeFilePath])
 
   // Handle attempting to close a tab (checks for unsaved changes)
   const handleCloseTab = useCallback(
@@ -468,14 +516,57 @@ export default function TabBar() {
 
   return (
     <>
+      {/* Injected style to hide scrollbar in WebKit browsers */}
+      <style>{`.tab-scroll-container::-webkit-scrollbar { display: none; }`}</style>
       <div
-        className="shrink-0 flex items-end overflow-x-auto"
+        className="shrink-0 flex items-end"
         style={{
           height: 35,
           background: 'var(--bg-tertiary)',
           borderBottom: '1px solid var(--border)',
         }}
       >
+        {/* Left scroll button */}
+        {showScrollButtons && (
+          <button
+            onClick={() => scrollTabs('left')}
+            style={{
+              height: 35,
+              width: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--bg-tertiary)',
+              border: 'none',
+              borderBottom: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              padding: 0,
+            }}
+          >
+            <ChevronLeft size={14} />
+          </button>
+        )}
+
+        {/* Scrollable tab container */}
+        <div
+          ref={tabContainerRef}
+          className="tab-scroll-container flex items-end"
+          onWheel={(e) => {
+            e.preventDefault()
+            e.currentTarget.scrollLeft += e.deltaY
+          }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: 35,
+            display: 'flex',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
         {openFiles.map((file, index) => {
           const isActive = activeFilePath === file.path
           const isHovered = hoveredTab === file.path
@@ -485,13 +576,23 @@ export default function TabBar() {
           const ext = file.name.split('.').pop()?.toLowerCase() || ''
           const dotColor = extColors[ext] || '#8b949e'
           const isCloseHovered = hoveredCloseBtn === file.path
-          // Modified files: show dot when not hovering close area, show X on hover
-          const showCloseX = file.isModified ? isCloseHovered : (isActive || isHovered)
-          const showModDot = file.isModified && !isCloseHovered && !showCloseX
+          const isUserPinned = pinnedTabs.includes(file.path)
+          const pinnedCount = openFiles.filter((f) => pinnedTabs.includes(f.path)).length
+          const isLastPinned = isUserPinned && index === pinnedCount - 1 && pinnedCount < openFiles.length
+          // For pinned tabs, show pin icon instead of close button
+          // For unpinned tabs, use normal close button logic
+          const showCloseX = isUserPinned
+            ? false
+            : file.isModified ? (isCloseHovered || isActive || isHovered) : (isActive || isHovered)
+          const showModDot = !isUserPinned && file.isModified && !isCloseHovered && !(isActive || isHovered)
+          const showPinIcon = isUserPinned
+          const fileProblems = getProblemsForFile(problems, file.path)
+          const hasErrors = fileProblems.some(p => p.severity === 'error')
+          const hasWarnings = !hasErrors && fileProblems.some(p => p.severity === 'warning')
 
           return (
+            <React.Fragment key={file.path}>
             <div
-              key={file.path}
               draggable={true}
               onDragStart={(e) => {
                 dragIndexRef.current = index
@@ -523,6 +624,8 @@ export default function TabBar() {
                 setDragOverPath(null)
                 dragIndexRef.current = -1
               }}
+              data-path={file.path}
+              title={file.path}
               onClick={() => setActiveFile(file.path)}
               onDoubleClick={() => {
                 if (isPreview) pinFile(file.path)
@@ -534,11 +637,11 @@ export default function TabBar() {
               className="shrink-0 flex items-center cursor-pointer"
               style={{
                 height: 35,
-                paddingLeft: 14,
-                paddingRight: 8,
-                maxWidth: 200,
+                paddingLeft: isUserPinned ? 8 : 14,
+                paddingRight: isUserPinned ? 6 : 8,
+                maxWidth: isUserPinned ? 48 : 200,
                 minWidth: 0,
-                gap: 6,
+                gap: isUserPinned ? 0 : 6,
                 position: 'relative',
                 fontSize: 12,
                 background: isActive
@@ -548,7 +651,7 @@ export default function TabBar() {
                     : 'transparent',
                 color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                 transition: 'background 0.1s, color 0.1s',
-                borderRight: index < openFiles.length - 1
+                borderRight: index < openFiles.length - 1 && !isLastPinned
                   ? '1px solid rgba(255, 255, 255, 0.04)'
                   : 'none',
                 borderLeft: isDragOver
@@ -603,120 +706,198 @@ export default function TabBar() {
                 }}
               />
 
-              {/* File name */}
-              <span
-                className="truncate"
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  lineHeight: '35px',
-                  fontStyle: isPreview ? 'italic' : 'normal',
-                  opacity: isPreview && !isActive ? 0.75 : 1,
-                  textDecoration: isPreview ? 'underline dotted' : 'none',
-                  textDecorationColor: isPreview ? 'var(--text-muted)' : undefined,
-                  textUnderlineOffset: 3,
-                }}
-              >
-                {file.name}
-              </span>
+              {/* File name - hidden for pinned tabs (compact mode) */}
+              {!isUserPinned && (
+                <span
+                  className="truncate"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    lineHeight: '35px',
+                    fontStyle: isPreview ? 'italic' : 'normal',
+                    opacity: isPreview && !isActive ? 0.75 : 1,
+                    textDecoration: isPreview ? 'underline dotted' : 'none',
+                    textDecorationColor: isPreview ? 'var(--text-muted)' : undefined,
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  {file.name}
+                </span>
+              )}
 
-              {/* Modified dot / Close button area */}
-              <div
-                onMouseEnter={() => setHoveredCloseBtn(file.path)}
-                onMouseLeave={() => setHoveredCloseBtn(null)}
-                style={{
-                  width: 20,
-                  height: 20,
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
-                }}
-              >
-                {/* Modified dot (accent color) - shown when file is modified and close X is NOT visible */}
-                {showModDot && (
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: file.aiModified
-                        ? 'var(--accent-green)'
-                        : 'var(--accent)',
-                    }}
-                  />
-                )}
+              {/* Error/Warning indicator dot */}
+              {(hasErrors || hasWarnings) && (
+                <span
+                  title={hasErrors ? 'File has errors' : 'File has warnings'}
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: hasErrors ? '#f85149' : '#d29922',
+                    flexShrink: 0,
+                    marginLeft: 2,
+                    boxShadow: hasErrors ? '0 0 4px #f8514980' : '0 0 4px #d2992280',
+                  }}
+                />
+              )}
 
-                {/* Close button X */}
-                {showCloseX && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleCloseTab(file.path, e.currentTarget)
-                    }}
-                    className="flex items-center justify-center"
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      color: 'var(--text-muted)',
-                      transition: 'background 0.1s, color 0.1s',
-                      background: isCloseHovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                      e.currentTarget.style.color = 'var(--text-primary)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = 'var(--text-muted)'
-                    }}
-                  >
-                    <X size={12} strokeWidth={1.5} />
-                  </button>
-                )}
+              {/* Pin icon for pinned tabs - clicking unpins */}
+              {showPinIcon && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    unpinTab(file.path)
+                  }}
+                  title="Unpin tab"
+                  className="flex items-center justify-center"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 4,
+                    border: 'none',
+                    padding: 0,
+                    marginLeft: 2,
+                    color: isActive || isHovered ? 'var(--text-secondary)' : 'var(--text-muted)',
+                    background: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    cursor: 'pointer',
+                    transition: 'background 0.1s, color 0.1s',
+                    flexShrink: 0,
+                    transform: 'rotate(45deg)',
+                  }}
+                >
+                  <Pin size={11} strokeWidth={2} />
+                </button>
+              )}
 
-                {/* Non-modified: show close X on active/hover (no modified dot to worry about) */}
-                {!file.isModified && (isActive || isHovered) && !showCloseX && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      closeFile(file.path)
-                    }}
-                    className="flex items-center justify-center"
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      color: 'var(--text-muted)',
-                      transition: 'background 0.1s, color 0.1s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                      e.currentTarget.style.color = 'var(--text-primary)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = 'var(--text-muted)'
-                    }}
-                  >
-                    <X size={12} strokeWidth={1.5} />
-                  </button>
-                )}
-              </div>
+              {/* Modified dot / Close button area (unpinned tabs only) */}
+              {!isUserPinned && (
+                <div
+                  onMouseEnter={() => setHoveredCloseBtn(file.path)}
+                  onMouseLeave={() => setHoveredCloseBtn(null)}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                  }}
+                >
+                  {/* Modified dot (accent color) - shown when file is modified and close X is NOT visible */}
+                  {showModDot && (
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: file.aiModified
+                          ? 'var(--accent-green)'
+                          : 'var(--accent)',
+                      }}
+                    />
+                  )}
+
+                  {/* Close button X */}
+                  {showCloseX && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCloseTab(file.path, e.currentTarget)
+                      }}
+                      className="flex items-center justify-center"
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        color: 'var(--text-muted)',
+                        transition: 'background 0.1s, color 0.1s',
+                        background: isCloseHovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                        e.currentTarget.style.color = 'var(--text-primary)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = 'var(--text-muted)'
+                      }}
+                    >
+                      <X size={12} strokeWidth={1.5} />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Modified indicator for pinned tabs */}
+              {isUserPinned && file.isModified && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 6,
+                    right: 4,
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: file.aiModified
+                      ? 'var(--accent-green)'
+                      : 'var(--accent)',
+                  }}
+                />
+              )}
             </div>
+            {/* Thin vertical separator between pinned and unpinned zones */}
+            {isLastPinned && (
+              <div
+                style={{
+                  width: 1,
+                  height: 20,
+                  alignSelf: 'center',
+                  background: 'var(--border)',
+                  flexShrink: 0,
+                  margin: '0 1px',
+                }}
+              />
+            )}
+            </React.Fragment>
           )
         })}
 
-        {/* Fill remaining tab bar space */}
+        {/* Fill remaining tab bar space (inside scrollable container) */}
         <div
           className="flex-1"
           style={{
             height: 35,
+            minWidth: 20,
+            flexShrink: 0,
             borderBottom: '1px solid var(--border)',
           }}
         />
+        </div>
+        {/* End scrollable tab container */}
+
+        {/* Right scroll button */}
+        {showScrollButtons && (
+          <button
+            onClick={() => scrollTabs('right')}
+            style={{
+              height: 35,
+              width: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--bg-tertiary)',
+              border: 'none',
+              borderBottom: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              padding: 0,
+            }}
+          >
+            <ChevronRight size={14} />
+          </button>
+        )}
 
         {/* Close all tabs button */}
         <div

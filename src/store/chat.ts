@@ -17,6 +17,7 @@ interface ChatStore {
   clearMessages: () => void
   setOllamaStatus: (available: boolean, models: string[]) => void
   loadMessages: (messages: ChatMessage[]) => void
+  removeMessagesAfter: (messageId: string) => void
 }
 
 /** Sync current messages to the active conversation in chatHistory store. */
@@ -66,4 +67,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ ollamaAvailable: available, ollamaModels: models }),
 
   loadMessages: (messages) => set({ messages }),
+
+  removeMessagesAfter: (messageId) =>
+    set((state) => {
+      const idx = state.messages.findIndex((m) => m.id === messageId)
+      if (idx === -1) return state
+      const updated = state.messages.slice(0, idx)
+      syncToHistory(updated)
+      return { messages: updated }
+    }),
 }))

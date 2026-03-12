@@ -1,12 +1,18 @@
 import { ipcMain } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import * as path from 'path'
+import * as fs from 'fs'
 
 const execAsync = promisify(exec)
 
-async function runGit(cwd: string, args: string): Promise<string> {
+async function runGit(cwd: string, args: string, options?: { timeout?: number; maxBuffer?: number }): Promise<string> {
   try {
-    const { stdout } = await execAsync(`git ${args}`, { cwd, timeout: 10000 })
+    const { stdout } = await execAsync(`git ${args}`, {
+      cwd,
+      timeout: options?.timeout ?? 10000,
+      maxBuffer: options?.maxBuffer ?? 1024 * 1024 * 5, // 5MB default
+    })
     return stdout.trim()
   } catch (err: any) {
     if (err.stderr) return ''
@@ -83,23 +89,109 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:log', async (_, cwd: string, count: number = 50) => {
-    const raw = await runGit(cwd, `log --format="%H|%h|%s|%an|%ar" -${count}`)
+    // Use ASCII record/unit separators to avoid conflicts with commit message content
+    const SEP = '\x1f' // unit separator
+    const REC = '\x1e' // record separator
+    const format = `%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%ai${SEP}%s${REC}`
+    const raw = await runGit(cwd, `log --pretty=format:"${format}" -${count}`)
     if (!raw) return []
-    return raw.split('\n').filter(Boolean).map((line) => {
-      const parts = line.split('|')
-      const fullHash = parts[0]
-      const hash = parts[1]
-      const author = parts[parts.length - 2]
-      const date = parts[parts.length - 1]
-      // Message may contain '|', so rejoin the middle parts
-      const message = parts.slice(2, parts.length - 2).join('|')
-      return { fullHash, hash, message, author, date }
+    return raw.split(REC).filter(s => s.trim()).map((record) => {
+      const parts = record.trim().split(SEP)
+      return {
+        fullHash: parts[0] || '',
+        hash: parts[1] || '',
+        author: parts[2] || '',
+        email: parts[3] || '',
+        date: parts[4] || '',
+        message: parts[5] || '',
+      }
     })
   })
 
+  ipcMain.handle('git:blame', async (_, cwd: string, filePath: string) => {
+    const raw = await runGit(cwd, `blame --porcelain "${filePath}"`, { timeout: 30000, maxBuffer: 1024 * 1024 * 10 })
+    if (!raw) return []
+
+    const lines = raw.split('\n')
+    const result: { hash: string; author: string; date: string; line: number; content: string }[] = []
+    let currentHash = ''
+    let currentAuthor = ''
+    let currentDate = ''
+    let currentLine = 0
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      // Header line: <hash> <orig-line> <final-line> [<num-lines>]
+      const headerMatch = line.match(/^([0-9a-f]{40})\s+\d+\s+(\d+)/)
+      if (headerMatch) {
+        currentHash = headerMatch[1]
+        currentLine = parseInt(headerMatch[2], 10)
+        continue
+      }
+      if (line.startsWith('author ')) {
+        currentAuthor = line.substring(7)
+        continue
+      }
+      if (line.startsWith('author-time ')) {
+        const timestamp = parseInt(line.substring(12), 10)
+        currentDate = new Date(timestamp * 1000).toISOString()
+        continue
+      }
+      // Content line starts with a tab
+      if (line.startsWith('\t')) {
+        result.push({
+          hash: currentHash.substring(0, 8),
+          author: currentAuthor,
+          date: currentDate,
+          line: currentLine,
+          content: line.substring(1),
+        })
+      }
+    }
+    return result
+  })
+
   ipcMain.handle('git:show', async (_, cwd: string, hash: string) => {
-    const stat = await runGit(cwd, `show ${hash} --stat --format="%H|%h|%s|%an|%ar%n"`)
-    return stat
+    // Sanitize hash - only allow hex chars
+    const safeHash = hash.replace(/[^0-9a-fA-F]/g, '')
+    if (!safeHash) return null
+
+    const SEP = '\x1f'
+    const format = `%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%ai${SEP}%s`
+    const headerRaw = await runGit(cwd, `show ${safeHash} --quiet --pretty=format:"${format}"`)
+    const statRaw = await runGit(cwd, `show ${safeHash} --stat --format=""`)
+
+    if (!headerRaw) return null
+
+    const parts = headerRaw.trim().split(SEP)
+    const filesChanged: { file: string; changes: string }[] = []
+    let summary = ''
+
+    if (statRaw) {
+      const statLines = statRaw.trim().split('\n')
+      for (const sl of statLines) {
+        // Match file stat lines like: " src/file.ts | 10 ++++----"
+        const fileMatch = sl.match(/^\s*(.+?)\s+\|\s+(.+)$/)
+        if (fileMatch) {
+          filesChanged.push({ file: fileMatch[1].trim(), changes: fileMatch[2].trim() })
+        }
+        // Match summary line like: " 3 files changed, 10 insertions(+), 5 deletions(-)"
+        if (sl.match(/\d+\s+file/)) {
+          summary = sl.trim()
+        }
+      }
+    }
+
+    return {
+      fullHash: parts[0] || '',
+      hash: parts[1] || '',
+      author: parts[2] || '',
+      email: parts[3] || '',
+      date: parts[4] || '',
+      message: parts[5] || '',
+      filesChanged,
+      summary,
+    }
   })
 
   ipcMain.handle('git:stage', async (_, cwd: string, filePath: string) => {
@@ -166,5 +258,139 @@ export function registerGitHandlers() {
       }
     }
     return hunks
+  })
+
+  // Return combined unified diff (staged + unstaged) for a specific file
+  ipcMain.handle('git:diff-file', async (_, cwd: string, filePath: string) => {
+    // Get unstaged changes
+    const unstaged = await runGit(cwd, `diff -U0 -- "${filePath}"`)
+    // Get staged (cached) changes
+    const staged = await runGit(cwd, `diff --cached -U0 -- "${filePath}"`)
+
+    // Combine both diffs and parse hunks
+    const combined = [unstaged, staged].filter(Boolean).join('\n')
+    if (!combined) return []
+
+    const hunks: { type: 'added' | 'modified' | 'deleted'; startLine: number; count: number }[] = []
+    const lines = combined.split('\n')
+    for (const line of lines) {
+      const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
+      if (match) {
+        const oldCount = parseInt(match[2] ?? '1', 10)
+        const newStart = parseInt(match[3], 10)
+        const newCount = parseInt(match[4] ?? '1', 10)
+
+        if (oldCount === 0 && newCount > 0) {
+          hunks.push({ type: 'added', startLine: newStart, count: newCount })
+        } else if (newCount === 0 && oldCount > 0) {
+          hunks.push({ type: 'deleted', startLine: newStart, count: 1 })
+        } else {
+          hunks.push({ type: 'modified', startLine: newStart, count: newCount })
+        }
+      }
+    }
+
+    // Deduplicate overlapping hunks (same line ranges from staged + unstaged)
+    const seen = new Set<string>()
+    return hunks.filter((h) => {
+      const key = `${h.type}:${h.startLine}:${h.count}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })
+
+  ipcMain.handle('git:push', async (_, cwd: string) => {
+    const result = await runGit(cwd, 'push')
+    return result
+  })
+
+  ipcMain.handle('git:pull', async (_, cwd: string) => {
+    const result = await runGit(cwd, 'pull')
+    return result
+  })
+
+  ipcMain.handle('git:fetch', async (_, cwd: string) => {
+    const result = await runGit(cwd, 'fetch --all')
+    return result
+  })
+
+  ipcMain.handle('git:stash', async (_, cwd: string) => {
+    const result = await runGit(cwd, 'stash')
+    return result
+  })
+
+  ipcMain.handle('git:stash-pop', async (_, cwd: string) => {
+    const result = await runGit(cwd, 'stash pop')
+    return result
+  })
+
+  ipcMain.handle('git:create-branch', async (_, cwd: string, branchName: string) => {
+    const result = await runGit(cwd, `checkout -b "${branchName}"`)
+    return result
+  })
+
+  ipcMain.handle('git:stage-all', async (_, cwd: string) => {
+    await runGit(cwd, 'add -A')
+    return true
+  })
+
+  ipcMain.handle('git:unstage-all', async (_, cwd: string) => {
+    await runGit(cwd, 'reset HEAD')
+    return true
+  })
+
+  ipcMain.handle('git:stash-list', async (_, cwd: string) => {
+    const SEP = '\x1f'
+    const raw = await runGit(cwd, `stash list --pretty=format:"%H${SEP}%s"`)
+    if (!raw) return []
+    return raw.split('\n').filter(Boolean).map((line, index) => {
+      const parts = line.split(SEP)
+      return {
+        index,
+        hash: (parts[0] || '').substring(0, 8),
+        message: parts[1] || `stash@{${index}}`,
+      }
+    })
+  })
+
+  ipcMain.handle('git:stash-drop', async (_, cwd: string, index: number) => {
+    const result = await runGit(cwd, `stash drop stash@{${index}}`)
+    return result
+  })
+
+  ipcMain.handle('git:stash-apply', async (_, cwd: string, index: number) => {
+    const result = await runGit(cwd, `stash apply stash@{${index}}`)
+    return result
+  })
+
+  ipcMain.handle('git:stash-save', async (_, cwd: string, message: string) => {
+    const safeMsg = message.replace(/"/g, '\\"')
+    const result = await runGit(cwd, `stash push -m "${safeMsg}"`)
+    return result
+  })
+
+  ipcMain.handle('git:merge-status', async (_, cwd: string) => {
+    try {
+      // Check for .git/MERGE_HEAD to detect active merge
+      const gitDir = await runGit(cwd, 'rev-parse --git-dir')
+      if (!gitDir) return { merging: false }
+      const mergeHeadPath = path.resolve(cwd, gitDir, 'MERGE_HEAD')
+      const exists = fs.existsSync(mergeHeadPath)
+      return { merging: exists }
+    } catch {
+      return { merging: false }
+    }
+  })
+
+  ipcMain.handle('git:conflict-files', async (_, cwd: string) => {
+    const raw = await runGit(cwd, 'diff --name-only --diff-filter=U')
+    if (!raw) return []
+    return raw.split('\n').filter(Boolean)
+  })
+
+  ipcMain.handle('git:merge-abort', async (_, cwd: string) => {
+    const result = await runGit(cwd, 'merge --abort')
+    return result
   })
 }

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   useOutputStore,
   type OutputLineType,
 } from '@/store/output'
 import {
   ChevronDown, Trash2, Copy, WrapText, FileOutput,
+  Pin, PinOff, Clock, Search, X,
 } from 'lucide-react'
 
 /* ── Line type colour mapping ────────────────────────────── */
@@ -24,33 +25,47 @@ export default function OutputPanel() {
   const setActive   = useOutputStore((s) => s.setActiveChannel)
   const clearChan   = useOutputStore((s) => s.clearChannel)
 
-  const [wordWrap, setWordWrap]       = useState(true)
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [copyFeedback, setCopyFeedback] = useState(false)
+  const [wordWrap, setWordWrap]             = useState(true)
+  const [dropdownOpen, setDropdownOpen]     = useState(false)
+  const [copyFeedback, setCopyFeedback]     = useState(false)
+  const [pinToBottom, setPinToBottom]        = useState(true)
+  const [showTimestamps, setShowTimestamps] = useState(true)
+  const [filterText, setFilterText]         = useState('')
+  const [filterOpen, setFilterOpen]         = useState(false)
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const userScrolled = useRef(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const scrollRef    = useRef<HTMLDivElement>(null)
+  const dropdownRef  = useRef<HTMLDivElement>(null)
+  const filterRef    = useRef<HTMLInputElement>(null)
 
-  const lines = channels.get(active) ?? []
+  const allLines = channels.get(active) ?? []
 
-  /* ── Auto-scroll ───────────────────────────────────────── */
+  /* ── Filtered lines ──────────────────────────────────────── */
+
+  const lines = useMemo(() => {
+    if (!filterText) return allLines
+    const lower = filterText.toLowerCase()
+    return allLines.filter((l) => l.text.toLowerCase().includes(lower))
+  }, [allLines, filterText])
+
+  /* ── Auto-scroll (pin to bottom) ─────────────────────────── */
 
   useEffect(() => {
-    if (!userScrolled.current && scrollRef.current) {
+    if (pinToBottom && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [lines.length])
+  }, [lines.length, pinToBottom])
 
   const handleScroll = useCallback(() => {
+    if (!pinToBottom) return
     const el = scrollRef.current
     if (!el) return
-    // If user scrolled up more than 40px from bottom, pause auto-scroll
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-    userScrolled.current = !atBottom
-  }, [])
+    if (!atBottom) {
+      setPinToBottom(false)
+    }
+  }, [pinToBottom])
 
-  /* ── Close dropdown on outside click ───────────────────── */
+  /* ── Close dropdown on outside click ─────────────────────── */
 
   useEffect(() => {
     if (!dropdownOpen) return
@@ -63,23 +78,55 @@ export default function OutputPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [dropdownOpen])
 
-  /* ── Copy all output ───────────────────────────────────── */
+  /* ── Focus filter input on open ──────────────────────────── */
+
+  useEffect(() => {
+    if (filterOpen && filterRef.current) {
+      filterRef.current.focus()
+    }
+  }, [filterOpen])
+
+  /* ── Copy all output ─────────────────────────────────────── */
 
   const handleCopy = useCallback(() => {
-    const text = lines.map((l) => l.text).join('\n')
+    const text = lines
+      .map((l) => {
+        const ts = new Date(l.timestamp).toLocaleTimeString([], {
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+        })
+        return `[${ts}] ${l.text}`
+      })
+      .join('\n')
     navigator.clipboard.writeText(text).then(() => {
       setCopyFeedback(true)
       setTimeout(() => setCopyFeedback(false), 1500)
     })
   }, [lines])
 
-  /* ── Channel list (keys of channels map) ───────────────── */
+  /* ── Channel list ────────────────────────────────────────── */
 
   const channelNames = Array.from(channels.keys())
 
-  /* ── Empty state ───────────────────────────────────────── */
+  /* ── Format timestamp ────────────────────────────────────── */
 
-  if (lines.length === 0) {
+  const fmtTime = useCallback((ts: number) => {
+    return new Date(ts).toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+  }, [])
+
+  /* ── Toggle filter bar ───────────────────────────────────── */
+
+  const toggleFilter = useCallback(() => {
+    setFilterOpen((v) => {
+      if (v) setFilterText('')
+      return !v
+    })
+  }, [])
+
+  /* ── Empty state ─────────────────────────────────────────── */
+
+  if (lines.length === 0 && !filterText) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Toolbar
@@ -94,6 +141,12 @@ export default function OutputPanel() {
           copyFeedback={copyFeedback}
           wordWrap={wordWrap}
           onToggleWrap={() => setWordWrap((v) => !v)}
+          pinToBottom={pinToBottom}
+          onTogglePin={() => setPinToBottom((v) => !v)}
+          showTimestamps={showTimestamps}
+          onToggleTimestamps={() => setShowTimestamps((v) => !v)}
+          onToggleFilter={toggleFilter}
+          filterOpen={filterOpen}
         />
         <div
           style={{
@@ -144,7 +197,76 @@ export default function OutputPanel() {
         copyFeedback={copyFeedback}
         wordWrap={wordWrap}
         onToggleWrap={() => setWordWrap((v) => !v)}
+        pinToBottom={pinToBottom}
+        onTogglePin={() => setPinToBottom((v) => !v)}
+        showTimestamps={showTimestamps}
+        onToggleTimestamps={() => setShowTimestamps((v) => !v)}
+        onToggleFilter={toggleFilter}
+        filterOpen={filterOpen}
       />
+
+      {/* ── Filter bar ──────────────────────────────────────── */}
+      {filterOpen && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '3px 8px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-secondary)',
+            flexShrink: 0,
+          }}
+        >
+          <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input
+            ref={filterRef}
+            type="text"
+            placeholder="Filter output..."
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            style={{
+              flex: 1,
+              height: 22,
+              fontSize: 11,
+              color: 'var(--text-primary)',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: 3,
+              padding: '0 6px',
+              outline: 'none',
+              fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace)',
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setFilterText('')
+                setFilterOpen(false)
+              }
+            }}
+          />
+          {filterText && (
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+              {lines.length} match{lines.length !== 1 ? 'es' : ''}
+            </span>
+          )}
+          <button
+            onClick={() => { setFilterText(''); setFilterOpen(false) }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 2,
+              borderRadius: 3,
+            }}
+            title="Close filter"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* ── Log area ──────────────────────────────────────── */}
       <div
@@ -160,49 +282,94 @@ export default function OutputPanel() {
           padding: '2px 0',
         }}
       >
-        {lines.map((line) => (
+        {lines.length === 0 && filterText ? (
           <div
-            key={line.id}
             style={{
-              display: 'flex',
-              minHeight: 20,
-              padding: '0 10px',
-              whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-              wordBreak: wordWrap ? 'break-all' : undefined,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
+              padding: '20px 10px',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              fontSize: 11,
             }}
           >
-            {/* Timestamp */}
-            <span
+            No results matching "{filterText}"
+          </div>
+        ) : (
+          lines.map((line) => (
+            <div
+              key={line.id}
               style={{
-                color: 'var(--text-muted)',
-                opacity: 0.5,
-                fontSize: 10,
-                flexShrink: 0,
-                width: 62,
-                paddingTop: 2,
-                userSelect: 'none',
+                display: 'flex',
+                minHeight: 20,
+                padding: '0 10px',
+                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                wordBreak: wordWrap ? 'break-all' : undefined,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
               }}
             >
-              {new Date(line.timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              })}
-            </span>
+              {/* Timestamp */}
+              {showTimestamps && (
+                <span
+                  style={{
+                    color: 'var(--text-muted)',
+                    opacity: 0.5,
+                    fontSize: 10,
+                    flexShrink: 0,
+                    width: 62,
+                    paddingTop: 2,
+                    userSelect: 'none',
+                  }}
+                >
+                  {fmtTime(line.timestamp)}
+                </span>
+              )}
 
-            {/* Text */}
-            <span style={{ color: lineTypeColors[line.type], flex: 1 }}>
-              {line.text}
-            </span>
-          </div>
-        ))}
+              {/* Text */}
+              <span style={{ color: lineTypeColors[line.type], flex: 1 }}>
+                {line.text}
+              </span>
+            </div>
+          ))
+        )}
       </div>
+
+      {/* ── Scroll-to-bottom indicator ────────────────────── */}
+      {!pinToBottom && (
+        <button
+          onClick={() => {
+            setPinToBottom(true)
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+            }
+          }}
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            right: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 10px',
+            fontSize: 10,
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            zIndex: 10,
+          }}
+          title="Scroll to bottom and pin"
+        >
+          <ChevronDown size={12} />
+          Follow output
+        </button>
+      )}
     </div>
   )
 }
@@ -221,6 +388,12 @@ function Toolbar({
   copyFeedback,
   wordWrap,
   onToggleWrap,
+  pinToBottom,
+  onTogglePin,
+  showTimestamps,
+  onToggleTimestamps,
+  onToggleFilter,
+  filterOpen,
 }: {
   channelNames: string[]
   active: string
@@ -233,6 +406,12 @@ function Toolbar({
   copyFeedback: boolean
   wordWrap: boolean
   onToggleWrap: () => void
+  pinToBottom: boolean
+  onTogglePin: () => void
+  showTimestamps: boolean
+  onToggleTimestamps: () => void
+  onToggleFilter: () => void
+  filterOpen: boolean
 }) {
   return (
     <div
@@ -321,7 +500,34 @@ function Toolbar({
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* ── Word wrap toggle ──────────────────────────────── */}
+      {/* ── Filter toggle ──────────────────────────────────── */}
+      <ToolbarButton
+        title={filterOpen ? 'Close filter' : 'Filter output'}
+        active={filterOpen}
+        onClick={onToggleFilter}
+      >
+        <Search size={13} />
+      </ToolbarButton>
+
+      {/* ── Timestamp toggle ───────────────────────────────── */}
+      <ToolbarButton
+        title={showTimestamps ? 'Hide timestamps' : 'Show timestamps'}
+        active={showTimestamps}
+        onClick={onToggleTimestamps}
+      >
+        <Clock size={13} />
+      </ToolbarButton>
+
+      {/* ── Pin to bottom toggle ───────────────────────────── */}
+      <ToolbarButton
+        title={pinToBottom ? 'Unpin from bottom' : 'Pin to bottom (auto-scroll)'}
+        active={pinToBottom}
+        onClick={onTogglePin}
+      >
+        {pinToBottom ? <Pin size={13} /> : <PinOff size={13} />}
+      </ToolbarButton>
+
+      {/* ── Word wrap toggle ───────────────────────────────── */}
       <ToolbarButton
         title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
         active={wordWrap}
@@ -330,7 +536,7 @@ function Toolbar({
         <WrapText size={13} />
       </ToolbarButton>
 
-      {/* ── Copy ──────────────────────────────────────────── */}
+      {/* ── Copy ───────────────────────────────────────────── */}
       <ToolbarButton title="Copy all output" onClick={onCopy}>
         <Copy size={13} />
         {copyFeedback && (
@@ -340,7 +546,7 @@ function Toolbar({
         )}
       </ToolbarButton>
 
-      {/* ── Clear ─────────────────────────────────────────── */}
+      {/* ── Clear ──────────────────────────────────────────── */}
       <ToolbarButton title="Clear output" onClick={onClear}>
         <Trash2 size={13} />
       </ToolbarButton>

@@ -25,6 +25,37 @@ const api = {
     ipcRenderer.on(IPC.FS_CHANGE, handler)
     return () => ipcRenderer.removeListener(IPC.FS_CHANGE, handler)
   },
+  onExternalFileChange: (callback: (data: { path: string; type: 'change' | 'delete' | 'add' }) => void) => {
+    const handler = (_: unknown, data: { path: string; type: 'change' | 'delete' | 'add' }) => callback(data)
+    ipcRenderer.on(IPC.FS_EXTERNAL_CHANGE, handler)
+    return () => ipcRenderer.removeListener(IPC.FS_EXTERNAL_CHANGE, handler)
+  },
+
+  // File operations
+  fileRename: (oldPath: string, newPath: string) => ipcRenderer.invoke(IPC.FILE_RENAME, oldPath, newPath),
+  fileCopy: (sourcePath: string, destPath: string) => ipcRenderer.invoke(IPC.FILE_COPY, sourcePath, destPath),
+  fileMove: (sourcePath: string, destPath: string) => ipcRenderer.invoke(IPC.FILE_MOVE, sourcePath, destPath),
+  fileStat: (filePath: string) => ipcRenderer.invoke(IPC.FILE_STAT, filePath),
+  fileExists: (filePath: string) => ipcRenderer.invoke(IPC.FILE_EXISTS, filePath),
+  fileCreateDirectory: (dirPath: string) => ipcRenderer.invoke(IPC.FILE_CREATE_DIRECTORY, dirPath),
+  fileDeleteDirectory: (dirPath: string) => ipcRenderer.invoke(IPC.FILE_DELETE_DIRECTORY, dirPath),
+  fileWatch: (watchPath: string) => ipcRenderer.invoke(IPC.FILE_WATCH, watchPath),
+  onFileWatchEvent: (callback: (data: { watchPath: string; event: string; path: string }) => void) => {
+    const handler = (_: unknown, data: { watchPath: string; event: string; path: string }) => callback(data)
+    ipcRenderer.on(IPC.FILE_WATCH_EVENT, handler)
+    return () => ipcRenderer.removeListener(IPC.FILE_WATCH_EVENT, handler)
+  },
+  fileReadBinary: (filePath: string) => ipcRenderer.invoke(IPC.FILE_READ_BINARY, filePath),
+
+  // Clipboard
+  clipboardReadText: () => ipcRenderer.invoke(IPC.CLIPBOARD_READ_TEXT),
+  clipboardWriteText: (text: string) => ipcRenderer.invoke(IPC.CLIPBOARD_WRITE_TEXT, text),
+  clipboardReadImage: () => ipcRenderer.invoke(IPC.CLIPBOARD_READ_IMAGE),
+
+  // Shell
+  shellOpenExternal: (url: string) => ipcRenderer.invoke(IPC.SHELL_OPEN_EXTERNAL, url),
+  shellShowItemInFolder: (filePath: string) => ipcRenderer.invoke(IPC.SHELL_SHOW_ITEM_IN_FOLDER, filePath),
+  shellOpenPath: (filePath: string) => ipcRenderer.invoke(IPC.SHELL_OPEN_PATH, filePath),
 
   // Git
   gitStatus: (cwd: string) => ipcRenderer.invoke(IPC.GIT_STATUS, cwd),
@@ -37,7 +68,24 @@ const api = {
   gitBranches: (cwd: string) => ipcRenderer.invoke(IPC.GIT_BRANCHES, cwd),
   gitCheckout: (cwd: string, branch: string) => ipcRenderer.invoke(IPC.GIT_CHECKOUT, cwd, branch),
   gitShow: (cwd: string, hash: string) => ipcRenderer.invoke(IPC.GIT_SHOW, cwd, hash),
+  gitBlame: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_BLAME, cwd, filePath),
   gitFileDiff: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_FILE_DIFF, cwd, filePath),
+  gitDiffFile: (cwd: string, filePath: string) => ipcRenderer.invoke(IPC.GIT_DIFF_FILE, cwd, filePath),
+  gitPush: (cwd: string) => ipcRenderer.invoke(IPC.GIT_PUSH, cwd),
+  gitPull: (cwd: string) => ipcRenderer.invoke(IPC.GIT_PULL, cwd),
+  gitFetch: (cwd: string) => ipcRenderer.invoke(IPC.GIT_FETCH, cwd),
+  gitStash: (cwd: string) => ipcRenderer.invoke(IPC.GIT_STASH, cwd),
+  gitStashPop: (cwd: string) => ipcRenderer.invoke(IPC.GIT_STASH_POP, cwd),
+  gitStashList: (cwd: string) => ipcRenderer.invoke(IPC.GIT_STASH_LIST, cwd),
+  gitStashDrop: (cwd: string, index: number) => ipcRenderer.invoke(IPC.GIT_STASH_DROP, cwd, index),
+  gitStashApply: (cwd: string, index: number) => ipcRenderer.invoke(IPC.GIT_STASH_APPLY, cwd, index),
+  gitStashSave: (cwd: string, message: string) => ipcRenderer.invoke(IPC.GIT_STASH_SAVE, cwd, message),
+  gitMergeStatus: (cwd: string) => ipcRenderer.invoke(IPC.GIT_MERGE_STATUS, cwd),
+  gitConflictFiles: (cwd: string) => ipcRenderer.invoke(IPC.GIT_CONFLICT_FILES, cwd),
+  gitMergeAbort: (cwd: string) => ipcRenderer.invoke(IPC.GIT_MERGE_ABORT, cwd),
+  gitCreateBranch: (cwd: string, branchName: string) => ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, cwd, branchName),
+  gitStageAll: (cwd: string) => ipcRenderer.invoke(IPC.GIT_STAGE_ALL, cwd),
+  gitUnstageAll: (cwd: string) => ipcRenderer.invoke(IPC.GIT_UNSTAGE_ALL, cwd),
 
   // Terminal
   termCreate: (id: string, shellOptions?: { shellPath?: string; shellArgs?: string[] }) =>
@@ -69,6 +117,22 @@ const api = {
     const handler = (_: unknown, message: unknown) => callback(message)
     ipcRenderer.on(IPC.OMO_MESSAGE, handler)
     return () => ipcRenderer.removeListener(IPC.OMO_MESSAGE, handler)
+  },
+
+  // Tasks
+  taskRun: (args: { command: string; cwd: string; label: string }) =>
+    ipcRenderer.invoke(IPC.TASK_RUN, args),
+  taskKill: (taskId: string) => ipcRenderer.invoke(IPC.TASK_KILL, taskId),
+  taskListScripts: (cwd: string) => ipcRenderer.invoke(IPC.TASK_LIST_SCRIPTS, cwd),
+  onTaskOutput: (callback: (data: { taskId: string; data: string; stream: 'stdout' | 'stderr' }) => void) => {
+    const handler = (_: unknown, data: { taskId: string; data: string; stream: 'stdout' | 'stderr' }) => callback(data)
+    ipcRenderer.on(IPC.TASK_OUTPUT, handler)
+    return () => ipcRenderer.removeListener(IPC.TASK_OUTPUT, handler)
+  },
+  onTaskComplete: (callback: (data: { taskId: string; code: number }) => void) => {
+    const handler = (_: unknown, data: { taskId: string; code: number }) => callback(data)
+    ipcRenderer.on(IPC.TASK_COMPLETE, handler)
+    return () => ipcRenderer.removeListener(IPC.TASK_COMPLETE, handler)
   },
 
   // Window

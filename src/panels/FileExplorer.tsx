@@ -4,16 +4,125 @@ import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
 import { useWorkspaceStore } from '@/store/workspace'
 import {
-  ChevronRight, ChevronsDownUp,
+  ChevronDown, ChevronRight, ChevronsDownUp,
   File, FileCode, FileCode2, FileText,
   Folder, FolderOpen, FolderPlus, RotateCw,
   Settings, Braces, Hash, Image,
   FilePlus, Trash2, Edit3, Clipboard, Plus,
   Globe, Palette, Terminal as TermIcon, Coffee, Gem,
   Database, Lock, Package, Copy, FolderIcon,
-  Columns, ExternalLink, Upload,
+  Columns, ExternalLink, Upload, X, Layers,
+  Search, GitBranch,
 } from 'lucide-react'
 import type { FileNode } from '@shared/types'
+
+/* ── File nesting rules ────────────────────────────────── */
+
+const FILE_NESTING_RULES: Record<string, string[]> = {
+  'package.json': ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.yarnrc.yml', 'bun.lockb'],
+  'tsconfig.json': ['tsconfig.*.json'],
+  '.eslintrc.*': ['.eslintignore'],
+  '.prettierrc*': ['.prettierignore'],
+  'vite.config.*': ['vitest.config.*'],
+  '.gitignore': ['.gitattributes', '.gitmodules'],
+  'README.md': ['CHANGELOG.md', 'LICENSE', 'LICENSE.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md'],
+  'Dockerfile': ['docker-compose.yml', 'docker-compose.yaml', '.dockerignore'],
+}
+
+// Extension-based nesting (group test/spec/story files under source)
+const EXTENSION_NESTING: Record<string, string[]> = {
+  '.ts': ['.test.ts', '.spec.ts', '.d.ts'],
+  '.tsx': ['.test.tsx', '.spec.tsx', '.stories.tsx', '.module.css', '.module.scss'],
+  '.js': ['.test.js', '.spec.js', '.min.js'],
+  '.jsx': ['.test.jsx', '.spec.jsx', '.stories.jsx'],
+  '.py': ['.test.py', '_test.py'],
+  '.go': ['_test.go'],
+}
+
+function matchesNestingPattern(fileName: string, pattern: string): boolean {
+  if (pattern.includes('*')) {
+    const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$', 'i')
+    return regex.test(fileName)
+  }
+  return fileName.toLowerCase() === pattern.toLowerCase()
+}
+
+function applyFileNesting(nodes: FileNode[]): FileNode[] {
+  if (!nodes || nodes.length === 0) return nodes
+
+  const files = nodes.filter(n => n.type !== 'directory')
+  const dirs = nodes.filter(n => n.type === 'directory')
+
+  const nested = new Set<string>()
+  const parentMap = new Map<string, FileNode[]>()
+
+  // Check named nesting rules
+  for (const file of files) {
+    for (const [parentPattern, childPatterns] of Object.entries(FILE_NESTING_RULES)) {
+      if (matchesNestingPattern(file.name, parentPattern)) {
+        const children: FileNode[] = []
+        for (const other of files) {
+          if (other.name === file.name) continue
+          if (childPatterns.some(p => matchesNestingPattern(other.name, p))) {
+            children.push(other)
+            nested.add(other.name)
+          }
+        }
+        if (children.length > 0) {
+          parentMap.set(file.name, children)
+        }
+      }
+    }
+  }
+
+  // Check extension-based nesting
+  for (const file of files) {
+    if (nested.has(file.name)) continue
+    const baseName = file.name
+    for (const [ext, nestedExts] of Object.entries(EXTENSION_NESTING)) {
+      if (baseName.endsWith(ext) && !nestedExts.some(ne => baseName.endsWith(ne))) {
+        const stem = baseName.slice(0, -ext.length)
+        const children: FileNode[] = []
+        for (const other of files) {
+          if (other.name === file.name || nested.has(other.name)) continue
+          for (const nestedExt of nestedExts) {
+            if (other.name === stem + nestedExt) {
+              children.push(other)
+              nested.add(other.name)
+            }
+          }
+        }
+        if (children.length > 0) {
+          const existing = parentMap.get(file.name) || []
+          parentMap.set(file.name, [...existing, ...children])
+        }
+      }
+    }
+  }
+
+  // Build result: directories first (recursively nested), then files
+  const result: FileNode[] = dirs.map(d => ({
+    ...d,
+    children: d.children ? applyFileNesting(d.children) : undefined,
+  }))
+
+  for (const file of files) {
+    if (nested.has(file.name)) continue
+    const nestedChildren = parentMap.get(file.name)
+    if (nestedChildren) {
+      result.push({
+        ...file,
+        children: nestedChildren,
+        _isNestedParent: true,
+        _nestedCount: nestedChildren.length,
+      } as any)
+    } else {
+      result.push(file)
+    }
+  }
+
+  return result
+}
 
 /* ── Context menu types ──────────────────────────────────── */
 
@@ -542,10 +651,13 @@ function FileTreeNode({
   const { expandedDirs, toggleDir } = useFileStore()
   const { openFile, activeFilePath, pinFile } = useEditorStore()
   const [contextActive, setContextActive] = useState(false)
+  const [nestedExpanded, setNestedExpanded] = useState(false)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isExpanded = expandedDirs.has(node.path)
   const isActive = activeFilePath === node.path
   const isDir = node.type === 'directory'
+  const isNestedParent = !!(node as any)._isNestedParent
+  const nestedCount = (node as any)._nestedCount as number | undefined
 
   /* Is this node being renamed inline? */
   const isRenaming =
@@ -581,6 +693,11 @@ function FileTreeNode({
     clickTimerRef.current = setTimeout(() => {
       openFileInEditor(true) // single-click = preview
     }, 200)
+  }
+
+  const handleNestedToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setNestedExpanded(!nestedExpanded)
   }
 
   const handleDoubleClick = () => {
@@ -649,9 +766,10 @@ function FileTreeNode({
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleCtx}
         className={`flex items-center cursor-pointer transition-colors duration-75${isFolderDropTarget ? ' folder-drop-target' : ''}`}
+        {...(isDir ? { 'data-folder-path': node.path } : {})}
         style={{
           height: 24,
-          paddingLeft: depth * 16 + (isDir ? 6 : 24),
+          paddingLeft: depth * 16 + (isDir ? 6 : isNestedParent ? 6 : 24),
           paddingRight: 8,
           position: 'relative',
           background: isFolderDropTarget
@@ -705,6 +823,24 @@ function FileTreeNode({
           />
         )}
 
+        {/* Nested parent expand/collapse chevron */}
+        {isNestedParent && (
+          <ChevronRight
+            size={12}
+            onClick={handleNestedToggle}
+            style={{
+              color: 'var(--text-muted)',
+              flexShrink: 0,
+              marginRight: 2,
+              marginLeft: -2,
+              transform: nestedExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.15s ease',
+              cursor: 'pointer',
+              opacity: 0.7,
+            }}
+          />
+        )}
+
         {/* File/folder icon */}
         <FileIcon
           size={14}
@@ -715,23 +851,58 @@ function FileTreeNode({
           }}
         />
 
-        {/* Name */}
-        <span className="truncate" style={{ flex: 1 }}>{node.name}</span>
+        {/* Name (colored by git status) */}
+        <span
+          className="truncate"
+          style={{
+            flex: 1,
+            color: node.gitStatus && gitBadgeColors[node.gitStatus]
+              ? gitBadgeColors[node.gitStatus]
+              : undefined,
+          }}
+        >
+          {node.name}
+        </span>
 
-        {/* Git status dot */}
-        {node.gitStatus && (
+        {/* Nested count badge */}
+        {isNestedParent && nestedCount && (
           <span
+            onClick={handleNestedToggle}
             style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: gitColors[node.gitStatus],
+              fontSize: 9,
+              fontWeight: 600,
+              background: 'var(--bg-tertiary, rgba(255,255,255,0.08))',
+              color: 'var(--text-muted)',
+              borderRadius: 8,
+              padding: '0 5px',
+              lineHeight: '16px',
               flexShrink: 0,
               marginLeft: 6,
-              boxShadow: `0 0 4px ${gitColors[node.gitStatus]}60`,
+              cursor: 'pointer',
+            }}
+            title={`${nestedCount} nested file${nestedCount > 1 ? 's' : ''}`}
+          >
+            {nestedCount}
+          </span>
+        )}
+
+        {/* Git status badge letter */}
+        {node.gitStatus && gitBadgeLabels[node.gitStatus] && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: gitBadgeColors[node.gitStatus] || '#8b949e',
+              flexShrink: 0,
+              marginLeft: 6,
+              lineHeight: '16px',
+              letterSpacing: '0.02em',
+              fontFamily: 'var(--font-mono, monospace)',
             }}
             title={node.gitStatus}
-          />
+          >
+            {gitBadgeLabels[node.gitStatus]}
+          </span>
         )}
       </div>
 
@@ -748,6 +919,22 @@ function FileTreeNode({
 
       {/* Children */}
       {isDir && isExpanded && node.children?.map((child) => (
+        <FileTreeNode
+          key={child.path}
+          node={child}
+          depth={depth + 1}
+          onContextMenu={onContextMenu}
+          inlineInput={inlineInput}
+          onInlineSubmit={onInlineSubmit}
+          onInlineCancel={onInlineCancel}
+          dropTargetFolder={dropTargetFolder}
+          onFolderDragOver={onFolderDragOver}
+          onFolderDragLeave={onFolderDragLeave}
+        />
+      ))}
+
+      {/* Nested file children (from file nesting) */}
+      {isNestedParent && nestedExpanded && node.children?.map((child) => (
         <FileTreeNode
           key={child.path}
           node={child}
@@ -829,6 +1016,96 @@ function filterTreeByExcludes(tree: FileNode[], patterns: RegExp[]): FileNode[] 
     })
 }
 
+/* ── Compact folders helper ─────────────────────────────── */
+
+/**
+ * Merge single-child folder chains into one node with a combined name.
+ * e.g. src > components (when src only has components) becomes "src/components".
+ */
+function compactFolders(nodes: FileNode[]): FileNode[] {
+  return nodes.map((node) => {
+    if (node.type !== 'directory' || !node.children) return node
+
+    let current = node
+    const segments = [current.name]
+
+    // Walk down while the current dir has exactly one child and that child is also a directory
+    while (
+      current.children &&
+      current.children.length === 1 &&
+      current.children[0].type === 'directory'
+    ) {
+      current = current.children[0]
+      segments.push(current.name)
+    }
+
+    if (segments.length > 1) {
+      // Merge: create a single node with combined name, using the deepest node's children/path
+      return {
+        ...current,
+        name: segments.join('/'),
+        // Keep the deepest node's path so expanding/clicking still works correctly
+        children: current.children ? compactFolders(current.children) : undefined,
+      }
+    }
+
+    return {
+      ...node,
+      children: compactFolders(node.children),
+    }
+  })
+}
+
+/* ── Search/filter tree helper ─────────────────────────── */
+
+/**
+ * Filter tree nodes by a search query string.
+ * Files that match are shown along with all their ancestor directories.
+ * Case-insensitive substring match on node names.
+ */
+function filterTreeBySearch(nodes: FileNode[], query: string): FileNode[] {
+  const lower = query.toLowerCase()
+  const result: FileNode[] = []
+
+  for (const node of nodes) {
+    if (node.type === 'directory') {
+      // Recursively filter children
+      const filteredChildren = node.children
+        ? filterTreeBySearch(node.children, query)
+        : []
+      // Include this directory if it has matching descendants
+      if (filteredChildren.length > 0) {
+        result.push({ ...node, children: filteredChildren })
+      }
+    } else {
+      // Include file if its name matches
+      if (node.name.toLowerCase().includes(lower)) {
+        result.push(node)
+      }
+    }
+  }
+
+  return result
+}
+
+/* ── Git decoration badge labels ───────────────────────── */
+
+const gitBadgeLabels: Record<string, string> = {
+  modified:  'M',
+  added:     'A',
+  deleted:   'D',
+  untracked: 'U',
+  renamed:   'R',
+}
+
+const gitBadgeColors: Record<string, string> = {
+  modified:  '#d29922',
+  added:     '#3fb950',
+  deleted:   '#f85149',
+  untracked: '#3fb950',
+  renamed:   '#d2a8ff',
+}
+
 /* ── File Explorer panel ───────────────────────────────── */
 
 export default function FileExplorer() {
@@ -849,6 +1126,35 @@ export default function FileExplorer() {
     [fileTree, excludeRegExps],
   )
 
+  // Search/filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [compactFoldersEnabled, setCompactFoldersEnabled] = useState(true)
+
+  // Apply search filter
+  const searchFilteredTree = useMemo(
+    () => searchQuery.trim() ? filterTreeBySearch(filteredTree, searchQuery.trim()) : filteredTree,
+    [filteredTree, searchQuery],
+  )
+
+  const displayTree = useMemo(() => {
+    let tree = nestingEnabled ? applyFileNesting(searchFilteredTree) : searchFilteredTree
+    if (compactFoldersEnabled && !searchQuery.trim()) {
+      tree = compactFolders(tree)
+    }
+    return tree
+  }, [searchFilteredTree, nestingEnabled, compactFoldersEnabled, searchQuery])
+
+  // Sticky parent header state
+  const treeContainerRef = useRef<HTMLDivElement>(null)
+  const [stickyParent, setStickyParent] = useState<string | null>(null)
+
+  const openFiles = useEditorStore((s) => s.openFiles)
+  const activeFilePath = useEditorStore((s) => s.activeFilePath)
+  const setActiveFile = useEditorStore((s) => s.setActiveFile)
+  const closeFile = useEditorStore((s) => s.closeFile)
+
+  const [openEditorsExpanded, setOpenEditorsExpanded] = useState(true)
+  const [nestingEnabled, setNestingEnabled] = useState(true)
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
   const [inlineInput, setInlineInput] = useState<InlineInputState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<FileNode | null>(null)
@@ -1262,6 +1568,31 @@ export default function FileExplorer() {
     setDropTargetFolder(null)
   }, [])
 
+  /* ── Sticky parent header on scroll ──────────────────── */
+
+  const handleTreeScroll = useCallback(() => {
+    const container = treeContainerRef.current
+    if (!container) return
+    const scrollTop = container.scrollTop
+    if (scrollTop < 4) {
+      setStickyParent(null)
+      return
+    }
+    // Find the folder row that is just above the viewport top
+    const rows = container.querySelectorAll('[data-folder-path]')
+    let lastFolder: string | null = null
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] as HTMLElement
+      const top = row.offsetTop - container.offsetTop
+      if (top <= scrollTop) {
+        lastFolder = row.getAttribute('data-folder-path')
+      } else {
+        break
+      }
+    }
+    setStickyParent(lastFolder)
+  }, [])
+
   /* ── Background click to close context menu ─────────── */
 
   const handleTreeContextMenu = useCallback((e: React.MouseEvent) => {
@@ -1338,6 +1669,12 @@ export default function FileExplorer() {
             title="Collapse All"
             onClick={handleCollapseAll}
           />
+          <HeaderButton
+            Icon={Layers}
+            title={nestingEnabled ? 'Disable File Nesting' : 'Enable File Nesting'}
+            onClick={() => setNestingEnabled(!nestingEnabled)}
+            active={nestingEnabled}
+          />
         </div>
       </div>
 
@@ -1373,13 +1710,180 @@ export default function FileExplorer() {
         </div>
       )}
 
+      {/* Open Editors Section */}
+      {openFiles.length > 0 && (
+        <div style={{ borderBottom: '1px solid var(--border)' }}>
+          <div
+            onClick={() => setOpenEditorsExpanded(!openEditorsExpanded)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              height: 24,
+              padding: '0 8px',
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            {openEditorsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <span style={{ marginLeft: 4 }}>Open Editors</span>
+            <span style={{ marginLeft: 'auto', fontSize: 10, background: 'var(--bg-tertiary)', borderRadius: 8, padding: '0 5px', lineHeight: '16px' }}>
+              {openFiles.length}
+            </span>
+          </div>
+          {openEditorsExpanded && openFiles.map(file => (
+            <div
+              key={file.path}
+              onClick={() => setActiveFile(file.path)}
+              className="explorer-file-item"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                height: 22,
+                paddingLeft: 24,
+                paddingRight: 8,
+                fontSize: 12,
+                cursor: 'pointer',
+                background: file.path === activeFilePath ? 'var(--bg-active, rgba(255,255,255,0.06))' : 'transparent',
+                color: file.path === activeFilePath ? 'var(--text-primary)' : 'var(--text-secondary)',
+              }}
+            >
+              {file.isModified && (
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: file.aiModified ? '#3fb950' : 'var(--accent)', marginRight: 6, flexShrink: 0 }} />
+              )}
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {file.name}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); closeFile(file.path) }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 1,
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderRadius: 3,
+                  opacity: 0,
+                }}
+                className="open-editor-close-btn"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search/Filter input */}
+      {rootPath && (
+        <div
+          className="shrink-0"
+          style={{
+            padding: '4px 6px',
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          <div
+            className="flex items-center"
+            style={{
+              background: 'var(--bg-primary, #11111b)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              padding: '0 6px',
+              height: 24,
+            }}
+          >
+            <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0, marginRight: 4 }} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter files..."
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: 'var(--text-primary)',
+                fontSize: 11,
+                height: '100%',
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: 'var(--text-muted)',
+                  flexShrink: 0,
+                }}
+                title="Clear filter"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* File Tree */}
       <div
+        ref={treeContainerRef}
         className="flex-1 overflow-y-auto py-0.5"
+        style={{ position: 'relative' }}
         onContextMenu={handleTreeContextMenu}
+        onScroll={handleTreeScroll}
       >
-        {filteredTree.length === 0 ? (
+        {/* Sticky parent header */}
+        {stickyParent && (
+          <div
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              height: 24,
+              display: 'flex',
+              alignItems: 'center',
+              paddingLeft: 6,
+              paddingRight: 8,
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-secondary)',
+              background: 'var(--bg-secondary, #1e1e2e)',
+              borderBottom: '1px solid var(--border)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }}
+          >
+            <FolderOpen
+              size={14}
+              style={{ color: '#dcb67a', flexShrink: 0, marginRight: 6 }}
+            />
+            <span className="truncate">
+              {rootPath ? relativePath(rootPath, stickyParent) : stickyParent.replace(/\\/g, '/').split('/').pop()}
+            </span>
+          </div>
+        )}
+
+        {!rootPath && displayTree.length === 0 ? (
           <EmptyExplorer onOpenFolder={handleOpenFolder} />
+        ) : displayTree.length === 0 && searchQuery.trim() ? (
+          <div
+            className="flex flex-col items-center justify-center gap-2"
+            style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}
+          >
+            <Search size={20} style={{ opacity: 0.4 }} />
+            <span>No files matching "{searchQuery}"</span>
+          </div>
         ) : (
           <>
             {/* Root-level inline input (e.g. from toolbar New File / New Folder) */}
@@ -1392,7 +1896,7 @@ export default function FileExplorer() {
                 onCancel={handleInlineCancel}
               />
             )}
-            {filteredTree.map((node) => (
+            {displayTree.map((node) => (
               <FileTreeNode
                 key={node.path}
                 node={node}
@@ -1439,10 +1943,12 @@ function HeaderButton({
   Icon,
   title,
   onClick,
+  active,
 }: {
   Icon: typeof File
   title: string
   onClick: () => void
+  active?: boolean
 }) {
   return (
     <button
@@ -1452,15 +1958,16 @@ function HeaderButton({
       style={{
         width: 22,
         height: 22,
-        color: 'var(--text-muted)',
+        color: active ? 'var(--accent)' : 'var(--text-muted)',
+        background: active ? 'rgba(88,166,255,0.1)' : 'transparent',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.color = 'var(--text-secondary)'
-        e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+        e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--text-secondary)'
+        e.currentTarget.style.background = active ? 'rgba(88,166,255,0.15)' : 'rgba(255,255,255,0.06)'
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.color = 'var(--text-muted)'
-        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--text-muted)'
+        e.currentTarget.style.background = active ? 'rgba(88,166,255,0.1)' : 'transparent'
       }}
     >
       <Icon size={13} />
@@ -1471,13 +1978,17 @@ function HeaderButton({
 /* ── Empty state ───────────────────────────────────────── */
 
 function EmptyExplorer({ onOpenFolder }: { onOpenFolder: () => void }) {
+  const handleCloneRepo = () => {
+    window.dispatchEvent(new CustomEvent('orion:clone-repository'))
+  }
+
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 px-8">
       <div
         style={{
-          width: 52,
-          height: 52,
-          borderRadius: 14,
+          width: 56,
+          height: 56,
+          borderRadius: 16,
           background: 'rgba(255,255,255,0.02)',
           border: '1px solid var(--border)',
           display: 'flex',
@@ -1485,42 +1996,71 @@ function EmptyExplorer({ onOpenFolder }: { onOpenFolder: () => void }) {
           justifyContent: 'center',
         }}
       >
-        <Folder size={24} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+        <Folder size={26} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
       </div>
       <div className="text-center">
-        <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4, fontWeight: 500 }}>
-          No folder opened
+        <p style={{ color: 'var(--text-primary)', fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
+          No Folder Opened
         </p>
-        <p style={{ color: 'var(--text-muted)', fontSize: 11, opacity: 0.7, lineHeight: 1.5 }}>
-          Open a folder to start exploring your project
+        <p style={{ color: 'var(--text-muted)', fontSize: 11, opacity: 0.7, lineHeight: 1.6, maxWidth: 200 }}>
+          Open a folder or clone a repository to start exploring your project
         </p>
       </div>
-      <button
-        onClick={onOpenFolder}
-        className="flex items-center gap-2 transition-all duration-150"
-        style={{
-          fontSize: 12,
-          padding: '7px 18px',
-          background: 'var(--accent)',
-          color: '#fff',
-          borderRadius: 6,
-          fontWeight: 500,
-          border: 'none',
-          cursor: 'pointer',
-          boxShadow: '0 2px 8px rgba(88,166,255,0.2)',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.opacity = '0.9'
-          e.currentTarget.style.boxShadow = '0 4px 12px rgba(88,166,255,0.3)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.opacity = '1'
-          e.currentTarget.style.boxShadow = '0 2px 8px rgba(88,166,255,0.2)'
-        }}
-      >
-        <FolderPlus size={13} />
-        Open Folder
-      </button>
+      <div className="flex flex-col gap-2" style={{ width: '100%', maxWidth: 180 }}>
+        <button
+          onClick={onOpenFolder}
+          className="flex items-center justify-center gap-2 transition-all duration-150"
+          style={{
+            fontSize: 12,
+            padding: '7px 18px',
+            background: 'var(--accent)',
+            color: '#fff',
+            borderRadius: 6,
+            fontWeight: 500,
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(88,166,255,0.2)',
+            width: '100%',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.opacity = '0.9'
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(88,166,255,0.3)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = '1'
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(88,166,255,0.2)'
+          }}
+        >
+          <FolderPlus size={13} />
+          Open Folder
+        </button>
+        <button
+          onClick={handleCloneRepo}
+          className="flex items-center justify-center gap-2 transition-all duration-150"
+          style={{
+            fontSize: 12,
+            padding: '7px 18px',
+            background: 'transparent',
+            color: 'var(--text-secondary)',
+            borderRadius: 6,
+            fontWeight: 500,
+            border: '1px solid var(--border)',
+            cursor: 'pointer',
+            width: '100%',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+            e.currentTarget.style.color = 'var(--text-primary)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = 'var(--text-secondary)'
+          }}
+        >
+          <GitBranch size={13} />
+          Clone Repository
+        </button>
+      </div>
     </div>
   )
 }

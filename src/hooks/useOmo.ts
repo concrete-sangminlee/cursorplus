@@ -17,10 +17,10 @@ export function useOmo() {
     if (!window.api) return
 
     // Startup info log to Main channel
-    appendOutput('Main', 'Orion IDE started', 'success')
-    appendOutput('Main', `Platform: ${navigator.platform}`, 'info')
-    appendOutput('Main', `User Agent: ${navigator.userAgent}`, 'info')
-    appendOutput('Main', 'Initializing OMO agent framework...', 'info')
+    appendOutput('Orion', 'Orion IDE started', 'success')
+    appendOutput('Orion', `Platform: ${navigator.platform}`, 'info')
+    appendOutput('Orion', `User Agent: ${navigator.userAgent}`, 'info')
+    appendOutput('Orion', 'Initializing OMO agent framework...', 'info')
 
     window.api.omoStart('.')
 
@@ -114,7 +114,7 @@ export function useOmo() {
           setOllamaStatus(event.payload.available, event.payload.models || [])
           const status = event.payload.available ? 'available' : 'unavailable'
           const modelCount = (event.payload.models || []).length
-          appendOutput('Main', `[ollama] Ollama ${status}${modelCount > 0 ? ` (${modelCount} model${modelCount > 1 ? 's' : ''})` : ''}`, event.payload.available ? 'success' : 'warn')
+          appendOutput('Orion', `[ollama] Ollama ${status}${modelCount > 0 ? ` (${modelCount} model${modelCount > 1 ? 's' : ''})` : ''}`, event.payload.available ? 'success' : 'warn')
           break
         }
         case 'error': {
@@ -125,7 +125,7 @@ export function useOmo() {
             message: event.payload.message,
             type: 'error',
           })
-          appendOutput('Main', `[error] ${event.payload.message}`, 'error')
+          appendOutput('Orion', `[error] ${event.payload.message}`, 'error')
           break
         }
       }
