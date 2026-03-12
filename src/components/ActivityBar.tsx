@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { Files, Search, GitBranch, Bot, Settings, ListTree, Package, CircleUser, Bug, FlaskConical } from 'lucide-react'
+import { Files, Search, GitBranch, Bot, Settings, ListTree, Package, CircleUser, Bug, FlaskConical, RotateCcw, EyeOff } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
-import { useProblemsStore } from '@/store/problems'
+import { useProblemsStore, getProblemsCount } from '@/store/problems'
 import type { FileNode } from '@shared/types'
 
 type PanelView = 'explorer' | 'search' | 'git' | 'debug' | 'agents' | 'outline' | 'extensions' | 'testing'
@@ -19,19 +19,60 @@ interface ActivityItem {
   label: string
   shortcut?: string
   showDot?: boolean
-  badgeKey?: 'git' | 'problems' | 'search'
+  badgeKey?: 'git' | 'problems' | 'search' | 'extensions' | 'debug'
 }
 
 const defaultItems: ActivityItem[] = [
-  { view: 'explorer', Icon: Files, label: 'Explorer', shortcut: 'Ctrl+Shift+E', badgeKey: 'problems' },
+  { view: 'explorer', Icon: Files, label: 'Explorer', shortcut: 'Ctrl+Shift+E' },
   { view: 'search', Icon: Search, label: 'Search', shortcut: 'Ctrl+Shift+F', badgeKey: 'search' },
   { view: 'git', Icon: GitBranch, label: 'Source Control', shortcut: 'Ctrl+Shift+G', badgeKey: 'git' },
-  { view: 'debug', Icon: Bug, label: 'Run and Debug', shortcut: 'Ctrl+Shift+D' },
+  { view: 'debug', Icon: Bug, label: 'Run and Debug', shortcut: 'Ctrl+Shift+D', badgeKey: 'debug' },
   { view: 'agents', Icon: Bot, label: 'AI Agents', showDot: true },
   { view: 'outline', Icon: ListTree, label: 'Outline', shortcut: 'Ctrl+Shift+O' },
-  { view: 'extensions', Icon: Package, label: 'Extensions', shortcut: 'Ctrl+Shift+X' },
+  { view: 'extensions', Icon: Package, label: 'Extensions', shortcut: 'Ctrl+Shift+X', badgeKey: 'extensions' },
   { view: 'testing', Icon: FlaskConical, label: 'Testing', shortcut: 'Ctrl+Shift+T' },
 ]
+
+const STORAGE_KEY_ORDER = 'orion:activity-bar-order'
+const STORAGE_KEY_HIDDEN = 'orion:activity-bar-hidden'
+
+/** Load persisted item order from localStorage */
+function loadPersistedOrder(items: ActivityItem[]): ActivityItem[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_ORDER)
+    if (!stored) return items
+    const order: PanelView[] = JSON.parse(stored)
+    if (!Array.isArray(order)) return items
+    const itemMap = new Map(items.map((i) => [i.view, i]))
+    const ordered: ActivityItem[] = []
+    for (const view of order) {
+      const item = itemMap.get(view)
+      if (item) {
+        ordered.push(item)
+        itemMap.delete(view)
+      }
+    }
+    // Append any new items not in the stored order
+    for (const item of itemMap.values()) {
+      ordered.push(item)
+    }
+    return ordered
+  } catch {
+    return items
+  }
+}
+
+/** Load hidden items from localStorage */
+function loadHiddenItems(): Set<PanelView> {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_HIDDEN)
+    if (!stored) return new Set()
+    const arr: PanelView[] = JSON.parse(stored)
+    return new Set(arr)
+  } catch {
+    return new Set()
+  }
+}
 
 /* ── Tooltip Component ─────────────────────────────────────────── */
 function Tooltip({ label, shortcut, visible, anchorRect }: {
@@ -107,6 +148,133 @@ function Badge({ count, type }: { count: number; type?: 'error' | 'info' }) {
   )
 }
 
+/* ── Debug Session Dot ─────────────────────────────────────────── */
+function DebugDot({ active }: { active: boolean }) {
+  if (!active) return null
+  return (
+    <span
+      className="anim-pulse"
+      style={{
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: 'var(--accent-orange, #d29922)',
+        boxShadow: '0 0 6px rgba(210, 153, 34, 0.5)',
+        border: '1.5px solid var(--bg-tertiary)',
+        pointerEvents: 'none',
+      }}
+    />
+  )
+}
+
+/* ── Context Menu Component ────────────────────────────────────── */
+function ContextMenu({ x, y, itemLabel, onHide, onReset, onClose }: {
+  x: number
+  y: number
+  itemLabel: string | null
+  onHide: () => void
+  onReset: () => void
+  onClose: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      ref={menuRef}
+      className="anim-fade-in"
+      style={{
+        position: 'fixed',
+        left: x,
+        top: y,
+        zIndex: 10000,
+        minWidth: 200,
+        background: 'var(--bg-secondary, #1e1e1e)',
+        border: '1px solid var(--border, #333)',
+        borderRadius: 6,
+        padding: '4px 0',
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
+        fontSize: 12,
+      }}
+    >
+      {itemLabel && (
+        <button
+          onClick={onHide}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            width: '100%',
+            padding: '6px 12px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: 12,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-hover, rgba(255,255,255,0.06))'
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'transparent'
+          }}
+        >
+          <EyeOff size={14} strokeWidth={1.4} />
+          Hide &quot;{itemLabel}&quot; from Activity Bar
+        </button>
+      )}
+      {itemLabel && (
+        <div style={{ height: 1, background: 'var(--border, #333)', margin: '4px 0' }} />
+      )}
+      <button
+        onClick={onReset}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '6px 12px',
+          background: 'transparent',
+          border: 'none',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontSize: 12,
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-hover, rgba(255,255,255,0.06))'
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = 'transparent'
+        }}
+      >
+        <RotateCcw size={14} strokeWidth={1.4} />
+        Reset Activity Bar
+      </button>
+    </div>
+  )
+}
+
 /* ── Badge type mapping ────────────────────────────────────────── */
 function getBadgeType(key?: string): 'error' | 'info' {
   return key === 'problems' ? 'error' : 'info'
@@ -118,14 +286,51 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null)
   const [tooltipVisible, setTooltipVisible] = useState(false)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [items, setItems] = useState<ActivityItem[]>(defaultItems)
+  const [items, setItems] = useState<ActivityItem[]>(() => loadPersistedOrder(defaultItems))
+  const [hiddenItems, setHiddenItems] = useState<Set<PanelView>>(() => loadHiddenItems())
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number; view: PanelView; label: string
+  } | null>(null)
 
   // Badge counts from stores
   const openFiles = useEditorStore((s) => s.openFiles)
   const fileTree = useFileStore((s) => s.fileTree)
   const problems = useProblemsStore((s) => s.problems)
+  const problemsCounts = useMemo(() => getProblemsCount(problems), [problems])
+
+  // Dynamic badge state driven by custom events (for search, debug, extensions)
+  const [searchResultCount, setSearchResultCount] = useState(0)
+  const [debugActive, setDebugActive] = useState(false)
+  const [extensionUpdateCount, setExtensionUpdateCount] = useState(0)
+
+  // Listen for external events to update badge state
+  useEffect(() => {
+    const onSearchResults = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      setSearchResultCount(typeof detail?.count === 'number' ? detail.count : 0)
+    }
+    const onDebugSession = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      setDebugActive(!!detail?.active)
+    }
+    const onExtensionUpdates = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      setExtensionUpdateCount(typeof detail?.count === 'number' ? detail.count : 0)
+    }
+
+    window.addEventListener('orion:search-results', onSearchResults)
+    window.addEventListener('orion:debug-session', onDebugSession)
+    window.addEventListener('orion:extension-updates', onExtensionUpdates)
+    return () => {
+      window.removeEventListener('orion:search-results', onSearchResults)
+      window.removeEventListener('orion:debug-session', onDebugSession)
+      window.removeEventListener('orion:extension-updates', onExtensionUpdates)
+    }
+  }, [])
 
   // Count files with git status recursively from the file tree
   const countGitFiles = useCallback((nodes: FileNode[]): number => {
@@ -143,20 +348,42 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
     return openFiles.filter((f) => f.isModified || f.aiModified).length
   }, [fileTree, openFiles, countGitFiles])
 
-  const problemsCount = problems.length
-
-  const getBadgeCount = (key?: string): number => {
+  const getBadgeCount = useCallback((key?: string): number => {
     switch (key) {
       case 'git':
         return gitChangedCount
       case 'problems':
-        return problemsCount
+        return problemsCounts.errors + problemsCounts.warnings
       case 'search':
-        return 0
+        return searchResultCount
+      case 'extensions':
+        return extensionUpdateCount
+      case 'debug':
+        return 0 // debug uses a dot indicator, not a count badge
       default:
         return 0
     }
-  }
+  }, [gitChangedCount, problemsCounts, searchResultCount, extensionUpdateCount])
+
+  // Visible items (filtered by hidden set)
+  const visibleItems = useMemo(
+    () => items.filter((i) => !hiddenItems.has(i.view)),
+    [items, hiddenItems]
+  )
+
+  // Persist order to localStorage whenever items change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(items.map((i) => i.view)))
+    } catch { /* ignore quota errors */ }
+  }, [items])
+
+  // Persist hidden items to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_HIDDEN, JSON.stringify([...hiddenItems]))
+    } catch { /* ignore quota errors */ }
+  }, [hiddenItems])
 
   // Tooltip hover logic with 300ms delay
   const handleMouseEnter = useCallback((view: string, el: HTMLElement) => {
@@ -185,24 +412,33 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
     }
   }, [])
 
-  // Drag reorder handlers
-  const handleDragStart = (index: number) => {
-    setDragIndex(index)
+  // Drag reorder handlers (operate on the full items array, using visibleItems indices)
+  const handleDragStart = (visibleIdx: number) => {
+    setDragIndex(visibleIdx)
   }
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent, visibleIdx: number) => {
     e.preventDefault()
-    if (dragIndex !== null && dragIndex !== index) {
-      setDragOverIndex(index)
+    if (dragIndex !== null && dragIndex !== visibleIdx) {
+      setDragOverIndex(visibleIdx)
     }
   }
 
-  const handleDrop = (index: number) => {
-    if (dragIndex !== null && dragIndex !== index) {
-      const reordered = [...items]
-      const [moved] = reordered.splice(dragIndex, 1)
-      reordered.splice(index, 0, moved)
-      setItems(reordered)
+  const handleDrop = (visibleIdx: number) => {
+    if (dragIndex !== null && dragIndex !== visibleIdx) {
+      // Map visible indices back to full items array
+      const dragView = visibleItems[dragIndex]?.view
+      const dropView = visibleItems[visibleIdx]?.view
+      if (dragView && dropView) {
+        const fullDragIdx = items.findIndex((i) => i.view === dragView)
+        const fullDropIdx = items.findIndex((i) => i.view === dropView)
+        if (fullDragIdx !== -1 && fullDropIdx !== -1) {
+          const reordered = [...items]
+          const [moved] = reordered.splice(fullDragIdx, 1)
+          reordered.splice(fullDropIdx, 0, moved)
+          setItems(reordered)
+        }
+      }
     }
     setDragIndex(null)
     setDragOverIndex(null)
@@ -213,9 +449,38 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
     setDragOverIndex(null)
   }
 
+  // Context menu handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent, view: PanelView, label: string) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, view, label })
+  }, [])
+
+  const handleHideItem = useCallback(() => {
+    if (!contextMenu) return
+    setHiddenItems((prev) => {
+      const next = new Set(prev)
+      next.add(contextMenu.view)
+      return next
+    })
+    // If the hidden item was active, switch to the first visible item
+    if (activeView === contextMenu.view) {
+      const nextVisible = items.find((i) => !hiddenItems.has(i.view) && i.view !== contextMenu.view)
+      if (nextVisible) onViewChange(nextVisible.view)
+    }
+    setContextMenu(null)
+  }, [contextMenu, activeView, items, hiddenItems, onViewChange])
+
+  const handleResetBar = useCallback(() => {
+    setItems([...defaultItems])
+    setHiddenItems(new Set())
+    localStorage.removeItem(STORAGE_KEY_ORDER)
+    localStorage.removeItem(STORAGE_KEY_HIDDEN)
+    setContextMenu(null)
+  }, [])
+
   // Find current tooltip item data
   const hoveredItem = hoveredView
-    ? items.find((i) => i.view === hoveredView)
+    ? visibleItems.find((i) => i.view === hoveredView)
     : null
 
   // Bottom items tooltip data
@@ -234,6 +499,19 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
         visible={tooltipVisible && (!!hoveredItem || !!bottomTooltipLabel)}
         anchorRect={tooltipRect}
       />
+
+      {/* Context menu portal */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          itemLabel={contextMenu.label}
+          onHide={handleHideItem}
+          onReset={handleResetBar}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
       <nav
         className="activity-bar shrink-0 flex flex-col items-center"
         style={{
@@ -242,15 +520,23 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
           borderRight: '1px solid var(--border)',
           paddingTop: 4,
           paddingBottom: 8,
+          userSelect: 'none',
+        }}
+        onContextMenu={(e) => {
+          // Right-click on empty area of activity bar
+          if ((e.target as HTMLElement).closest('.activity-bar-item')) return
+          e.preventDefault()
+          setContextMenu({ x: e.clientX, y: e.clientY, view: 'explorer', label: '' })
         }}
       >
         {/* ── Top panel icons ──────────────────────────────────── */}
-        {items.map(({ view, Icon, label, shortcut, showDot, badgeKey }, index) => {
+        {visibleItems.map(({ view, Icon, label, shortcut, showDot, badgeKey }, index) => {
           const isActive = activeView === view
           const isHovered = hoveredView === view
           const badgeCount = getBadgeCount(badgeKey)
           const isDragOver = dragOverIndex === index
           const isDragging = dragIndex === index
+          const isDebugActive = badgeKey === 'debug' && debugActive
 
           return (
             <button
@@ -261,15 +547,18 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
               onDrop={() => handleDrop(index)}
               onDragEnd={handleDragEnd}
               onClick={() => onViewChange(view)}
+              onContextMenu={(e) => handleContextMenu(e, view, label)}
               className="activity-bar-item relative flex items-center justify-center"
+              aria-label={label}
+              title="" /* prevent native tooltip, we render our own */
               style={{
                 width: 48,
                 height: 48,
                 borderLeft: isActive
-                  ? '2px solid var(--accent-blue, #388bfd)'
+                  ? '2px solid var(--activity-bar-active-border, var(--accent-blue, #388bfd))'
                   : '2px solid transparent',
                 background: isActive
-                  ? 'rgba(56, 139, 253, 0.08)'
+                  ? 'var(--activity-bar-active-bg, rgba(56, 139, 253, 0.08))'
                   : 'transparent',
                 color: isActive
                   ? 'var(--text-primary)'
@@ -280,14 +569,20 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
                 opacity: isDragging ? 0.4 : 1,
                 borderTop: isDragOver ? '2px solid var(--accent-blue, #388bfd)' : '2px solid transparent',
                 cursor: 'pointer',
+                position: 'relative',
               }}
               onMouseEnter={(e) => handleMouseEnter(view, e.currentTarget)}
               onMouseLeave={handleMouseLeave}
             >
               <Icon size={21} strokeWidth={isActive ? 1.8 : 1.4} className="activity-bar-icon" />
 
-              {/* Badge count */}
-              <Badge count={badgeCount} type={getBadgeType(badgeKey)} />
+              {/* Badge count (git, problems, search, extensions) */}
+              {badgeKey !== 'debug' && (
+                <Badge count={badgeCount} type={getBadgeType(badgeKey)} />
+              )}
+
+              {/* Debug session active indicator (orange dot) */}
+              {isDebugActive && <DebugDot active />}
 
               {/* Notification dot for agents */}
               {showDot && (
@@ -317,11 +612,15 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
 
         {/* Account button */}
         <button
-          onClick={() => {/* placeholder */}}
+          onClick={() => {
+            window.dispatchEvent(new Event('orion:open-account'))
+          }}
           className="activity-bar-item relative flex items-center justify-center"
+          aria-label="Account"
           style={{
             width: 48,
             height: 48,
+            borderLeft: '2px solid transparent',
             color: hoveredView === 'account' ? 'var(--text-secondary)' : 'var(--text-muted)',
             transition: 'color 0.15s ease',
             cursor: 'pointer',
@@ -342,9 +641,11 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
             }
           }}
           className="activity-bar-item relative flex items-center justify-center"
+          aria-label="Settings"
           style={{
             width: 48,
             height: 48,
+            borderLeft: '2px solid transparent',
             color: hoveredView === 'settings' ? 'var(--text-secondary)' : 'var(--text-muted)',
             transition: 'color 0.15s ease',
             cursor: 'pointer',
@@ -352,7 +653,7 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
           onMouseEnter={(e) => handleMouseEnter('settings', e.currentTarget)}
           onMouseLeave={handleMouseLeave}
         >
-          <Settings size={20} strokeWidth={1.4} className="activity-bar-icon" />
+          <Settings size={20} strokeWidth={1.4} className="activity-bar-icon activity-settings-icon" />
         </button>
       </nav>
     </>

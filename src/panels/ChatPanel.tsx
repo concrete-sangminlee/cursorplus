@@ -8,7 +8,8 @@ import {
   ChevronDown, Copy, Check, Code, Lightbulb, Wrench, BookOpen,
   Play, Trash2, FileCode, X, Plus, PanelLeftClose, PanelLeftOpen,
   MoreHorizontal, Pencil, RotateCw, TextCursorInput, Eye, Settings2,
-  Square, Search, TestTube,
+  Square, Search, TestTube, Pin, PinOff, GitFork, FilePlus, Timer,
+  Gauge, Globe, Brain, Rocket, Cpu, Star, ExternalLink,
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -21,19 +22,46 @@ import { getCurrentContext, buildSystemPrompt, getContextSummary, type CodeConte
 
 /* ── Model definitions ─────────────────────────────────── */
 
-const apiModels = [
-  { id: 'Claude Opus', label: 'Claude', color: '#bc8cff' },
-  { id: 'GPT-5.3', label: 'GPT-5', color: '#3fb950' },
-  { id: 'Kimi K2.5', label: 'Kimi', color: '#f78166' },
-  { id: 'Gemini', label: 'Gemini', color: '#58a6ff' },
+type ModelCapability = 'fast' | 'smart' | 'code' | 'reasoning' | 'vision'
+
+interface ModelDef {
+  id: string
+  label: string
+  color: string
+  icon?: string
+  badge?: string
+  capabilities?: ModelCapability[]
+}
+
+const capabilityMeta: Record<ModelCapability, { label: string; color: string; Icon: typeof Rocket }> = {
+  fast: { label: 'Fast', color: '#3fb950', Icon: Rocket },
+  smart: { label: 'Smart', color: '#bc8cff', Icon: Brain },
+  code: { label: 'Code', color: '#58a6ff', Icon: Code },
+  reasoning: { label: 'Reasoning', color: '#f78166', Icon: Lightbulb },
+  vision: { label: 'Vision', color: '#e2b657', Icon: Eye },
+}
+
+const apiModels: ModelDef[] = [
+  { id: 'Claude Opus', label: 'Claude', color: '#bc8cff', badge: 'Opus', capabilities: ['smart', 'code', 'reasoning'] },
+  { id: 'GPT-5.3', label: 'GPT-5', color: '#3fb950', badge: '5.3', capabilities: ['smart', 'code', 'vision'] },
+  { id: 'Kimi K2.5', label: 'Kimi', color: '#f78166', badge: 'K2.5', capabilities: ['fast', 'reasoning'] },
+  { id: 'Gemini', label: 'Gemini', color: '#58a6ff', badge: 'Pro', capabilities: ['smart', 'vision', 'code'] },
 ]
 
-const nvidiaModels = [
-  { id: 'NVIDIA Llama', label: 'Llama 3.3', color: '#76b900' },
-  { id: 'NVIDIA Nemotron', label: 'Nemotron', color: '#76b900' },
-  { id: 'DeepSeek R1', label: 'DeepSeek', color: '#76b900' },
-  { id: 'Qwen 2.5', label: 'Qwen', color: '#76b900' },
+const nvidiaModels: ModelDef[] = [
+  { id: 'NVIDIA Llama', label: 'Llama 3.3', color: '#76b900', badge: '3.3', capabilities: ['fast', 'code'] },
+  { id: 'NVIDIA Nemotron', label: 'Nemotron', color: '#76b900', badge: 'NIM', capabilities: ['smart', 'reasoning'] },
+  { id: 'DeepSeek R1', label: 'DeepSeek', color: '#76b900', badge: 'R1', capabilities: ['reasoning', 'code'] },
+  { id: 'Qwen 2.5', label: 'Qwen', color: '#76b900', badge: '2.5', capabilities: ['fast', 'code'] },
 ]
+
+const customEndpointModel: ModelDef = {
+  id: '__custom_endpoint__',
+  label: 'Custom API',
+  color: '#8b949e',
+  badge: 'API',
+  capabilities: [],
+}
 
 /* ── Simple markdown renderer ──────────────────────────── */
 
@@ -288,8 +316,35 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false)
   const [applied, setApplied] = useState(false)
   const [showDiffPreview, setShowDiffPreview] = useState(false)
+  const [createdFile, setCreatedFile] = useState(false)
   const { openFiles, activeFilePath, updateFileContent } = useEditorStore()
   const { addToast } = useToastStore()
+
+  const handleCreateNewFile = async () => {
+    // Determine a file extension from the language
+    const extMap: Record<string, string> = {
+      javascript: 'js', typescript: 'ts', tsx: 'tsx', jsx: 'jsx',
+      python: 'py', ruby: 'rb', go: 'go', rust: 'rs', java: 'java',
+      css: 'css', html: 'html', json: 'json', yaml: 'yml', bash: 'sh',
+      markdown: 'md', csharp: 'cs', cpp: 'cpp', c: 'c', sql: 'sql',
+    }
+    const langKey = language.toLowerCase()
+    const ext = extMap[langKey] || extMap[langMap[langKey]] || 'txt'
+    const fileName = `untitled_${Date.now()}.${ext}`
+    try {
+      // Dispatch event to create a new file with the code content
+      window.dispatchEvent(
+        new CustomEvent('orion:create-file-from-chat', {
+          detail: { fileName, content: code, language: ext },
+        }),
+      )
+      addToast({ type: 'success', message: `Creating new file: ${fileName}` })
+      setCreatedFile(true)
+      setTimeout(() => setCreatedFile(false), 2000)
+    } catch {
+      addToast({ type: 'error', message: 'Failed to create file' })
+    }
+  }
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code)
@@ -457,6 +512,29 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           >
             <TextCursorInput size={11} />
             Insert
+          </button>
+          <button
+            onClick={handleCreateNewFile}
+            className="flex items-center gap-1 transition-colors duration-100"
+            title="Create a new file with this code"
+            style={{
+              fontSize: 10,
+              color: createdFile ? 'var(--accent-green)' : 'var(--text-muted)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '3px 8px',
+              borderRadius: 4,
+            }}
+            onMouseEnter={(e) => {
+              if (!createdFile) e.currentTarget.style.color = 'var(--accent-green)'
+            }}
+            onMouseLeave={(e) => {
+              if (!createdFile) e.currentTarget.style.color = 'var(--text-muted)'
+            }}
+          >
+            {createdFile ? <Check size={11} /> : <FilePlus size={11} />}
+            {createdFile ? 'Created' : 'New File'}
           </button>
           <button
             onClick={handleCopy}

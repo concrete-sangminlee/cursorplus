@@ -3237,13 +3237,13 @@ export default function EditorPanel() {
                     <div style={{ flex: 1, overflow: 'hidden' }}>
                       <CsvTableViewer content={activeFile.content || ''} isTsv={activeFile.path?.endsWith('.tsv')} />
                     </div>
+                  ) : jsonTreeView && activeFile?.path?.endsWith('.json') ? (
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                      <JsonTreeViewer content={activeFile.content || ''} onChange={handleChange} />
+                    </div>
                   ) : (
                     <>
-                      <div style={
-                        (markdownPreview && activeFile?.language === 'markdown') || (jsonTreeView && activeFile?.path?.endsWith('.json'))
-                          ? { flex: 1, overflow: 'hidden', position: 'relative' }
-                          : { flex: 1, minHeight: 0 }
-                      }>
+                      <div style={markdownPreview && activeFile?.language === 'markdown' ? { flex: 1, overflow: 'hidden', position: 'relative' } : { flex: 1, minHeight: 0 }}>
                       <Editor
                         theme={currentMonacoTheme}
                         language={activeFile.language}

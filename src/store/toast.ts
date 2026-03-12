@@ -9,27 +9,53 @@ export type ToastPriority = 'low' | 'normal' | 'high'
 
 export type NotificationCategory = 'Git' | 'Editor' | 'AI' | 'System'
 
+export type NotificationType = 'info' | 'success' | 'error' | 'warning'
+
 export interface Toast {
   id: string
-  type: 'info' | 'success' | 'error' | 'warning'
+  type: NotificationType
   message: string
   duration?: number
   action?: ToastAction
   secondaryAction?: ToastAction
   priority?: ToastPriority
   createdAt: number
+  /** Progress value 0-100; undefined means no progress bar */
+  progress?: number
 }
 
 export interface Notification {
   id: string
-  type: 'info' | 'success' | 'error' | 'warning'
+  type: NotificationType
   message: string
   timestamp: number
   read: boolean
   category: NotificationCategory
+  /** Action buttons preserved in history */
+  actions?: NotificationAction[]
+  /** Progress value 0-100; undefined means not a progress notification */
+  progress?: number
+  /** Whether this notification has completed (for progress notifications) */
+  completed?: boolean
+  /** Source identifier for updating progress notifications in-place */
+  sourceId?: string
+}
+
+export interface NotificationAction {
+  label: string
+  onClick: () => void
+}
+
+/** Default auto-dismiss timeouts by notification type (ms). 0 = never auto-dismiss. */
+export const AUTO_DISMISS_TIMEOUTS: Record<NotificationType, number> = {
+  info: 5000,
+  success: 5000,
+  warning: 10000,
+  error: 0, // never auto-dismiss
 }
 
 const MAX_NOTIFICATIONS = 50
+const MAX_VISIBLE_TOASTS = 3
 
 /** Infer a notification category from the toast message */
 function inferCategory(message: string): NotificationCategory {
@@ -72,13 +98,23 @@ interface ToastStore {
   notifications: Notification[]
   lastOpenedAt: number
   maxToasts: number
-  addToast: (toast: Omit<Toast, 'id' | 'createdAt'>) => void
+  doNotDisturb: boolean
+
+  addToast: (toast: Omit<Toast, 'id' | 'createdAt'>) => string
   removeToast: (id: string) => void
+  dismissTopToast: () => void
   clearAllNotifications: () => void
   markAllRead: () => void
   markRead: (id: string) => void
   getUnreadCount: () => number
   setMaxToasts: (n: number) => void
+  toggleDoNotDisturb: () => void
+  setDoNotDisturb: (value: boolean) => void
+
+  /** Update progress on an existing notification by sourceId or id */
+  updateProgress: (idOrSourceId: string, progress: number, message?: string) => void
+  /** Mark a progress notification as completed */
+  completeProgress: (idOrSourceId: string, message?: string, type?: NotificationType) => void
 }
 
 export const useToastStore = create<ToastStore>((set, get) => ({
@@ -86,7 +122,8 @@ export const useToastStore = create<ToastStore>((set, get) => ({
   queuedToasts: [],
   notifications: [],
   lastOpenedAt: Date.now(),
-  maxToasts: 5,
+  maxToasts: MAX_VISIBLE_TOASTS,
+  doNotDisturb: false,
 
   addToast: (toast) => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -100,39 +137,61 @@ export const useToastStore = create<ToastStore>((set, get) => ({
       timestamp: now,
       read: false,
       category: inferCategory(toast.message),
+      progress: toast.progress,
+      actions: [
+        ...(toast.action ? [{ label: toast.action.label, onClick: toast.action.onClick }] : []),
+        ...(toast.secondaryAction
+          ? [{ label: toast.secondaryAction.label, onClick: toast.secondaryAction.onClick }]
+          : []),
+      ],
+      sourceId: (toast as { sourceId?: string }).sourceId,
     }
 
-    const newToast: Toast = { ...toast, id, priority, createdAt: now }
+    const dnd = get().doNotDisturb
 
-    set((s) => {
-      const maxVisible = s.maxToasts
-      if (s.toasts.length >= maxVisible) {
-        // Queue the toast
+    if (dnd) {
+      // In DND mode: log to history but don't show popup toasts
+      set((s) => ({
+        notifications: [notification, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
+      }))
+    } else {
+      const newToast: Toast = { ...toast, id, priority, createdAt: now }
+
+      set((s) => {
+        const maxVisible = s.maxToasts
+        if (s.toasts.length >= maxVisible) {
+          return {
+            queuedToasts: [...s.queuedToasts, newToast],
+            notifications: [notification, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
+          }
+        }
         return {
-          queuedToasts: [...s.queuedToasts, newToast],
+          toasts: [...s.toasts, newToast],
           notifications: [notification, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
         }
-      }
-      return {
-        toasts: [...s.toasts, newToast],
-        notifications: [notification, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
-      }
-    })
+      })
 
-    // Dispatch notification event for notification center
+      // Auto-dismiss logic based on type, priority, and progress
+      const isProgressNotification = toast.progress !== undefined
+      if (priority !== 'high' && !isProgressNotification) {
+        const duration =
+          toast.duration || AUTO_DISMISS_TIMEOUTS[toast.type] || 5000
+        if (duration > 0) {
+          setTimeout(() => {
+            get().removeToast(id)
+          }, duration)
+        }
+      }
+    }
+
+    // Dispatch notification event for external listeners
     window.dispatchEvent(
       new CustomEvent('orion:notification', {
-        detail: { type: toast.type, message: toast.message },
+        detail: { type: toast.type, message: toast.message, id },
       })
     )
 
-    // High priority toasts don't auto-dismiss
-    if (priority !== 'high') {
-      const duration = toast.duration || (priority === 'low' ? 2000 : 3000)
-      setTimeout(() => {
-        get().removeToast(id)
-      }, duration)
-    }
+    return id
   },
 
   removeToast: (id) =>
@@ -142,12 +201,16 @@ export const useToastStore = create<ToastStore>((set, get) => ({
       if (s.queuedToasts.length > 0 && remaining.length < s.maxToasts) {
         const [next, ...restQueue] = s.queuedToasts
         // Schedule auto-dismiss for promoted toast if not high priority
-        if ((next.priority || 'normal') !== 'high') {
-          const duration = next.duration || (next.priority === 'low' ? 2000 : 3000)
-          setTimeout(() => {
-            get().removeToast(next.id)
-          }, duration)
-          // Reset createdAt so the progress bar starts fresh
+        const nextPriority = next.priority || 'normal'
+        const isProgress = next.progress !== undefined
+        if (nextPriority !== 'high' && !isProgress) {
+          const duration =
+            next.duration || AUTO_DISMISS_TIMEOUTS[next.type] || 5000
+          if (duration > 0) {
+            setTimeout(() => {
+              get().removeToast(next.id)
+            }, duration)
+          }
           next.createdAt = Date.now()
         }
         return {
@@ -157,6 +220,14 @@ export const useToastStore = create<ToastStore>((set, get) => ({
       }
       return { toasts: remaining }
     }),
+
+  dismissTopToast: () => {
+    const state = get()
+    if (state.toasts.length > 0) {
+      const topToast = state.toasts[state.toasts.length - 1]
+      get().removeToast(topToast.id)
+    }
+  },
 
   clearAllNotifications: () => set({ notifications: [] }),
 
@@ -177,4 +248,43 @@ export const useToastStore = create<ToastStore>((set, get) => ({
   },
 
   setMaxToasts: (n) => set({ maxToasts: n }),
+
+  toggleDoNotDisturb: () => set((s) => ({ doNotDisturb: !s.doNotDisturb })),
+
+  setDoNotDisturb: (value) => set({ doNotDisturb: value }),
+
+  updateProgress: (idOrSourceId, progress, message) =>
+    set((s) => {
+      const updatedToasts = s.toasts.map((t) =>
+        t.id === idOrSourceId ? { ...t, progress, ...(message ? { message } : {}) } : t
+      )
+      const updatedNotifications = s.notifications.map((n) => {
+        if (n.id === idOrSourceId || n.sourceId === idOrSourceId) {
+          return { ...n, progress, ...(message ? { message } : {}) }
+        }
+        return n
+      })
+      return { toasts: updatedToasts, notifications: updatedNotifications }
+    }),
+
+  completeProgress: (idOrSourceId, message, type) =>
+    set((s) => {
+      const updatedNotifications = s.notifications.map((n) => {
+        if (n.id === idOrSourceId || n.sourceId === idOrSourceId) {
+          return {
+            ...n,
+            progress: 100,
+            completed: true,
+            ...(message ? { message } : {}),
+            ...(type ? { type } : {}),
+          }
+        }
+        return n
+      })
+      // Remove the toast popup since it's complete
+      const remaining = s.toasts.filter(
+        (t) => t.id !== idOrSourceId
+      )
+      return { notifications: updatedNotifications, toasts: remaining }
+    }),
 }))

@@ -45,11 +45,18 @@ const AgentPanel = React.lazy(() => import('./panels/AgentPanel'))
 const DebugPanel = React.lazy(() => import('./panels/DebugPanel'))
 const TestingPanel = React.lazy(() => import('./panels/TestingPanel'))
 
+// Lazy-loaded editor-area components
+const Breadcrumbs = React.lazy(() => import('./components/Breadcrumbs'))
+const DiffEditor = React.lazy(() => import('./components/DiffEditor'))
+
 // Lazy-loaded modal/dialog components (only shown on demand)
 const SettingsModal = React.lazy(() => import('./components/SettingsModal'))
 const KeyboardShortcuts = React.lazy(() => import('./components/KeyboardShortcuts'))
 const AboutDialog = React.lazy(() => import('./components/AboutDialog'))
 const SnippetManager = React.lazy(() => import('@/components/SnippetManager'))
+
+/** Workspace trust key prefix in localStorage */
+const WORKSPACE_TRUST_KEY = 'orion-workspace-trust'
 
 /** Minimal loading placeholder for lazy panels */
 function PanelFallback() {
@@ -92,6 +99,17 @@ const initialLayout = loadLayout({
   chatVisible: true,
 })
 
+/** Wrapper that subscribes to editor store for Breadcrumbs props */
+function BreadcrumbsWrapper() {
+  const activeFilePath = useEditorStore((s) => s.activeFilePath)
+  if (!activeFilePath) return null
+  return (
+    <Suspense fallback={null}>
+      <Breadcrumbs filePath={activeFilePath} />
+    </Suspense>
+  )
+}
+
 export default function App() {
   const [splashDone, setSplashDone] = useState(false)
   const [activeView, setActiveView] = useState<PanelView>('explorer')
@@ -109,6 +127,17 @@ export default function App() {
   const [zenMode, setZenMode] = useState(false)
   const [zenExitVisible, setZenExitVisible] = useState(false)
   const zenExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Diff editor state ──────────────────────────────────
+  const [diffView, setDiffView] = useState<{
+    original: string
+    modified: string
+    originalPath: string
+    modifiedPath: string
+  } | null>(null)
+
+  // ── Workspace trust banner ─────────────────────────────
+  const [workspaceTrustDismissed, setWorkspaceTrustDismissed] = useState(true)
 
   // Store pre-zen state so we can restore on exit
   const preZenState = useRef<{
@@ -363,6 +392,52 @@ export default function App() {
     } catch {}
   }, [])
 
+  // ── Workspace trust: check on root path change ───────
+  useEffect(() => {
+    const unsubscribe = useFileStore.subscribe((state) => {
+      const root = state.rootPath
+      if (!root) {
+        setWorkspaceTrustDismissed(true)
+        return
+      }
+      const key = `${WORKSPACE_TRUST_KEY}:${root}`
+      const decision = localStorage.getItem(key)
+      setWorkspaceTrustDismissed(decision !== null)
+    })
+    // Run once on mount with current state
+    const root = useFileStore.getState().rootPath
+    if (root) {
+      const key = `${WORKSPACE_TRUST_KEY}:${root}`
+      setWorkspaceTrustDismissed(localStorage.getItem(key) !== null)
+    }
+    return unsubscribe
+  }, [])
+
+  const handleWorkspaceTrust = useCallback((trusted: boolean) => {
+    const root = useFileStore.getState().rootPath
+    if (root) {
+      localStorage.setItem(`${WORKSPACE_TRUST_KEY}:${root}`, trusted ? 'trusted' : 'restricted')
+    }
+    setWorkspaceTrustDismissed(true)
+  }, [])
+
+  // ── Listen for orion:show-diff custom event ────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        original: string
+        modified: string
+        originalPath: string
+        modifiedPath: string
+      } | undefined
+      if (detail) {
+        setDiffView(detail)
+      }
+    }
+    window.addEventListener('orion:show-diff', handler)
+    return () => window.removeEventListener('orion:show-diff', handler)
+  }, [])
+
   // Listen for custom events from menu bar / commands
   useEffect(() => {
     const handlers: Record<string, () => void> = {
@@ -590,6 +665,12 @@ export default function App() {
         setActiveView('testing')
         return
       }
+      // Ctrl+Shift+Y -> focus output panel (toggle bottom panel)
+      if (ctrl && e.shiftKey && e.key === 'Y') {
+        e.preventDefault()
+        setBottomVisible(true)
+        return
+      }
       // Ctrl+Tab -> next tab, Ctrl+Shift+Tab -> previous tab
       if (ctrl && e.key === 'Tab') {
         e.preventDefault()
@@ -669,6 +750,59 @@ export default function App() {
       onDragLeave={handleGlobalDragLeave}
       onDrop={handleGlobalDrop}
     >
+      {/* Workspace trust banner */}
+      {!workspaceTrustDismissed && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            padding: '8px 16px',
+            background: 'linear-gradient(90deg, rgba(227, 179, 65, 0.12), rgba(227, 179, 65, 0.06))',
+            borderBottom: '1px solid rgba(227, 179, 65, 0.3)',
+            fontSize: 13,
+            color: 'var(--text-primary)',
+            flexShrink: 0,
+            zIndex: 100,
+          }}
+        >
+          <span style={{ fontWeight: 500 }}>
+            Do you trust the authors of the files in this folder?
+          </span>
+          <button
+            onClick={() => handleWorkspaceTrust(true)}
+            style={{
+              padding: '3px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 4,
+              border: 'none',
+              cursor: 'pointer',
+              background: 'var(--accent)',
+              color: '#fff',
+            }}
+          >
+            Trust
+          </button>
+          <button
+            onClick={() => handleWorkspaceTrust(false)}
+            style={{
+              padding: '3px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 4,
+              border: '1px solid var(--border)',
+              cursor: 'pointer',
+              background: 'transparent',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Don&apos;t Trust
+          </button>
+        </div>
+      )}
+
       {/* Skip navigation link for keyboard/screen reader users */}
       <a className="skip-nav" href="#editor-main">
         Skip to editor
@@ -822,8 +956,22 @@ export default function App() {
 
         {/* Center */}
         <div role="main" id="editor-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Breadcrumbs - only shown when a file is open and not in diff view */}
+          {!diffView && <BreadcrumbsWrapper />}
           <div className={zenMode ? 'zen-editor-container' : undefined} style={{ flex: 1, overflow: 'hidden' }}>
-            <EditorPanel />
+            {diffView ? (
+              <Suspense fallback={<PanelFallback />}>
+                <DiffEditor
+                  originalContent={diffView.original}
+                  modifiedContent={diffView.modified}
+                  originalPath={diffView.originalPath}
+                  modifiedPath={diffView.modifiedPath}
+                  onClose={() => setDiffView(null)}
+                />
+              </Suspense>
+            ) : (
+              <EditorPanel />
+            )}
           </div>
           {bottomVisible && !zenMode && (
             <>

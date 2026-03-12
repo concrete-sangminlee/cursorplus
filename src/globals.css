@@ -227,6 +227,22 @@ button {
   cursor: grabbing;
 }
 
+/* Settings gear: slow spin on hover */
+.activity-bar-item:hover .activity-settings-icon {
+  animation: settings-spin 2s linear infinite;
+}
+@keyframes settings-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Active indicator left border transition */
+.activity-bar-item {
+  border-left: 2px solid transparent;
+}
+
+/* Context menu fade-in inherits anim-fade-in */
+
 /* Glass effect */
 .glass {
   background: rgba(22, 27, 34, 0.85);

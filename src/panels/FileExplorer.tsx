@@ -295,6 +295,7 @@ const gitColors: Record<string, string> = {
   deleted:   '#f85149',
   untracked: '#8b949e',
   renamed:   '#d2a8ff',
+  conflict:  '#e3b341',
 }
 
 /* ── Indent guide component ────────────────────────────── */
@@ -637,6 +638,7 @@ function FileTreeNode({
   dropTargetFolder,
   onFolderDragOver,
   onFolderDragLeave,
+  onRequestRename,
 }: {
   node: FileNode
   depth: number
@@ -647,17 +649,26 @@ function FileTreeNode({
   dropTargetFolder?: string | null
   onFolderDragOver?: (e: React.DragEvent, folderPath: string) => void
   onFolderDragLeave?: (e: React.DragEvent) => void
+  onRequestRename?: (node: FileNode) => void
 }) {
   const { expandedDirs, toggleDir } = useFileStore()
   const { openFile, activeFilePath, pinFile } = useEditorStore()
   const [contextActive, setContextActive] = useState(false)
   const [nestedExpanded, setNestedExpanded] = useState(false)
+  const [isSelected, setIsSelected] = useState(false)
+  const rowRef = useRef<HTMLDivElement>(null)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isExpanded = expandedDirs.has(node.path)
   const isActive = activeFilePath === node.path
   const isDir = node.type === 'directory'
   const isNestedParent = !!(node as any)._isNestedParent
   const nestedCount = (node as any)._nestedCount as number | undefined
+
+  /* File count for directories */
+  const fileCount = useMemo(() => {
+    if (!isDir || !node.children) return 0
+    return countFiles(node.children)
+  }, [isDir, node.children])
 
   /* Is this node being renamed inline? */
   const isRenaming =
@@ -684,6 +695,7 @@ function FileTreeNode({
   }
 
   const handleClick = () => {
+    setIsSelected(true)
     if (isDir) {
       toggleDir(node.path)
       return
@@ -694,6 +706,15 @@ function FileTreeNode({
       openFileInEditor(true) // single-click = preview
     }, 200)
   }
+
+  /* F2 to rename, focus management for keyboard nav */
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'F2') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (onRequestRename) onRequestRename(node)
+    }
+  }, [node, onRequestRename])
 
   const handleNestedToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -745,6 +766,7 @@ function FileTreeNode({
             dropTargetFolder={dropTargetFolder}
             onFolderDragOver={onFolderDragOver}
             onFolderDragLeave={onFolderDragLeave}
+            onRequestRename={onRequestRename}
           />
         ))}
       </>
@@ -762,11 +784,15 @@ function FileTreeNode({
   return (
     <>
       <div
+        ref={rowRef}
+        tabIndex={0}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleCtx}
+        onKeyDown={handleKeyDown}
         className={`flex items-center cursor-pointer transition-colors duration-75${isFolderDropTarget ? ' folder-drop-target' : ''}`}
         {...(isDir ? { 'data-folder-path': node.path } : {})}
+        data-node-path={node.path}
         style={{
           height: 24,
           paddingLeft: depth * 16 + (isDir ? 6 : isNestedParent ? 6 : 24),
@@ -781,6 +807,7 @@ function FileTreeNode({
                 : undefined,
           color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontSize: 12,
+          outline: 'none',
         }}
         onMouseEnter={(e) => {
           if (!isActive && !isFolderDropTarget) e.currentTarget.style.background = 'rgba(255,255,255,0.035)'
@@ -790,6 +817,8 @@ function FileTreeNode({
         }}
         onDragOver={isDir && onFolderDragOver ? (e) => onFolderDragOver(e, node.path) : undefined}
         onDragLeave={isDir && onFolderDragLeave ? onFolderDragLeave : undefined}
+        onFocus={() => setIsSelected(true)}
+        onBlur={() => setIsSelected(false)}
       >
         {/* Indent guides */}
         <IndentGuides depth={depth} />
@@ -864,6 +893,23 @@ function FileTreeNode({
           {node.name}
         </span>
 
+        {/* File count for directories */}
+        {isDir && fileCount > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              color: 'var(--text-muted)',
+              flexShrink: 0,
+              marginLeft: 4,
+              opacity: 0.7,
+              fontFamily: 'var(--font-mono, monospace)',
+            }}
+            title={`${fileCount} file${fileCount !== 1 ? 's' : ''}`}
+          >
+            ({fileCount})
+          </span>
+        )}
+
         {/* Nested count badge */}
         {isNestedParent && nestedCount && (
           <span
@@ -890,14 +936,25 @@ function FileTreeNode({
         {node.gitStatus && gitBadgeLabels[node.gitStatus] && (
           <span
             style={{
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: 700,
-              color: gitBadgeColors[node.gitStatus] || '#8b949e',
+              color: gitBadgeColors[node.gitStatus] || 'var(--text-muted, #8b949e)',
               flexShrink: 0,
               marginLeft: 6,
-              lineHeight: '16px',
-              letterSpacing: '0.02em',
+              lineHeight: '14px',
+              letterSpacing: '0.04em',
               fontFamily: 'var(--font-mono, monospace)',
+              background: node.gitStatus === 'conflict'
+                ? 'rgba(227, 179, 65, 0.15)'
+                : node.gitStatus === 'deleted'
+                  ? 'rgba(248, 81, 73, 0.12)'
+                  : node.gitStatus === 'modified'
+                    ? 'rgba(210, 153, 34, 0.12)'
+                    : 'rgba(63, 185, 80, 0.12)',
+              padding: '0 4px',
+              borderRadius: 3,
+              minWidth: 16,
+              textAlign: 'center',
             }}
             title={node.gitStatus}
           >
@@ -930,6 +987,7 @@ function FileTreeNode({
           dropTargetFolder={dropTargetFolder}
           onFolderDragOver={onFolderDragOver}
           onFolderDragLeave={onFolderDragLeave}
+          onRequestRename={onRequestRename}
         />
       ))}
 
@@ -946,6 +1004,7 @@ function FileTreeNode({
           dropTargetFolder={dropTargetFolder}
           onFolderDragOver={onFolderDragOver}
           onFolderDragLeave={onFolderDragLeave}
+          onRequestRename={onRequestRename}
         />
       ))}
     </>
@@ -1096,14 +1155,48 @@ const gitBadgeLabels: Record<string, string> = {
   deleted:   'D',
   untracked: 'U',
   renamed:   'R',
+  conflict:  'C',
 }
 
 const gitBadgeColors: Record<string, string> = {
-  modified:  '#d29922',
-  added:     '#3fb950',
-  deleted:   '#f85149',
-  untracked: '#3fb950',
-  renamed:   '#d2a8ff',
+  modified:  'var(--git-modified, #d29922)',
+  added:     'var(--git-added, #3fb950)',
+  deleted:   'var(--git-deleted, #f85149)',
+  untracked: 'var(--git-added, #3fb950)',
+  renamed:   'var(--git-renamed, #d2a8ff)',
+  conflict:  'var(--git-conflict, #e3b341)',
+}
+
+/* ── Count files in a tree recursively ─────────────────── */
+
+function countFiles(nodes: FileNode[]): number {
+  let count = 0
+  for (const node of nodes) {
+    if (node.type === 'directory') {
+      if (node.children) count += countFiles(node.children)
+    } else {
+      count++
+    }
+  }
+  return count
+}
+
+/* ── Collect ancestor folder paths for sticky scroll ───── */
+
+function collectVisibleFolderPaths(
+  nodes: FileNode[],
+  expandedDirs: Set<string>,
+  depth: number,
+  result: { path: string; name: string; depth: number }[],
+): void {
+  for (const node of nodes) {
+    if (node.type === 'directory') {
+      result.push({ path: node.path, name: node.name, depth })
+      if (expandedDirs.has(node.path) && node.children) {
+        collectVisibleFolderPaths(node.children, expandedDirs, depth + 1, result)
+      }
+    }
+  }
 }
 
 /* ── File Explorer panel ───────────────────────────────── */
@@ -1144,9 +1237,10 @@ export default function FileExplorer() {
     return tree
   }, [searchFilteredTree, nestingEnabled, compactFoldersEnabled, searchQuery])
 
-  // Sticky parent header state
+  // Sticky parent header state (multi-level)
   const treeContainerRef = useRef<HTMLDivElement>(null)
-  const [stickyParent, setStickyParent] = useState<string | null>(null)
+  const [stickyParents, setStickyParents] = useState<{ path: string; name: string; depth: number }[]>([])
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const openFiles = useEditorStore((s) => s.openFiles)
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
@@ -1568,30 +1662,61 @@ export default function FileExplorer() {
     setDropTargetFolder(null)
   }, [])
 
-  /* ── Sticky parent header on scroll ──────────────────── */
+  /* ── F2 rename from keyboard ──────────────────────────── */
+
+  const handleRequestRename = useCallback((node: FileNode) => {
+    setInlineInput({
+      mode: 'rename',
+      parentPath: node.path.replace(/[\\/][^\\/]+$/, ''),
+      existingName: node.name,
+      existingPath: node.path,
+      depth: 0,
+    })
+  }, [])
+
+  /* ── Sticky parent headers on scroll (multi-level) ───── */
 
   const handleTreeScroll = useCallback(() => {
     const container = treeContainerRef.current
     if (!container) return
     const scrollTop = container.scrollTop
     if (scrollTop < 4) {
-      setStickyParent(null)
+      setStickyParents([])
       return
     }
-    // Find the folder row that is just above the viewport top
+    // Find all folder rows that are above the viewport top, tracking hierarchy
     const rows = container.querySelectorAll('[data-folder-path]')
-    let lastFolder: string | null = null
+    const ancestors: { path: string; name: string; depth: number }[] = []
+    let lastFolderPath: string | null = null
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i] as HTMLElement
       const top = row.offsetTop - container.offsetTop
       if (top <= scrollTop) {
-        lastFolder = row.getAttribute('data-folder-path')
+        lastFolderPath = row.getAttribute('data-folder-path')
       } else {
         break
       }
     }
-    setStickyParent(lastFolder)
-  }, [])
+
+    if (lastFolderPath && rootPath) {
+      // Build the ancestor chain from root to the sticky folder
+      const rel = relativePath(rootPath, lastFolderPath)
+      const parts = rel.split('/')
+      let currentPath = rootPath
+      for (let i = 0; i < parts.length; i++) {
+        currentPath = currentPath + (currentPath.includes('/') ? '/' : '\\') + parts[i]
+        ancestors.push({
+          path: currentPath,
+          name: parts[i],
+          depth: i,
+        })
+      }
+    }
+
+    // Only show up to 3 levels of sticky parents to avoid taking too much space
+    setStickyParents(ancestors.slice(-3))
+  }, [rootPath])
 
   /* ── Background click to close context menu ─────────── */
 
@@ -1801,8 +1926,15 @@ export default function FileExplorer() {
           >
             <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0, marginRight: 4 }} />
             <input
+              ref={searchInputRef}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchQuery('')
+                  searchInputRef.current?.blur()
+                }
+              }}
               placeholder="Filter files..."
               style={{
                 flex: 1,
@@ -1844,33 +1976,52 @@ export default function FileExplorer() {
         onContextMenu={handleTreeContextMenu}
         onScroll={handleTreeScroll}
       >
-        {/* Sticky parent header */}
-        {stickyParent && (
+        {/* Sticky parent headers (multi-level) */}
+        {stickyParents.length > 0 && (
           <div
             style={{
               position: 'sticky',
               top: 0,
               zIndex: 10,
-              height: 24,
-              display: 'flex',
-              alignItems: 'center',
-              paddingLeft: 6,
-              paddingRight: 8,
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--text-secondary)',
               background: 'var(--bg-secondary, #1e1e2e)',
               borderBottom: '1px solid var(--border)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
             }}
           >
-            <FolderOpen
-              size={14}
-              style={{ color: '#dcb67a', flexShrink: 0, marginRight: 6 }}
-            />
-            <span className="truncate">
-              {rootPath ? relativePath(rootPath, stickyParent) : stickyParent.replace(/\\/g, '/').split('/').pop()}
-            </span>
+            {stickyParents.map((sp, idx) => (
+              <div
+                key={sp.path}
+                onClick={() => {
+                  // Scroll to this folder when clicking sticky header
+                  const el = treeContainerRef.current?.querySelector(`[data-folder-path="${CSS.escape(sp.path)}"]`)
+                  if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                }}
+                style={{
+                  height: 22,
+                  display: 'flex',
+                  alignItems: 'center',
+                  paddingLeft: sp.depth * 16 + 6,
+                  paddingRight: 8,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: idx === stickyParents.length - 1
+                    ? 'var(--text-primary)'
+                    : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  opacity: idx === stickyParents.length - 1 ? 1 : 0.7,
+                }}
+              >
+                <FolderOpen
+                  size={13}
+                  style={{
+                    color: 'var(--folder-icon, #dcb67a)',
+                    flexShrink: 0,
+                    marginRight: 6,
+                  }}
+                />
+                <span className="truncate">{sp.name}</span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1908,6 +2059,7 @@ export default function FileExplorer() {
                 dropTargetFolder={dropTargetFolder}
                 onFolderDragOver={handleFolderDragOver}
                 onFolderDragLeave={handleFolderDragLeave}
+                onRequestRename={handleRequestRename}
               />
             ))}
           </>
