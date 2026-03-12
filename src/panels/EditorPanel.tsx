@@ -1096,25 +1096,173 @@ export default function EditorPanel() {
     return () => window.removeEventListener('keydown', handler)
   }, [activeFile])
 
-  // Handle split editor
-  const handleSplitToggle = useCallback(() => {
+  // Ctrl+\ to toggle split editor
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+        e.preventDefault()
+        handleSplitToggle()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleSplitToggle])
+
+  // Handle split editor right (horizontal)
+  const handleSplitRight = useCallback(() => {
     if (splitMode === 'single' && activeFile) {
-      setSplitMode('split')
-      // Use the second open file, or the same file
+      setSplitMode('horizontal')
       const other = openFiles.find((f) => f.path !== activeFilePath)
-      setSplitFilePath(other?.path || activeFilePath || null)
+      const splitPath = other?.path || activeFilePath || null
+      setSplitFilePath(splitPath)
+      setGroup1Files(activeFilePath ? [activeFilePath] : [])
+      setGroup2Files(splitPath ? [splitPath] : [])
+    } else if (splitMode !== 'single') {
+      setSplitMode('single')
+      setSplitFilePath(null)
+      setGroup1Files([])
+      setGroup2Files([])
+    }
+  }, [splitMode, activeFile, openFiles, activeFilePath])
+
+  // Handle split editor down (vertical)
+  const handleSplitDown = useCallback(() => {
+    if (splitMode === 'single' && activeFile) {
+      setSplitMode('vertical')
+      const other = openFiles.find((f) => f.path !== activeFilePath)
+      const splitPath = other?.path || activeFilePath || null
+      setSplitFilePath(splitPath)
+      setGroup1Files(activeFilePath ? [activeFilePath] : [])
+      setGroup2Files(splitPath ? [splitPath] : [])
+    } else if (splitMode !== 'single') {
+      setSplitMode('single')
+      setSplitFilePath(null)
+      setGroup1Files([])
+      setGroup2Files([])
+    }
+  }, [splitMode, activeFile, openFiles, activeFilePath])
+
+  // Toggle split (Ctrl+\) - toggles between single and the last used direction
+  const handleSplitToggle = useCallback(() => {
+    if (splitMode === 'single') {
+      handleSplitRight()
     } else {
       setSplitMode('single')
       setSplitFilePath(null)
+      setGroup1Files([])
+      setGroup2Files([])
     }
-  }, [splitMode, activeFile, openFiles, activeFilePath])
+  }, [splitMode, handleSplitRight])
+
+  // Handle sync scroll toggle
+  const handleToggleSyncScroll = useCallback(() => {
+    setSyncScrollEnabled(prev => !prev)
+  }, [])
+
+  // Handle opening diff editor
+  const handleCompareFiles = useCallback(() => {
+    if (!activeFilePath) return
+    setDiffOriginalPath(activeFilePath)
+    setDiffFilePickerOpen(true)
+  }, [activeFilePath])
+
+  // Handle selecting the comparison file
+  const handleSelectDiffFile = useCallback((path: string) => {
+    setDiffModifiedPath(path)
+    setDiffFilePickerOpen(false)
+    setDiffEditorMode(true)
+  }, [])
+
+  // Close diff editor
+  const handleCloseDiffEditor = useCallback(() => {
+    setDiffEditorMode(false)
+    setDiffOriginalPath(null)
+    setDiffModifiedPath(null)
+  }, [])
+
+  // Move tab from one group to another
+  const handleMoveTabToGroup = useCallback((filePath: string, targetGroup: 1 | 2) => {
+    if (targetGroup === 2) {
+      setGroup1Files(prev => prev.filter(p => p !== filePath))
+      setGroup2Files(prev => prev.includes(filePath) ? prev : [...prev, filePath])
+      setSplitFilePath(filePath)
+    } else {
+      setGroup2Files(prev => prev.filter(p => p !== filePath))
+      setGroup1Files(prev => prev.includes(filePath) ? prev : [...prev, filePath])
+    }
+    // If a group becomes empty, close the split
+    setTimeout(() => {
+      setGroup2Files(prev => {
+        if (prev.length === 0 && splitMode !== 'single') {
+          setSplitMode('single')
+          setSplitFilePath(null)
+          setGroup1Files([])
+        }
+        return prev
+      })
+    }, 0)
+  }, [splitMode])
+
+  // Sync scroll effect
+  useEffect(() => {
+    const primary = editorRef.current
+    const secondary = splitEditorRef.current
+    if (!syncScrollEnabled || !primary || !secondary) return
+
+    const disposeA = primary.onDidScrollChange((e) => {
+      if (isSyncingScroll.current) return
+      isSyncingScroll.current = true
+      secondary.setScrollTop(e.scrollTop)
+      secondary.setScrollLeft(e.scrollLeft)
+      requestAnimationFrame(() => { isSyncingScroll.current = false })
+    })
+
+    const disposeB = secondary.onDidScrollChange((e) => {
+      if (isSyncingScroll.current) return
+      isSyncingScroll.current = true
+      primary.setScrollTop(e.scrollTop)
+      primary.setScrollLeft(e.scrollLeft)
+      requestAnimationFrame(() => { isSyncingScroll.current = false })
+    })
+
+    return () => {
+      disposeA.dispose()
+      disposeB.dispose()
+    }
+  }, [syncScrollEnabled, splitMode])
 
   // Listen for split toggle events
   useEffect(() => {
     const handler = () => handleSplitToggle()
+    const handlerRight = () => handleSplitRight()
+    const handlerDown = () => handleSplitDown()
+    const handlerSyncScroll = () => handleToggleSyncScroll()
+    const handlerCompare = () => handleCompareFiles()
     window.addEventListener('orion:split-editor', handler)
-    return () => window.removeEventListener('orion:split-editor', handler)
-  }, [handleSplitToggle])
+    window.addEventListener('orion:split-editor-right', handlerRight)
+    window.addEventListener('orion:split-editor-down', handlerDown)
+    window.addEventListener('orion:toggle-sync-scroll', handlerSyncScroll)
+    window.addEventListener('orion:compare-files', handlerCompare)
+    return () => {
+      window.removeEventListener('orion:split-editor', handler)
+      window.removeEventListener('orion:split-editor-right', handlerRight)
+      window.removeEventListener('orion:split-editor-down', handlerDown)
+      window.removeEventListener('orion:toggle-sync-scroll', handlerSyncScroll)
+      window.removeEventListener('orion:compare-files', handlerCompare)
+    }
+  }, [handleSplitToggle, handleSplitRight, handleSplitDown, handleToggleSyncScroll, handleCompareFiles])
+
+  // Listen for tab-to-group-drop events from TabBar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.filePath && detail?.targetGroup) {
+        handleMoveTabToGroup(detail.filePath, detail.targetGroup)
+      }
+    }
+    window.addEventListener('orion:move-tab-to-group', handler)
+    return () => window.removeEventListener('orion:move-tab-to-group', handler)
+  }, [handleMoveTabToGroup])
 
   // Command palette event handlers
   useEffect(() => {

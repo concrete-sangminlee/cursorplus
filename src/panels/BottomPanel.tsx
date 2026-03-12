@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import TerminalPanel from './TerminalPanel'
 import ProblemsPanel from './ProblemsPanel'
 import OutputPanel from './OutputPanel'
@@ -8,6 +8,7 @@ import { useOutputStore } from '@/store/output'
 import {
   Terminal, Activity, AlertTriangle, FileOutput,
   ChevronRight, AlertCircle, Info, Zap, Plus, X, Trash2,
+  ChevronDown,
 } from 'lucide-react'
 import { v4 as uuid } from 'uuid'
 
@@ -19,6 +20,32 @@ const tabs: { id: Tab; label: string; Icon: typeof Terminal }[] = [
   { id: 'problems', label: 'Problems', Icon: AlertTriangle },
   { id: 'output', label: 'Output', Icon: FileOutput },
 ]
+
+/* ── Terminal profile definitions ─────────────────────── */
+
+export interface TerminalProfile {
+  id: string
+  name: string
+  shellPath: string
+  args: string[]
+  icon: string // emoji used as icon
+}
+
+const isWindows = navigator.userAgent.includes('Windows') || navigator.platform?.startsWith('Win')
+
+const windowsProfiles: TerminalProfile[] = [
+  { id: 'powershell', name: 'PowerShell', shellPath: 'powershell.exe', args: [], icon: 'PS' },
+  { id: 'cmd', name: 'Command Prompt', shellPath: 'cmd.exe', args: [], icon: '>' },
+  { id: 'gitbash', name: 'Git Bash', shellPath: 'C:\\Program Files\\Git\\bin\\bash.exe', args: ['--login', '-i'], icon: '$' },
+  { id: 'wsl', name: 'WSL', shellPath: 'wsl.exe', args: [], icon: '#' },
+]
+
+const unixProfiles: TerminalProfile[] = [
+  { id: 'bash', name: 'bash', shellPath: '/bin/bash', args: ['--login'], icon: '$' },
+  { id: 'zsh', name: 'zsh', shellPath: '/bin/zsh', args: ['--login'], icon: '%' },
+]
+
+const defaultProfiles = isWindows ? windowsProfiles : unixProfiles
 
 /* ── Log type styling ──────────────────────────────────── */
 
@@ -34,21 +61,41 @@ const logTypeConfig: Record<string, { color: string; borderColor: string; Icon: 
 interface TermInstance {
   id: string
   name: string
+  profileId?: string
+  shellPath?: string
+  shellArgs?: string[]
 }
 
 export default function BottomPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('terminal')
-  const [terminals, setTerminals] = useState<TermInstance[]>([{ id: uuid(), name: 'Terminal 1' }])
+  const [terminals, setTerminals] = useState<TermInstance[]>([
+    { id: uuid(), name: 'Terminal 1' },
+  ])
   const [activeTerminal, setActiveTerminal] = useState<string>(() => terminals[0]?.id || '')
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
   const logs = useAgentStore((s) => s.logs)
 
-  const addTerminal = useCallback(() => {
+  /* ── Create terminal with optional profile ───────────── */
+  const addTerminal = useCallback((profile?: TerminalProfile) => {
     const num = terminals.length + 1
-    const t: TermInstance = { id: uuid(), name: `Terminal ${num}` }
+    const name = profile ? `${profile.name} ${num}` : `Terminal ${num}`
+    const t: TermInstance = {
+      id: uuid(),
+      name,
+      profileId: profile?.id,
+      shellPath: profile?.shellPath,
+      shellArgs: profile?.args,
+    }
     setTerminals(prev => [...prev, t])
     setActiveTerminal(t.id)
     setActiveTab('terminal')
+    setShowProfileMenu(false)
   }, [terminals.length])
+
+  const addDefaultTerminal = useCallback(() => {
+    addTerminal(undefined)
+  }, [addTerminal])
 
   const closeTerminal = useCallback((id: string) => {
     setTerminals(prev => {
@@ -62,6 +109,39 @@ export default function BottomPanel() {
       return next
     })
   }, [activeTerminal])
+
+  /* ── Terminal title tracking ─────────────────────────── */
+  const handleTitleChange = useCallback((sessionId: string, title: string) => {
+    setTerminals(prev =>
+      prev.map(t =>
+        t.id === sessionId ? { ...t, name: title || t.name } : t
+      )
+    )
+  }, [])
+
+  /* ── Close profile dropdown on outside click ─────────── */
+  useEffect(() => {
+    if (!showProfileMenu) return
+    const handler = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showProfileMenu])
+
+  /* ── Global keyboard shortcut: Ctrl+Shift+` ─────────── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === '`') {
+        e.preventDefault()
+        addDefaultTerminal()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [addDefaultTerminal])
 
   // Output channel info
   const outputActiveChannel = useOutputStore((s) => s.activeChannel)
@@ -195,16 +275,21 @@ export default function BottomPanel() {
                     background: activeTerminal === t.id ? 'rgba(255,255,255,0.06)' : 'transparent',
                     border: 'none', cursor: 'pointer',
                     transition: 'background 0.1s',
+                    maxWidth: 140,
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
                   }}
+                  title={t.name}
                   onMouseEnter={e => { if (activeTerminal !== t.id) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
                   onMouseLeave={e => { if (activeTerminal !== t.id) e.currentTarget.style.background = 'transparent' }}
                 >
-                  <Terminal size={10} />
-                  {t.name}
+                  <Terminal size={10} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
                   {terminals.length > 1 && (
                     <span
                       onClick={e => { e.stopPropagation(); closeTerminal(t.id) }}
-                      style={{ display: 'flex', marginLeft: 2, opacity: 0.5, cursor: 'pointer' }}
+                      style={{ display: 'flex', marginLeft: 2, opacity: 0.5, cursor: 'pointer', flexShrink: 0 }}
                       onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
                       onMouseLeave={e => { e.currentTarget.style.opacity = '0.5' }}
                     >
@@ -213,9 +298,11 @@ export default function BottomPanel() {
                   )}
                 </button>
               ))}
+
+              {/* New terminal button */}
               <button
-                onClick={addTerminal}
-                title="New Terminal"
+                onClick={addDefaultTerminal}
+                title="New Terminal (Ctrl+Shift+`)"
                 style={{
                   width: 22, height: 22,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -228,6 +315,118 @@ export default function BottomPanel() {
               >
                 <Plus size={12} />
               </button>
+
+              {/* Profile dropdown button */}
+              <div style={{ position: 'relative' }} ref={profileMenuRef}>
+                <button
+                  onClick={() => setShowProfileMenu(prev => !prev)}
+                  title="Select Terminal Profile"
+                  style={{
+                    width: 22, height: 22,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: 3, border: 'none', cursor: 'pointer',
+                    color: showProfileMenu ? 'var(--text-primary)' : 'var(--text-muted)',
+                    background: showProfileMenu ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    transition: 'background 0.1s, color 0.1s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                  onMouseLeave={e => { if (!showProfileMenu) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' } }}
+                >
+                  <ChevronDown size={12} />
+                </button>
+
+                {/* Profile dropdown menu */}
+                {showProfileMenu && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 26,
+                      right: 0,
+                      minWidth: 200,
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: '4px 0',
+                      zIndex: 1000,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 10,
+                        color: 'var(--text-muted)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                      }}
+                    >
+                      Terminal Profiles
+                    </div>
+                    {defaultProfiles.map(profile => (
+                      <button
+                        key={profile.id}
+                        onClick={() => addTerminal(profile)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          width: '100%',
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          color: 'var(--text-secondary)',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                          e.currentTarget.style.color = 'var(--text-primary)'
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'transparent'
+                          e.currentTarget.style.color = 'var(--text-secondary)'
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 4,
+                            background: 'rgba(255,255,255,0.04)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            fontFamily: 'var(--font-mono, monospace)',
+                            color: 'var(--accent)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {profile.icon}
+                        </span>
+                        <span>{profile.name}</span>
+                        <span
+                          style={{
+                            marginLeft: 'auto',
+                            fontSize: 9,
+                            color: 'var(--text-muted)',
+                            opacity: 0.6,
+                            fontFamily: 'var(--font-mono, monospace)',
+                          }}
+                        >
+                          {profile.shellPath.split(/[/\\]/).pop()}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Kill terminal button */}
               <button
                 onClick={() => closeTerminal(activeTerminal)}
                 title="Kill Terminal"
@@ -252,7 +451,13 @@ export default function BottomPanel() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'terminal' && terminals.map(t => (
           <div key={t.id} style={{ height: '100%', display: activeTerminal === t.id ? 'block' : 'none' }}>
-            <TerminalPanel key={t.id} sessionId={t.id} />
+            <TerminalPanel
+              key={t.id}
+              sessionId={t.id}
+              shellPath={t.shellPath}
+              shellArgs={t.shellArgs}
+              onTitleChange={handleTitleChange}
+            />
           </div>
         ))}
 

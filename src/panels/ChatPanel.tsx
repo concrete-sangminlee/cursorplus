@@ -1400,9 +1400,31 @@ export default function ChatPanel() {
     setMode,
     setModel,
     clearMessages,
+    loadMessages,
     ollamaAvailable,
     ollamaModels,
   } = useChatStore()
+
+  const {
+    activeConversationId,
+    createConversation,
+  } = useChatHistoryStore()
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // On first mount, ensure there is an active conversation
+  useEffect(() => {
+    if (!activeConversationId) {
+      createConversation()
+    } else {
+      // Load messages from the persisted active conversation
+      const convo = useChatHistoryStore.getState().getActiveConversation()
+      if (convo && convo.messages.length > 0) {
+        loadMessages(convo.messages)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const allModels = [
     {
@@ -1637,12 +1659,20 @@ export default function ChatPanel() {
 
   return (
     <div
-      className="h-full flex flex-col"
+      className="h-full flex"
       style={{
         borderLeft: '1px solid var(--border)',
         background: 'var(--bg-primary)',
       }}
     >
+      {/* Conversation history sidebar */}
+      <ConversationSidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
+
+      {/* Main chat area */}
+      <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--bg-primary)' }}>
       {/* Header */}
       <div
         className="shrink-0 flex items-center px-3"
@@ -1698,8 +1728,11 @@ export default function ChatPanel() {
           ))}
         </div>
         <button
-          onClick={clearMessages}
-          title="Clear chat"
+          onClick={() => {
+            createConversation()
+            clearMessages()
+          }}
+          title="New chat"
           className="flex items-center justify-center transition-colors duration-100"
           style={{
             width: 26,
@@ -2050,6 +2083,7 @@ export default function ChatPanel() {
           </div>
         </div>
       </div>
+      </div>{/* end main chat area */}
     </div>
   )
 }
