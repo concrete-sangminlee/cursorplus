@@ -8,18 +8,35 @@ import { useOutputStore } from '@/store/output'
 import {
   Terminal, Activity, AlertTriangle, FileOutput,
   ChevronRight, AlertCircle, Info, Zap, Plus, X, Trash2,
-  ChevronDown, Columns2, Ban,
+  ChevronDown, Columns2, Ban, Maximize2, Minimize2,
+  PanelBottom, PanelRight, PanelLeft, Bug, Globe,
 } from 'lucide-react'
 import { v4 as uuid } from 'uuid'
 
-type Tab = 'terminal' | 'agent-log' | 'problems' | 'output'
+type Tab = 'terminal' | 'output' | 'problems' | 'debug-console' | 'ports'
 
-const tabs: { id: Tab; label: string; Icon: typeof Terminal }[] = [
-  { id: 'terminal', label: 'Terminal', Icon: Terminal },
-  { id: 'agent-log', label: 'Agent Log', Icon: Activity },
-  { id: 'problems', label: 'Problems', Icon: AlertTriangle },
-  { id: 'output', label: 'Output', Icon: FileOutput },
+interface TabDef {
+  id: Tab
+  label: string
+  Icon: typeof Terminal
+  shortcutLabel?: string
+}
+
+const defaultTabOrder: TabDef[] = [
+  { id: 'terminal', label: 'Terminal', Icon: Terminal, shortcutLabel: 'Ctrl+`' },
+  { id: 'output', label: 'Output', Icon: FileOutput, shortcutLabel: 'Ctrl+Shift+U' },
+  { id: 'problems', label: 'Problems', Icon: AlertTriangle, shortcutLabel: 'Ctrl+Shift+M' },
+  { id: 'debug-console', label: 'Debug Console', Icon: Bug },
+  { id: 'ports', label: 'Ports', Icon: Globe },
 ]
+
+type PanelPosition = 'bottom' | 'right' | 'left'
+
+const STORAGE_KEY_TAB = 'orion-bottom-panel-active-tab'
+const STORAGE_KEY_TAB_ORDER = 'orion-bottom-panel-tab-order'
+const STORAGE_KEY_HEIGHT = 'orion-bottom-panel-height'
+const STORAGE_KEY_MAXIMIZED = 'orion-bottom-panel-maximized'
+const STORAGE_KEY_POSITION = 'orion-bottom-panel-position'
 
 /* ── CSS keyframes injected once ──────────────────────── */
 
@@ -43,6 +60,11 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
     @keyframes bp-split-slide {
       from { opacity: 0; flex-basis: 0; }
       to   { opacity: 1; }
+    }
+    @keyframes bp-badge-pop {
+      0%   { transform: scale(0.6); opacity: 0; }
+      60%  { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
     }
     .bp-term-tab { transition: background 0.15s, color 0.15s, box-shadow 0.15s; }
     .bp-term-tab:hover { background: rgba(255,255,255,0.05) !important; }
@@ -69,6 +91,58 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
       height: 18px;
       width: 80px;
       font-family: inherit;
+    }
+    .bp-resize-handle {
+      position: absolute;
+      z-index: 50;
+      transition: background 0.15s;
+    }
+    .bp-resize-handle:hover,
+    .bp-resize-handle.bp-resize-active {
+      background: var(--accent) !important;
+    }
+    .bp-resize-handle-top {
+      top: -2px; left: 0; right: 0; height: 4px;
+      cursor: ns-resize;
+    }
+    .bp-resize-handle-left {
+      top: 0; left: -2px; bottom: 0; width: 4px;
+      cursor: ew-resize;
+    }
+    .bp-resize-handle-right {
+      top: 0; right: -2px; bottom: 0; width: 4px;
+      cursor: ew-resize;
+    }
+    .bp-main-tab {
+      transition: color 0.15s, background 0.15s;
+      user-select: none;
+    }
+    .bp-main-tab:hover {
+      color: var(--text-secondary) !important;
+      background: rgba(255,255,255,0.02) !important;
+    }
+    .bp-main-tab.bp-tab-active:hover {
+      color: var(--text-primary) !important;
+      background: transparent !important;
+    }
+    .bp-drag-over-left {
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .bp-drag-over-right {
+      box-shadow: inset -2px 0 0 var(--accent);
+    }
+    .bp-main-tab[draggable="true"] {
+      cursor: grab;
+    }
+    .bp-main-tab[draggable="true"]:active {
+      cursor: grabbing;
+    }
+    .bp-position-menu-item {
+      transition: background 0.12s, color 0.12s;
+    }
+    .bp-position-menu-item:hover {
+      background: rgba(255,255,255,0.06);
+      color: var(--text-primary);
     }
   `
   document.head.appendChild(style)
@@ -109,6 +183,43 @@ const logTypeConfig: Record<string, { color: string; borderColor: string; Icon: 
   error:      { color: 'var(--accent-red)',    borderColor: 'rgba(248,81,73,0.3)',   Icon: AlertCircle },
 }
 
+/* ── Helpers ───────────────────────────────────────────── */
+
+function loadTabOrder(): Tab[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TAB_ORDER)
+    if (raw) {
+      const order = JSON.parse(raw) as Tab[]
+      // Validate: all default tabs must be present
+      const validIds = new Set(defaultTabOrder.map(t => t.id))
+      if (order.every((id: Tab) => validIds.has(id)) && order.length === defaultTabOrder.length) {
+        return order
+      }
+    }
+  } catch { /* ignore */ }
+  return defaultTabOrder.map(t => t.id)
+}
+
+function loadStoredString(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(key) ?? fallback
+  } catch { return fallback }
+}
+
+function loadStoredNumber(key: string, fallback: number): number {
+  try {
+    const v = localStorage.getItem(key)
+    return v != null ? Number(v) : fallback
+  } catch { return fallback }
+}
+
+function loadStoredBool(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key)
+    return v != null ? v === 'true' : fallback
+  } catch { return fallback }
+}
+
 /* ── Main component ────────────────────────────────────── */
 
 interface TermInstance {
@@ -122,7 +233,47 @@ interface TermInstance {
 }
 
 export default function BottomPanel() {
-  const [activeTab, setActiveTab] = useState<Tab>('terminal')
+  /* ── Panel state ────────────────────────────────────── */
+  const [activeTab, setActiveTabRaw] = useState<Tab>(
+    () => loadStoredString(STORAGE_KEY_TAB, 'terminal') as Tab
+  )
+  const [tabOrder, setTabOrderRaw] = useState<Tab[]>(loadTabOrder)
+  const [isMaximized, setIsMaximizedRaw] = useState(() => loadStoredBool(STORAGE_KEY_MAXIMIZED, false))
+  const [panelPosition, setPanelPositionRaw] = useState<PanelPosition>(
+    () => loadStoredString(STORAGE_KEY_POSITION, 'bottom') as PanelPosition
+  )
+  const [panelHeight, setPanelHeight] = useState(() => loadStoredNumber(STORAGE_KEY_HEIGHT, 260))
+  const [isResizing, setIsResizing] = useState(false)
+  const [showPositionMenu, setShowPositionMenu] = useState(false)
+  const positionMenuRef = useRef<HTMLDivElement>(null)
+
+  /* ── Drag reorder state ─────────────────────────────── */
+  const [dragTabId, setDragTabId] = useState<Tab | null>(null)
+  const [dragOverTabId, setDragOverTabId] = useState<Tab | null>(null)
+  const [dragOverSide, setDragOverSide] = useState<'left' | 'right' | null>(null)
+
+  /* ── Persisted setters ──────────────────────────────── */
+  const setActiveTab = useCallback((tab: Tab) => {
+    setActiveTabRaw(tab)
+    try { localStorage.setItem(STORAGE_KEY_TAB, tab) } catch { /* ignore */ }
+  }, [])
+
+  const setTabOrder = useCallback((order: Tab[]) => {
+    setTabOrderRaw(order)
+    try { localStorage.setItem(STORAGE_KEY_TAB_ORDER, JSON.stringify(order)) } catch { /* ignore */ }
+  }, [])
+
+  const setIsMaximized = useCallback((v: boolean) => {
+    setIsMaximizedRaw(v)
+    try { localStorage.setItem(STORAGE_KEY_MAXIMIZED, String(v)) } catch { /* ignore */ }
+  }, [])
+
+  const setPanelPosition = useCallback((v: PanelPosition) => {
+    setPanelPositionRaw(v)
+    try { localStorage.setItem(STORAGE_KEY_POSITION, v) } catch { /* ignore */ }
+  }, [])
+
+  /* ── Terminal state ─────────────────────────────────── */
   const [terminals, setTerminals] = useState<TermInstance[]>([
     { id: uuid(), name: 'Terminal 1' },
   ])
@@ -134,7 +285,25 @@ export default function BottomPanel() {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const resizeRef = useRef<{ startY: number; startX: number; startSize: number } | null>(null)
   const logs = useAgentStore((s) => s.logs)
+
+  /* ── Output unread tracking ─────────────────────────── */
+  const [outputUnread, setOutputUnread] = useState(0)
+  const outputActiveChannel = useOutputStore((s) => s.activeChannel)
+  const outputChannels = useOutputStore((s) => s.channels)
+  const outputLineCount = outputChannels.get(outputActiveChannel)?.length ?? 0
+  const prevOutputLineCountRef = useRef(outputLineCount)
+
+  useEffect(() => {
+    if (activeTab === 'output') {
+      setOutputUnread(0)
+      prevOutputLineCountRef.current = outputLineCount
+    } else if (outputLineCount > prevOutputLineCountRef.current) {
+      setOutputUnread(prev => prev + (outputLineCount - prevOutputLineCountRef.current))
+      prevOutputLineCountRef.current = outputLineCount
+    }
+  }, [outputLineCount, activeTab])
 
   /* ── Create terminal with optional profile ───────────── */
   const addTerminal = useCallback((profile?: TerminalProfile) => {
@@ -151,7 +320,7 @@ export default function BottomPanel() {
     setActiveTerminal(t.id)
     setActiveTab('terminal')
     setShowProfileMenu(false)
-  }, [terminals.length])
+  }, [terminals.length, setActiveTab])
 
   const addDefaultTerminal = useCallback(() => {
     addTerminal(undefined)
@@ -159,9 +328,7 @@ export default function BottomPanel() {
 
   const closeTerminal = useCallback((id: string) => {
     setTerminals(prev => {
-      // Also remove any split children of this terminal
       const next = prev.filter(t => t.id !== id && t.splitParentId !== id)
-      // If we're closing a split child, just remove it
       const closing = prev.find(t => t.id === id)
       const finalNext = closing?.splitParentId
         ? prev.filter(t => t.id !== id)
@@ -180,7 +347,6 @@ export default function BottomPanel() {
   const splitTerminal = useCallback(() => {
     const current = terminals.find(t => t.id === activeTerminal)
     if (!current) return
-    // Determine the parent: if current is already a split child, use its parent
     const parentId = current.splitParentId || current.id
     const num = terminals.length + 1
     const t: TermInstance = {
@@ -189,9 +355,7 @@ export default function BottomPanel() {
       splitParentId: parentId,
     }
     setTerminals(prev => {
-      // Insert the split right after the parent group
       const parentIdx = prev.findIndex(x => x.id === parentId)
-      // Find last index of the group
       let lastIdx = parentIdx
       for (let i = parentIdx + 1; i < prev.length; i++) {
         if (prev[i].splitParentId === parentId) lastIdx = i
@@ -203,7 +367,7 @@ export default function BottomPanel() {
     })
     setActiveTerminal(t.id)
     setActiveTab('terminal')
-  }, [terminals, activeTerminal])
+  }, [terminals, activeTerminal, setActiveTab])
 
   /* ── Terminal title tracking ─────────────────────────── */
   const handleTitleChange = useCallback((sessionId: string, title: string) => {
@@ -235,7 +399,6 @@ export default function BottomPanel() {
     setRenameValue('')
   }, [])
 
-  // Focus rename input when it appears
   useEffect(() => {
     if (renamingId && renameInputRef.current) {
       renameInputRef.current.focus()
@@ -245,15 +408,12 @@ export default function BottomPanel() {
 
   /* ── Clear terminal ──────────────────────────────────── */
   const clearTerminal = useCallback(() => {
-    // Dispatch a custom event that TerminalPanel can listen for
     window.dispatchEvent(new CustomEvent('terminal:clear', { detail: { sessionId: activeTerminal } }))
   }, [activeTerminal])
 
-  /* ── Kill terminal (explicit pty kill + remove tab) ──── */
+  /* ── Kill terminal ──────────────────────────────────── */
   const killTerminal = useCallback((id: string) => {
-    // Explicitly send kill signal to the backend pty
     window.api?.termKill?.(id)
-    // Then close the tab
     closeTerminal(id)
     setContextMenu(null)
   }, [closeTerminal])
@@ -282,49 +442,225 @@ export default function BottomPanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [showProfileMenu])
 
-  /* ── Global keyboard shortcut: Ctrl+Shift+` ─────────── */
+  /* ── Close position menu on outside click ────────────── */
+  useEffect(() => {
+    if (!showPositionMenu) return
+    const handler = (e: MouseEvent) => {
+      if (positionMenuRef.current && !positionMenuRef.current.contains(e.target as Node)) {
+        setShowPositionMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showPositionMenu])
+
+  /* ── Keyboard shortcuts ──────────────────────────────── */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Ctrl+Shift+` = new terminal
       if (e.ctrlKey && e.shiftKey && e.key === '`') {
         e.preventDefault()
         addDefaultTerminal()
+        return
+      }
+      // Ctrl+` = toggle/focus terminal tab
+      if (e.ctrlKey && !e.shiftKey && e.key === '`') {
+        e.preventDefault()
+        setActiveTab('terminal')
+        return
+      }
+      // Ctrl+Shift+M = problems
+      if (e.ctrlKey && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+        e.preventDefault()
+        setActiveTab('problems')
+        return
+      }
+      // Ctrl+Shift+U = output
+      if (e.ctrlKey && e.shiftKey && (e.key === 'U' || e.key === 'u')) {
+        e.preventDefault()
+        setActiveTab('output')
+        return
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [addDefaultTerminal])
+  }, [addDefaultTerminal, setActiveTab])
 
-  // Output channel info
-  const outputActiveChannel = useOutputStore((s) => s.activeChannel)
-  const outputChannels = useOutputStore((s) => s.channels)
-  const outputLineCount = outputChannels.get(outputActiveChannel)?.length ?? 0
+  /* ── Resize logic ────────────────────────────────────── */
+  const MIN_PANEL_SIZE = 100
+  const DEFAULT_HEIGHT = 260
 
-  // Counts for badges
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    resizeRef.current = {
+      startY: e.clientY,
+      startX: e.clientX,
+      startSize: panelHeight,
+    }
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return
+      let newSize: number
+      if (panelPosition === 'bottom') {
+        newSize = resizeRef.current.startSize - (ev.clientY - resizeRef.current.startY)
+      } else if (panelPosition === 'right') {
+        newSize = resizeRef.current.startSize - (ev.clientX - resizeRef.current.startX)
+      } else {
+        newSize = resizeRef.current.startSize + (ev.clientX - resizeRef.current.startX)
+      }
+      newSize = Math.max(MIN_PANEL_SIZE, Math.min(newSize, window.innerHeight * 0.8))
+      setPanelHeight(newSize)
+    }
+
+    const onMouseUp = () => {
+      setIsResizing(false)
+      resizeRef.current = null
+      try { localStorage.setItem(STORAGE_KEY_HEIGHT, String(panelHeight)) } catch { /* ignore */ }
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [panelHeight, panelPosition])
+
+  // Persist height on change
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY_HEIGHT, String(panelHeight)) } catch { /* ignore */ }
+  }, [panelHeight])
+
+  /* ── Tab drag reorder ────────────────────────────────── */
+  const handleTabDragStart = useCallback((e: React.DragEvent, tabId: Tab) => {
+    setDragTabId(tabId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', tabId)
+    // Make the drag image semi-transparent
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.5'
+    }
+  }, [])
+
+  const handleTabDragEnd = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1'
+    }
+    setDragTabId(null)
+    setDragOverTabId(null)
+    setDragOverSide(null)
+  }, [])
+
+  const handleTabDragOver = useCallback((e: React.DragEvent, tabId: Tab) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (!dragTabId || dragTabId === tabId) {
+      setDragOverTabId(null)
+      setDragOverSide(null)
+      return
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const midX = rect.left + rect.width / 2
+    const side = e.clientX < midX ? 'left' : 'right'
+    setDragOverTabId(tabId)
+    setDragOverSide(side)
+  }, [dragTabId])
+
+  const handleTabDrop = useCallback((e: React.DragEvent, targetTabId: Tab) => {
+    e.preventDefault()
+    if (!dragTabId || dragTabId === targetTabId) return
+
+    const currentOrder = [...tabOrder]
+    const dragIdx = currentOrder.indexOf(dragTabId)
+    if (dragIdx === -1) return
+
+    // Remove dragged tab
+    currentOrder.splice(dragIdx, 1)
+    // Find target position
+    let targetIdx = currentOrder.indexOf(targetTabId)
+    if (dragOverSide === 'right') targetIdx += 1
+    currentOrder.splice(targetIdx, 0, dragTabId)
+    setTabOrder(currentOrder)
+
+    setDragTabId(null)
+    setDragOverTabId(null)
+    setDragOverSide(null)
+  }, [dragTabId, dragOverSide, tabOrder, setTabOrder])
+
+  /* ── Double-click tab bar to maximize ────────────────── */
+  const handleTabBarDoubleClick = useCallback((e: React.MouseEvent) => {
+    // Only toggle if clicking the bar itself, not a tab button
+    if ((e.target as HTMLElement).closest('[data-tab-button]')) return
+    setIsMaximized(!isMaximized)
+  }, [setIsMaximized, isMaximized])
+
+  /* ── Counts for badges ──────────────────────────────── */
   const problems = useProblemsStore((s) => s.problems)
   const problemsErrorCount = problems.filter((p) => p.severity === 'error').length
   const problemsWarningCount = problems.filter((p) => p.severity === 'warning').length
   const problemsBadge = problemsErrorCount + problemsWarningCount
-  const logCount = logs.length
+  const terminalSessionCount = terminals.filter(t => !t.splitParentId).length
+
+  const getBadge = useCallback((tabId: Tab): { count: number; color: string; bgColor: string } | null => {
+    switch (tabId) {
+      case 'problems':
+        return problemsBadge > 0
+          ? { count: problemsBadge, color: 'var(--accent-red)', bgColor: 'rgba(248,81,73,0.15)' }
+          : null
+      case 'output':
+        return outputUnread > 0
+          ? { count: outputUnread, color: 'var(--accent)', bgColor: 'rgba(88,166,255,0.12)' }
+          : null
+      case 'terminal':
+        return terminalSessionCount > 1
+          ? { count: terminalSessionCount, color: 'var(--accent-green, var(--accent))', bgColor: 'rgba(63,185,80,0.12)' }
+          : null
+      default:
+        return null
+    }
+  }, [problemsBadge, outputUnread, terminalSessionCount])
 
   /* ── Build split groups for rendering ────────────────── */
-  // A "group" is a parent terminal + its split children, rendered side-by-side
   const terminalGroups = buildTerminalGroups(terminals)
 
-  // Find which group the active terminal belongs to
   const activeGroup = terminalGroups.find(g =>
     g.some(t => t.id === activeTerminal)
   )
   const activeGroupParentId = activeGroup?.[0]?.splitParentId || activeGroup?.[0]?.id
 
+  /* ── Resolve ordered tabs ───────────────────────────── */
+  const tabDefMap = new Map(defaultTabOrder.map(t => [t.id, t]))
+  const orderedTabs = tabOrder
+    .map(id => tabDefMap.get(id))
+    .filter((t): t is TabDef => t != null)
+
+  /* ── Render ──────────────────────────────────────────── */
+  const resizeHandleClass = panelPosition === 'bottom'
+    ? 'bp-resize-handle bp-resize-handle-top'
+    : panelPosition === 'right'
+      ? 'bp-resize-handle bp-resize-handle-left'
+      : 'bp-resize-handle bp-resize-handle-right'
+
   return (
     <div
-      className="h-full flex flex-col"
+      className="flex flex-col"
       style={{
-        borderTop: '1px solid var(--border)',
+        height: isMaximized ? '100%' : panelHeight,
+        minHeight: MIN_PANEL_SIZE,
+        position: 'relative',
+        borderTop: panelPosition === 'bottom' ? '1px solid var(--border)' : 'none',
+        borderLeft: panelPosition === 'right' ? '1px solid var(--border)' : 'none',
+        borderRight: panelPosition === 'left' ? '1px solid var(--border)' : 'none',
         background: 'var(--bg-primary)',
       }}
     >
-      {/* Tab Bar */}
+      {/* ── Resize handle ───────────────────────────────────── */}
+      <div
+        className={`${resizeHandleClass}${isResizing ? ' bp-resize-active' : ''}`}
+        onMouseDown={handleResizeStart}
+        style={{ background: 'transparent' }}
+      />
+
+      {/* ── Tab Bar ─────────────────────────────────────────── */}
       <div
         className="shrink-0 flex items-center px-1 gap-0"
         style={{
@@ -332,17 +668,13 @@ export default function BottomPanel() {
           background: 'var(--bg-tertiary)',
           borderBottom: '1px solid var(--border)',
         }}
+        onDoubleClick={handleTabBarDoubleClick}
       >
-        {tabs.map(({ id, label, Icon }) => {
+        {orderedTabs.map(({ id, label, Icon, shortcutLabel }) => {
           const isActive = activeTab === id
-          const badge =
-            id === 'problems'
-              ? problemsBadge
-              : id === 'agent-log'
-                ? logCount
-                : id === 'output'
-                  ? outputLineCount
-                  : 0
+          const badge = getBadge(id)
+          const isDragOver = dragOverTabId === id && dragTabId !== id
+
           // Show channel name in Output tab when not Main
           const displayLabel =
             id === 'output' && outputActiveChannel !== 'Orion'
@@ -352,8 +684,15 @@ export default function BottomPanel() {
           return (
             <button
               key={id}
+              data-tab-button
+              draggable
+              onDragStart={(e) => handleTabDragStart(e, id)}
+              onDragEnd={handleTabDragEnd}
+              onDragOver={(e) => handleTabDragOver(e, id)}
+              onDrop={(e) => handleTabDrop(e, id)}
+              onDragLeave={() => { setDragOverTabId(null); setDragOverSide(null) }}
               onClick={() => setActiveTab(id)}
-              className="flex items-center gap-1.5 relative"
+              className={`bp-main-tab flex items-center gap-1.5 relative${isActive ? ' bp-tab-active' : ''}${isDragOver && dragOverSide === 'left' ? ' bp-drag-over-left' : ''}${isDragOver && dragOverSide === 'right' ? ' bp-drag-over-right' : ''}`}
               style={{
                 height: 34,
                 padding: '0 12px',
@@ -362,27 +701,16 @@ export default function BottomPanel() {
                 fontWeight: isActive ? 500 : 400,
                 background: 'transparent',
                 border: 'none',
-                cursor: 'pointer',
-                transition: 'color 0.15s, background 0.15s',
+                cursor: 'grab',
+                opacity: dragTabId === id ? 0.5 : 1,
               }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.color = 'var(--text-secondary)'
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.color = 'var(--text-muted)'
-                  e.currentTarget.style.background = 'transparent'
-                }
-              }}
+              title={shortcutLabel ? `${label} (${shortcutLabel})` : label}
             >
               <Icon size={12} />
               {displayLabel}
 
               {/* Badge */}
-              {badge > 0 && (
+              {badge && (
                 <span
                   style={{
                     fontSize: 9,
@@ -394,19 +722,13 @@ export default function BottomPanel() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: '0 4px',
-                    background:
-                      id === 'problems'
-                        ? 'rgba(248,81,73,0.15)'
-                        : 'rgba(88,166,255,0.12)',
-                    color:
-                      id === 'problems'
-                        ? 'var(--accent-red)'
-                        : 'var(--accent)',
+                    background: badge.bgColor,
+                    color: badge.color,
                     fontFamily: 'var(--font-mono, monospace)',
-                    animation: 'bp-fade-in 0.2s ease',
+                    animation: 'bp-badge-pop 0.25s ease',
                   }}
                 >
-                  {badge > 99 ? '99+' : badge}
+                  {badge.count > 99 ? '99+' : badge.count}
                 </span>
               )}
 
@@ -441,7 +763,7 @@ export default function BottomPanel() {
           }}
         />
 
-        {/* Right side: terminal sub-tabs + controls */}
+        {/* Right side: terminal sub-tabs + panel controls */}
         <div className="ml-auto flex items-center gap-0.5" style={{ paddingRight: 4 }}>
           {activeTab === 'terminal' && (
             <>
@@ -718,6 +1040,126 @@ export default function BottomPanel() {
               </button>
             </>
           )}
+
+          {/* ── Panel action buttons (always visible) ──────── */}
+          <div style={{ width: 1, height: 14, background: 'var(--border)', margin: '0 3px', opacity: 0.4 }} />
+
+          {/* Panel position dropdown */}
+          <div style={{ position: 'relative' }} ref={positionMenuRef}>
+            <button
+              className="bp-toolbar-btn"
+              onClick={() => setShowPositionMenu(prev => !prev)}
+              title="Move Panel Position"
+              style={{
+                width: 24, height: 24,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 4, border: 'none', cursor: 'pointer',
+                color: showPositionMenu ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: showPositionMenu ? 'rgba(255,255,255,0.08)' : 'transparent',
+              }}
+            >
+              {panelPosition === 'bottom' && <PanelBottom size={13} />}
+              {panelPosition === 'right' && <PanelRight size={13} />}
+              {panelPosition === 'left' && <PanelLeft size={13} />}
+            </button>
+
+            {showPositionMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 28,
+                  right: 0,
+                  minWidth: 150,
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding: '4px 0',
+                  zIndex: 1000,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                  animation: 'bp-fade-in 0.12s ease',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  Panel Position
+                </div>
+                {([
+                  { pos: 'bottom' as PanelPosition, label: 'Bottom', Icon: PanelBottom },
+                  { pos: 'right' as PanelPosition, label: 'Right', Icon: PanelRight },
+                  { pos: 'left' as PanelPosition, label: 'Left', Icon: PanelLeft },
+                ]).map(({ pos, label, Icon: PosIcon }) => (
+                  <button
+                    key={pos}
+                    className="bp-position-menu-item"
+                    onClick={() => {
+                      setPanelPosition(pos)
+                      setShowPositionMenu(false)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      width: '100%',
+                      padding: '6px 10px',
+                      fontSize: 11,
+                      color: panelPosition === pos ? 'var(--accent)' : 'var(--text-secondary)',
+                      background: panelPosition === pos ? 'rgba(88,166,255,0.06)' : 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <PosIcon size={13} />
+                    <span>{label}</span>
+                    {panelPosition === pos && (
+                      <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.6 }}>&#10003;</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Maximize/minimize button */}
+          <button
+            className="bp-toolbar-btn"
+            onClick={() => setIsMaximized(!isMaximized)}
+            title={isMaximized ? 'Restore Panel Size' : 'Maximize Panel'}
+            style={{
+              width: 24, height: 24,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 4, border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', background: 'transparent',
+            }}
+          >
+            {isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          </button>
+
+          {/* Close panel button */}
+          <button
+            className="bp-toolbar-btn"
+            onClick={() => {
+              // Dispatch a custom event so the parent layout can hide the panel
+              window.dispatchEvent(new CustomEvent('bottom-panel:close'))
+            }}
+            title="Close Panel"
+            style={{
+              width: 24, height: 24,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 4, border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', background: 'transparent',
+            }}
+          >
+            <X size={13} />
+          </button>
         </div>
       </div>
 
@@ -729,7 +1171,6 @@ export default function BottomPanel() {
               const parentId = group[0].splitParentId || group[0].id
               const isGroupVisible = parentId === activeGroupParentId
               if (!isGroupVisible) {
-                // Still render hidden to preserve terminal state
                 return (
                   <div key={parentId} style={{ display: 'none' }}>
                     {group.map(t => (
@@ -745,7 +1186,6 @@ export default function BottomPanel() {
                 )
               }
 
-              // Visible group: render side by side
               return (
                 <div
                   key={parentId}
@@ -849,103 +1289,25 @@ export default function BottomPanel() {
           </div>
         )}
 
-        {activeTab === 'agent-log' && (
-          <div
-            className="h-full overflow-y-auto"
-            style={{
-              fontFamily: 'var(--font-mono, monospace)',
-              fontSize: 11,
-              padding: '4px 0',
-            }}
-          >
-            {logs.length === 0 ? (
-              <EmptyTabContent
-                Icon={Activity}
-                message="No agent activity yet"
-                sub="Agent actions and decisions will appear here"
-              />
-            ) : (
-              logs.map((log) => {
-                const config = logTypeConfig[log.type] || logTypeConfig.info
-                return (
-                  <div
-                    key={log.id}
-                    className="flex items-start gap-2"
-                    style={{
-                      padding: '4px 10px 4px 10px',
-                      borderLeft: `2px solid ${config.borderColor}`,
-                      marginLeft: 4,
-                      marginBottom: 1,
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    {/* Timestamp */}
-                    <span
-                      style={{
-                        color: 'var(--text-muted)',
-                        fontSize: 10,
-                        flexShrink: 0,
-                        width: 62,
-                        opacity: 0.6,
-                        paddingTop: 1,
-                      }}
-                    >
-                      {new Date(log.timestamp).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
-                    </span>
-
-                    {/* Type icon */}
-                    <config.Icon
-                      size={11}
-                      style={{
-                        color: config.color,
-                        flexShrink: 0,
-                        marginTop: 2,
-                      }}
-                    />
-
-                    {/* Agent name */}
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        fontWeight: 600,
-                        color: 'var(--accent)',
-                        fontSize: 11,
-                        minWidth: 60,
-                      }}
-                    >
-                      {log.agentId}
-                    </span>
-
-                    {/* Message */}
-                    <span
-                      style={{
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.5,
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {log.message}
-                    </span>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        )}
-
         {activeTab === 'problems' && <ProblemsPanel />}
 
         {activeTab === 'output' && <OutputPanel />}
+
+        {activeTab === 'debug-console' && (
+          <EmptyTabContent
+            Icon={Bug}
+            message="No debug session active"
+            sub="Start a debug session to see console output here"
+          />
+        )}
+
+        {activeTab === 'ports' && (
+          <EmptyTabContent
+            Icon={Globe}
+            message="No forwarded ports"
+            sub="Forwarded ports will appear here when detected"
+          />
+        )}
       </div>
 
       {/* ── Terminal tab context menu ────────────────────── */}
@@ -1048,12 +1410,11 @@ function buildTerminalGroups(terminals: TermInstance[]): TermInstance[][] {
 
   for (const t of terminals) {
     if (used.has(t.id)) continue
-    if (t.splitParentId) continue // will be picked up by parent
+    if (t.splitParentId) continue
 
     const group = [t]
     used.add(t.id)
 
-    // Find all splits of this parent
     for (const s of terminals) {
       if (s.splitParentId === t.id && !used.has(s.id)) {
         group.push(s)

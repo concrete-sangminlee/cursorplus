@@ -1,5 +1,29 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type CSSProperties, type ReactNode } from 'react'
-import { Check, X, ChevronDown, ChevronUp, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown } from 'lucide-react'
+import { Check, X, ChevronDown, ChevronUp, ArrowUp, ArrowDown, ChevronsDown, Copy, ChevronsUp } from 'lucide-react'
+
+/* ── CSS Variable Declarations ─────────────────────────── */
+
+/**
+ * CSS variables used for theming (should be set on a parent element):
+ *
+ * --diff-bg-added:           background for added lines (default: rgba(35, 134, 54, 0.15))
+ * --diff-bg-removed:         background for removed lines (default: rgba(218, 54, 51, 0.15))
+ * --diff-bg-added-highlight: character-level highlight for added chars (default: rgba(63,185,80,0.35))
+ * --diff-bg-removed-highlight: character-level highlight for removed chars (default: rgba(248,81,73,0.35))
+ * --diff-border-added:       left border for added lines (default: #3fb950)
+ * --diff-border-removed:     left border for removed lines (default: #f85149)
+ * --diff-color-added:        text color for +N badge (default: #3fb950)
+ * --diff-color-removed:      text color for -N badge (default: #f85149)
+ * --diff-syntax-keyword:     syntax highlight color for keywords (default: #569cd6)
+ * --diff-syntax-string:      syntax highlight color for strings (default: #ce9178)
+ * --diff-syntax-comment:     syntax highlight color for comments (default: #6a9955)
+ * --diff-syntax-number:      syntax highlight color for numbers (default: #b5cea8)
+ * --diff-syntax-punctuation: syntax highlight color for punctuation (default: #d4d4d4)
+ * --diff-minimap-added:      minimap marker color for added lines (default: #3fb950)
+ * --diff-minimap-removed:    minimap marker color for removed lines (default: #f85149)
+ * --diff-minimap-bg:         minimap background (default: rgba(255,255,255,0.03))
+ * --diff-minimap-viewport:   minimap viewport indicator (default: rgba(88,166,255,0.2))
+ */
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -82,6 +106,67 @@ function computeDiff(original: string, suggested: string): DiffLine[] {
   }
 
   return result
+}
+
+/* ── Character-level diff ──────────────────────────────── */
+
+function computeCharDiff(oldText: string, newText: string): { oldSegs: WordSegment[]; newSegs: WordSegment[] } {
+  // Character-level: tokenize into individual characters for fine-grained highlighting
+  const oldChars = Array.from(oldText)
+  const newChars = Array.from(newText)
+
+  const m = oldChars.length
+  const n = newChars.length
+
+  // For very long lines, fall back to word-level diff for performance
+  if (m > 500 || n > 500) {
+    return computeWordDiff(oldText, newText)
+  }
+
+  // LCS on characters
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldChars[i - 1] === newChars[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+      }
+    }
+  }
+
+  // Backtrack
+  const oldMarked = new Array(m).fill(true)
+  const newMarked = new Array(n).fill(true)
+  let ii = m
+  let jj = n
+  while (ii > 0 && jj > 0) {
+    if (oldChars[ii - 1] === newChars[jj - 1]) {
+      oldMarked[ii - 1] = false
+      newMarked[jj - 1] = false
+      ii--
+      jj--
+    } else if (dp[ii - 1][jj] >= dp[ii][jj - 1]) {
+      ii--
+    } else {
+      jj--
+    }
+  }
+
+  // Merge consecutive segments
+  const merge = (chars: string[], marked: boolean[]): WordSegment[] => {
+    const segs: WordSegment[] = []
+    for (let i = 0; i < chars.length; i++) {
+      if (segs.length > 0 && segs[segs.length - 1].highlight === marked[i]) {
+        segs[segs.length - 1].text += chars[i]
+      } else {
+        segs.push({ text: chars[i], highlight: marked[i] })
+      }
+    }
+    return segs
+  }
+
+  return { oldSegs: merge(oldChars, oldMarked), newSegs: merge(newChars, newMarked) }
 }
 
 /* ── Word-level diff ────────────────────────────────────── */
@@ -212,12 +297,13 @@ function tokenizeSyntax(text: string): SyntaxToken[] {
   return tokens
 }
 
-const syntaxColors: Record<SyntaxToken['kind'], string> = {
-  keyword: '#569cd6',
-  string: '#ce9178',
-  comment: '#6a9955',
-  number: '#b5cea8',
-  punctuation: '#d4d4d4',
+/** Map syntax token kind to CSS variable with fallback */
+const syntaxColorVar: Record<SyntaxToken['kind'], string> = {
+  keyword: 'var(--diff-syntax-keyword, #569cd6)',
+  string: 'var(--diff-syntax-string, #ce9178)',
+  comment: 'var(--diff-syntax-comment, #6a9955)',
+  number: 'var(--diff-syntax-number, #b5cea8)',
+  punctuation: 'var(--diff-syntax-punctuation, #d4d4d4)',
   plain: 'inherit',
 }
 
@@ -225,13 +311,13 @@ function renderSyntaxHighlighted(text: string): ReactNode {
   const tokens = tokenizeSyntax(text)
   if (tokens.length === 0) return text
   return tokens.map((tok, i) => (
-    <span key={i} style={{ color: syntaxColors[tok.kind] }}>
+    <span key={i} style={{ color: syntaxColorVar[tok.kind] }}>
       {tok.text}
     </span>
   ))
 }
 
-/** Render word segments with syntax highlighting inside each segment */
+/** Render word/char segments with syntax highlighting inside each segment */
 function renderWordSegments(
   segments: WordSegment[],
   highlightColor: string,
@@ -279,6 +365,7 @@ interface DisplaySegment {
   startIndex: number
   endIndex: number // exclusive
   lineCount: number // for collapsed: how many lines hidden
+  regionId?: number // track region for expand/collapse
 }
 
 const COLLAPSE_THRESHOLD = 5
@@ -296,7 +383,8 @@ function buildDisplaySegments(
       const start = i
       while (i < lines.length && lines[i].type === 'unchanged') i++
       const count = i - start
-      if (count >= COLLAPSE_THRESHOLD && !expandedRegions.has(regionId)) {
+      const currentRegionId = regionId
+      if (count >= COLLAPSE_THRESHOLD && !expandedRegions.has(currentRegionId)) {
         // Show first 2, collapse middle, show last 2
         if (start < i) {
           const showTop = Math.min(2, count)
@@ -311,6 +399,7 @@ function buildDisplaySegments(
               startIndex: start + showTop,
               endIndex: start + showTop + collapsedCount,
               lineCount: collapsedCount,
+              regionId: currentRegionId,
             })
           }
           if (showBottom > 0) {
@@ -373,6 +462,112 @@ function buildSplitPairs(lines: DiffLine[]): SplitPair[] {
   return pairs
 }
 
+/* ── Minimap Component ──────────────────────────────────── */
+
+function DiffMinimap({
+  diffLines,
+  bodyRef,
+  totalHeight,
+}: {
+  diffLines: DiffLine[]
+  bodyRef: React.RefObject<HTMLDivElement | null>
+  totalHeight: number
+}) {
+  const minimapRef = useRef<HTMLDivElement>(null)
+  const [viewportTop, setViewportTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(100)
+  const minimapHeight = totalHeight > 0 ? Math.min(totalHeight, 400) : 200
+  const lineHeight = diffLines.length > 0 ? minimapHeight / diffLines.length : 1
+
+  // Update viewport indicator on scroll
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body) return
+    const onScroll = () => {
+      const scrollRatio = body.scrollTop / (body.scrollHeight || 1)
+      const visibleRatio = body.clientHeight / (body.scrollHeight || 1)
+      setViewportTop(scrollRatio * minimapHeight)
+      setViewportHeight(Math.max(visibleRatio * minimapHeight, 10))
+    }
+    onScroll()
+    body.addEventListener('scroll', onScroll, { passive: true })
+    return () => body.removeEventListener('scroll', onScroll)
+  }, [bodyRef, minimapHeight])
+
+  // Click to scroll
+  const handleMinimapClick = useCallback(
+    (e: React.MouseEvent) => {
+      const body = bodyRef.current
+      const minimap = minimapRef.current
+      if (!body || !minimap) return
+      const rect = minimap.getBoundingClientRect()
+      const clickRatio = (e.clientY - rect.top) / rect.height
+      body.scrollTop = clickRatio * body.scrollHeight - body.clientHeight / 2
+    },
+    [bodyRef],
+  )
+
+  if (diffLines.length < 10) return null
+
+  return (
+    <div
+      ref={minimapRef}
+      onClick={handleMinimapClick}
+      style={{
+        width: 40,
+        minWidth: 40,
+        height: minimapHeight,
+        background: 'var(--diff-minimap-bg, rgba(255,255,255,0.03))',
+        borderLeft: '1px solid var(--border)',
+        position: 'relative',
+        cursor: 'pointer',
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}
+      title="Click to navigate"
+    >
+      {/* Render change markers */}
+      {diffLines.map((line, i) => {
+        if (line.type === 'unchanged') return null
+        const top = (i / diffLines.length) * minimapHeight
+        const h = Math.max(lineHeight, 1.5)
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              top,
+              left: line.type === 'removed' ? 2 : 20,
+              width: 16,
+              height: h,
+              background:
+                line.type === 'added'
+                  ? 'var(--diff-minimap-added, #3fb950)'
+                  : 'var(--diff-minimap-removed, #f85149)',
+              opacity: 0.7,
+              borderRadius: 1,
+            }}
+          />
+        )
+      })}
+      {/* Viewport indicator */}
+      <div
+        style={{
+          position: 'absolute',
+          top: viewportTop,
+          left: 0,
+          right: 0,
+          height: viewportHeight,
+          background: 'var(--diff-minimap-viewport, rgba(88,166,255,0.2))',
+          border: '1px solid rgba(88,166,255,0.3)',
+          borderRadius: 2,
+          pointerEvents: 'none',
+        }}
+      />
+    </div>
+  )
+}
+
 /* ── Component ──────────────────────────────────────────── */
 
 export default function InlineDiff({
@@ -390,14 +585,33 @@ export default function InlineDiff({
   const [fadeIn, setFadeIn] = useState(false)
   const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set())
   const [currentHunkIndex, setCurrentHunkIndex] = useState(0)
+  const [copyFeedback, setCopyFeedback] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const hunkRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
   // Compute diff lines
   const diffLines = useMemo(() => computeDiff(originalCode, suggestedCode), [originalCode, suggestedCode])
-  const addedCount = useMemo(() => diffLines.filter((l) => l.type === 'added').length, [diffLines])
-  const removedCount = useMemo(() => diffLines.filter((l) => l.type === 'removed').length, [diffLines])
+
+  // Statistics: additions, deletions, changed lines (adjacent removed+added pairs)
+  const stats = useMemo(() => {
+    let added = 0
+    let removed = 0
+    let changedPairs = 0
+    for (let i = 0; i < diffLines.length; i++) {
+      if (diffLines[i].type === 'added') added++
+      if (diffLines[i].type === 'removed') removed++
+      if (
+        diffLines[i].type === 'removed' &&
+        i + 1 < diffLines.length &&
+        diffLines[i + 1].type === 'added'
+      ) {
+        changedPairs++
+      }
+    }
+    const netChange = added - removed
+    return { added, removed, changedPairs, netChange }
+  }, [diffLines])
 
   // Detect hunks for navigation and per-hunk actions
   const hunks = useMemo(() => detectHunks(diffLines), [diffLines])
@@ -411,14 +625,14 @@ export default function InlineDiff({
   // Split pairs
   const splitPairs = useMemo(() => buildSplitPairs(diffLines), [diffLines])
 
-  // Precompute word-level diffs for paired removed+added lines
-  const wordDiffs = useMemo(() => {
+  // Precompute character-level diffs for paired removed+added lines
+  const charDiffs = useMemo(() => {
     const map = new Map<string, { oldSegs: WordSegment[]; newSegs: WordSegment[] }>()
     // Find adjacent removed-then-added pairs
     for (let i = 0; i < diffLines.length - 1; i++) {
       if (diffLines[i].type === 'removed' && diffLines[i + 1].type === 'added') {
         const key = `${i}:${i + 1}`
-        map.set(key, computeWordDiff(diffLines[i].content, diffLines[i + 1].content))
+        map.set(key, computeCharDiff(diffLines[i].content, diffLines[i + 1].content))
       }
     }
     // Also handle split pairs
@@ -426,12 +640,20 @@ export default function InlineDiff({
       if (pair.left && pair.right && pair.left.type === 'removed' && pair.right.type === 'added') {
         const key = `split:${pair.index}`
         if (!map.has(key)) {
-          map.set(key, computeWordDiff(pair.left.content, pair.right.content))
+          map.set(key, computeCharDiff(pair.left.content, pair.right.content))
         }
       }
     }
     return map
   }, [diffLines, splitPairs])
+
+  // Collect added/changed lines for copy
+  const changedLinesText = useMemo(() => {
+    return diffLines
+      .filter((l) => l.type === 'added')
+      .map((l) => l.content)
+      .join('\n')
+  }, [diffLines])
 
   // Fade-in animation
   useEffect(() => {
@@ -446,6 +668,7 @@ export default function InlineDiff({
   useEffect(() => {
     setExpandedRegions(new Set())
     setCurrentHunkIndex(0)
+    setCopyFeedback(false)
   }, [originalCode, suggestedCode])
 
   // Navigate to hunk
@@ -471,6 +694,27 @@ export default function InlineDiff({
     scrollToHunk(next)
   }, [currentHunkIndex, hunks.length, scrollToHunk])
 
+  // Copy changed lines to clipboard
+  const handleCopyChanges = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(changedLinesText)
+      setCopyFeedback(true)
+      setTimeout(() => setCopyFeedback(false), 2000)
+    } catch {
+      // Fallback: textarea copy
+      const ta = document.createElement('textarea')
+      ta.value = changedLinesText
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      setCopyFeedback(true)
+      setTimeout(() => setCopyFeedback(false), 2000)
+    }
+  }, [changedLinesText])
+
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -494,8 +738,13 @@ export default function InlineDiff({
         e.preventDefault()
         goToNextHunk()
       }
+      // Ctrl+Shift+C to copy changes
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+        e.preventDefault()
+        handleCopyChanges()
+      }
     },
-    [visible, onAccept, onReject, suggestedCode, goToPrevHunk, goToNextHunk],
+    [visible, onAccept, onReject, suggestedCode, goToPrevHunk, goToNextHunk, handleCopyChanges],
   )
 
   useEffect(() => {
@@ -513,6 +762,26 @@ export default function InlineDiff({
     })
   }, [])
 
+  // Expand all collapsed regions
+  const expandAllRegions = useCallback(() => {
+    const allIds = new Set<number>()
+    for (const seg of displaySegments) {
+      if (seg.kind === 'collapsed' && seg.regionId !== undefined) {
+        allIds.add(seg.regionId)
+      }
+    }
+    setExpandedRegions((prev) => {
+      const next = new Set(prev)
+      allIds.forEach((id) => next.add(id))
+      return next
+    })
+  }, [displaySegments])
+
+  // Collapse all regions
+  const collapseAllRegions = useCallback(() => {
+    setExpandedRegions(new Set())
+  }, [])
+
   // Which hunk does a given line index belong to?
   const getHunkIndex = useCallback(
     (lineIndex: number): number => {
@@ -524,25 +793,31 @@ export default function InlineDiff({
     [hunks],
   )
 
+  // Count collapsed regions
+  const collapsedCount = useMemo(
+    () => displaySegments.filter((s) => s.kind === 'collapsed').length,
+    [displaySegments],
+  )
+
   if (!visible) return null
 
-  /* ── Style helpers ──────────────────────────────────────── */
+  /* ── Style helpers (using CSS variables) ─────────────── */
 
   const lineBackground = {
-    added: '#1a3a1a',
-    removed: '#3a1a1a',
+    added: 'var(--diff-bg-added, rgba(35, 134, 54, 0.15))',
+    removed: 'var(--diff-bg-removed, rgba(218, 54, 51, 0.15))',
     unchanged: 'transparent',
   }
 
   const lineBorder = {
-    added: '3px solid #3fb950',
-    removed: '3px solid #f85149',
+    added: '3px solid var(--diff-border-added, #3fb950)',
+    removed: '3px solid var(--diff-border-removed, #f85149)',
     unchanged: '3px solid transparent',
   }
 
   const charHighlight = {
-    added: 'rgba(63, 185, 80, 0.35)',
-    removed: 'rgba(248, 81, 73, 0.35)',
+    added: 'var(--diff-bg-added-highlight, rgba(63, 185, 80, 0.35))',
+    removed: 'var(--diff-bg-removed-highlight, rgba(248, 81, 73, 0.35))',
   }
 
   const gutterStyle: CSSProperties = {
@@ -562,7 +837,12 @@ export default function InlineDiff({
   const markerStyle = (type: DiffLine['type']): CSSProperties => ({
     width: 16,
     minWidth: 16,
-    color: type === 'added' ? '#3fb950' : type === 'removed' ? '#f85149' : 'transparent',
+    color:
+      type === 'added'
+        ? 'var(--diff-color-added, #3fb950)'
+        : type === 'removed'
+          ? 'var(--diff-color-removed, #f85149)'
+          : 'transparent',
     fontWeight: 700,
     userSelect: 'none',
     display: 'flex',
@@ -599,21 +879,19 @@ export default function InlineDiff({
 
   /* ── Render helpers ─────────────────────────────────────── */
 
-  /** Render the content of a line with syntax highlighting and optional word-level diff */
+  /** Render the content of a line with syntax highlighting and character-level diff */
   const renderLineContent = (line: DiffLine, lineIndex: number, pairKey?: string): ReactNode => {
-    // Check for word-level diff
+    // Check for character-level diff
     if (line.type === 'removed') {
-      // Check if next line is added (unified view) for word diff
       const wdKey = `${lineIndex}:${lineIndex + 1}`
-      const wd = wordDiffs.get(wdKey) || (pairKey ? wordDiffs.get(pairKey) : undefined)
+      const wd = charDiffs.get(wdKey) || (pairKey ? charDiffs.get(pairKey) : undefined)
       if (wd) {
         return renderWordSegments(wd.oldSegs, charHighlight.removed)
       }
     }
     if (line.type === 'added') {
-      // Check if previous line was removed
       const wdKey = `${lineIndex - 1}:${lineIndex}`
-      const wd = wordDiffs.get(wdKey) || (pairKey ? wordDiffs.get(pairKey) : undefined)
+      const wd = charDiffs.get(wdKey) || (pairKey ? charDiffs.get(pairKey) : undefined)
       if (wd) {
         return renderWordSegments(wd.newSegs, charHighlight.added)
       }
@@ -669,7 +947,7 @@ export default function InlineDiff({
             onClick={(e) => { e.stopPropagation(); onRejectHunk(hunkIdx) }}
             style={{
               ...smallBtn,
-              color: '#f85149',
+              color: 'var(--diff-color-removed, #f85149)',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(248,81,73,0.15)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
@@ -683,7 +961,7 @@ export default function InlineDiff({
             onClick={(e) => { e.stopPropagation(); onAcceptHunk(hunkIdx, suggestedCode) }}
             style={{
               ...smallBtn,
-              color: '#3fb950',
+              color: 'var(--diff-color-added, #3fb950)',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(63,185,80,0.15)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
@@ -696,43 +974,43 @@ export default function InlineDiff({
     )
   }
 
-  /** Collapsed region indicator */
-  const renderCollapsed = (segment: DisplaySegment, regionId: number) => (
-    <div
-      key={`collapsed-${segment.startIndex}`}
-      onClick={() => toggleRegion(regionId)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '2px 0',
-        cursor: 'pointer',
-        color: 'var(--text-muted)',
-        fontSize: 11,
-        background: 'rgba(255,255,255,0.02)',
-        borderTop: '1px dashed var(--border)',
-        borderBottom: '1px dashed var(--border)',
-        userSelect: 'none',
-        gap: 6,
-        transition: 'background 0.15s',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
-    >
-      <ChevronsDown size={12} />
-      <span style={{ fontStyle: 'italic', fontSize: 10 }}>
-        ... {segment.lineCount} unchanged lines ...
-      </span>
-      <ChevronsDown size={12} />
-    </div>
-  )
-
-  /* Track collapsed region IDs for the expand callback */
-  let collapsedRegionCounter = 0
+  /** Collapsed region indicator with expand button */
+  const renderCollapsed = (segment: DisplaySegment) => {
+    const regionId = segment.regionId ?? 0
+    return (
+      <div
+        key={`collapsed-${segment.startIndex}`}
+        onClick={() => toggleRegion(regionId)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '3px 0',
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          fontSize: 11,
+          background: 'rgba(255,255,255,0.02)',
+          borderTop: '1px dashed var(--border)',
+          borderBottom: '1px dashed var(--border)',
+          userSelect: 'none',
+          gap: 6,
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+        title="Click to expand"
+      >
+        <ChevronDown size={12} />
+        <span style={{ fontStyle: 'italic', fontSize: 10 }}>
+          ... {segment.lineCount} unchanged lines ...
+        </span>
+        <ChevronDown size={12} />
+      </div>
+    )
+  }
 
   /** Render unified view body */
   const renderUnifiedBody = () => {
-    collapsedRegionCounter = 0
     const elements: ReactNode[] = []
 
     // Track which hunk each changed line belongs to, to wrap with ref
@@ -740,20 +1018,8 @@ export default function InlineDiff({
 
     for (const segment of displaySegments) {
       if (segment.kind === 'collapsed') {
-        elements.push(renderCollapsed(segment, collapsedRegionCounter))
-        collapsedRegionCounter++
+        elements.push(renderCollapsed(segment))
         continue
-      }
-
-      // For 'lines' segments, count region IDs for unchanged runs
-      const isUnchangedRun =
-        segment.startIndex < diffLines.length &&
-        diffLines[segment.startIndex].type === 'unchanged'
-      if (isUnchangedRun && segment.endIndex - segment.startIndex >= 1) {
-        // This is part of an unchanged run. If it's the LAST portion (after a collapse),
-        // we already incremented. Only increment if this forms a complete region (no collapse happened).
-        // Actually, region IDs are tracked by the full unchanged run, which gets split into
-        // top-lines / collapsed / bottom-lines. The regionId applies to the collapsed part.
       }
 
       for (let i = segment.startIndex; i < segment.endIndex; i++) {
@@ -804,7 +1070,6 @@ export default function InlineDiff({
 
   /** Render split view body */
   const renderSplitBody = () => {
-    // For split view, also apply collapsing
     const elements: ReactNode[] = []
 
     for (const pair of splitPairs) {
@@ -817,12 +1082,12 @@ export default function InlineDiff({
         left && right && left.type === 'removed' && right.type === 'added'
           ? `split:${index}`
           : undefined
-      // Compute word diff for this pair if applicable
+      // Compute char diff for this pair if applicable
       let leftContent: ReactNode = left ? renderSyntaxHighlighted(left.content) : ''
       let rightContent: ReactNode = right ? renderSyntaxHighlighted(right.content) : ''
 
       if (pairKey && left && right) {
-        const wd = wordDiffs.get(pairKey) || computeWordDiff(left.content, right.content)
+        const wd = charDiffs.get(pairKey) || computeCharDiff(left.content, right.content)
         leftContent = renderWordSegments(wd.oldSegs, charHighlight.removed)
         rightContent = renderWordSegments(wd.newSegs, charHighlight.added)
       }
@@ -899,7 +1164,7 @@ export default function InlineDiff({
         left: position.left,
         zIndex: 55,
         minWidth: viewMode === 'split' ? 640 : 480,
-        maxWidth: viewMode === 'split' ? 900 : 700,
+        maxWidth: viewMode === 'split' ? 900 : 740,
         maxHeight: 520,
         opacity: fadeIn ? 1 : 0,
         transform: fadeIn ? 'translateY(0)' : 'translateY(-6px)',
@@ -934,66 +1199,154 @@ export default function InlineDiff({
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>
             AI Suggestion
           </span>
+
+          {/* Diff statistics badges */}
           <span
             style={{
               fontSize: 10,
-              color: '#3fb950',
+              color: 'var(--diff-color-added, #3fb950)',
               background: 'rgba(63,185,80,0.12)',
               padding: '1px 6px',
               borderRadius: 3,
               fontWeight: 500,
             }}
           >
-            +{addedCount}
+            +{stats.added}
           </span>
           <span
             style={{
               fontSize: 10,
-              color: '#f85149',
+              color: 'var(--diff-color-removed, #f85149)',
               background: 'rgba(248,81,73,0.12)',
               padding: '1px 6px',
               borderRadius: 3,
               fontWeight: 500,
             }}
           >
-            -{removedCount}
+            -{stats.removed}
           </span>
+          {stats.netChange !== 0 && (
+            <span
+              style={{
+                fontSize: 9,
+                color: 'var(--text-muted)',
+                padding: '1px 4px',
+                borderRadius: 3,
+                fontWeight: 400,
+                fontStyle: 'italic',
+              }}
+            >
+              net {stats.netChange > 0 ? '+' : ''}{stats.netChange}
+            </span>
+          )}
 
-          {/* Hunk navigation */}
-          {hunks.length > 1 && (
+          {/* Hunk navigation with "Change X of Y" */}
+          {hunks.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 4 }}>
-              <button
-                onClick={goToPrevHunk}
-                disabled={currentHunkIndex <= 0}
-                style={{
-                  ...smallBtn,
-                  color: currentHunkIndex <= 0 ? 'var(--text-muted)' : 'var(--text-secondary)',
-                  opacity: currentHunkIndex <= 0 ? 0.4 : 1,
-                }}
-                title="Previous change (Alt+Up)"
-              >
-                <ArrowUp size={12} />
-              </button>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 32, textAlign: 'center' }}>
-                {currentHunkIndex + 1}/{hunks.length}
+              {hunks.length > 1 && (
+                <button
+                  onClick={goToPrevHunk}
+                  disabled={currentHunkIndex <= 0}
+                  style={{
+                    ...smallBtn,
+                    color: currentHunkIndex <= 0 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                    opacity: currentHunkIndex <= 0 ? 0.4 : 1,
+                  }}
+                  title="Previous change (Alt+Up)"
+                >
+                  <ArrowUp size={12} />
+                </button>
+              )}
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 70, textAlign: 'center' }}>
+                Change {currentHunkIndex + 1} of {hunks.length}
               </span>
-              <button
-                onClick={goToNextHunk}
-                disabled={currentHunkIndex >= hunks.length - 1}
-                style={{
-                  ...smallBtn,
-                  color: currentHunkIndex >= hunks.length - 1 ? 'var(--text-muted)' : 'var(--text-secondary)',
-                  opacity: currentHunkIndex >= hunks.length - 1 ? 0.4 : 1,
-                }}
-                title="Next change (Alt+Down)"
-              >
-                <ArrowDown size={12} />
-              </button>
+              {hunks.length > 1 && (
+                <button
+                  onClick={goToNextHunk}
+                  disabled={currentHunkIndex >= hunks.length - 1}
+                  style={{
+                    ...smallBtn,
+                    color: currentHunkIndex >= hunks.length - 1 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                    opacity: currentHunkIndex >= hunks.length - 1 ? 0.4 : 1,
+                  }}
+                  title="Next change (Alt+Down)"
+                >
+                  <ArrowDown size={12} />
+                </button>
+              )}
             </div>
           )}
 
-          {/* View mode toggle */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+          {/* Expand/Collapse all + Copy + View mode toggle */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, alignItems: 'center' }}>
+            {/* Expand/Collapse all */}
+            {collapsedCount > 0 && (
+              <button
+                onClick={expandAllRegions}
+                style={{
+                  ...smallBtn,
+                  color: 'var(--text-muted)',
+                  fontSize: 9,
+                  padding: '2px 5px',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                title="Expand all collapsed regions"
+              >
+                <ChevronsDown size={10} /> Expand
+              </button>
+            )}
+            {collapsedCount === 0 && expandedRegions.size > 0 && (
+              <button
+                onClick={collapseAllRegions}
+                style={{
+                  ...smallBtn,
+                  color: 'var(--text-muted)',
+                  fontSize: 9,
+                  padding: '2px 5px',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+                title="Collapse unchanged regions"
+              >
+                <ChevronsUp size={10} /> Collapse
+              </button>
+            )}
+
+            {/* Copy changes button */}
+            {stats.added > 0 && (
+              <button
+                onClick={handleCopyChanges}
+                style={{
+                  ...smallBtn,
+                  color: copyFeedback ? 'var(--diff-color-added, #3fb950)' : 'var(--text-muted)',
+                  fontSize: 9,
+                  padding: '2px 5px',
+                }}
+                onMouseEnter={(e) => {
+                  if (!copyFeedback) e.currentTarget.style.color = 'var(--text-secondary)'
+                }}
+                onMouseLeave={(e) => {
+                  if (!copyFeedback) e.currentTarget.style.color = 'var(--text-muted)'
+                }}
+                title="Copy added/changed lines (Ctrl+Shift+C)"
+              >
+                {copyFeedback ? (
+                  <>
+                    <Check size={10} /> Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy size={10} /> Copy changes
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Separator */}
+            <span style={{ width: 1, height: 14, background: 'var(--border)', margin: '0 2px' }} />
+
+            {/* View mode toggle */}
             <button
               onClick={() => setViewMode('unified')}
               style={{
@@ -1019,18 +1372,27 @@ export default function InlineDiff({
           </div>
         </div>
 
-        {/* ── Diff body ───────────────────────────────────── */}
-        <div
-          ref={bodyRef}
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
-            fontSize: 12,
-            lineHeight: '20px',
-          }}
-        >
-          {viewMode === 'unified' ? renderUnifiedBody() : renderSplitBody()}
+        {/* ── Diff body with minimap ───────────────────────── */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          <div
+            ref={bodyRef}
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+              fontSize: 12,
+              lineHeight: '20px',
+            }}
+          >
+            {viewMode === 'unified' ? renderUnifiedBody() : renderSplitBody()}
+          </div>
+
+          {/* Minimap */}
+          <DiffMinimap
+            diffLines={diffLines}
+            bodyRef={bodyRef}
+            totalHeight={diffLines.length * 20}
+          />
         </div>
 
         {/* ── Footer with actions ─────────────────────────── */}
@@ -1113,8 +1475,8 @@ export default function InlineDiff({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(248,81,73,0.15)'
-                e.currentTarget.style.borderColor = '#f85149'
-                e.currentTarget.style.color = '#f85149'
+                e.currentTarget.style.borderColor = 'var(--diff-border-removed, #f85149)'
+                e.currentTarget.style.color = 'var(--diff-color-removed, #f85149)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--bg-hover)'
@@ -1133,8 +1495,8 @@ export default function InlineDiff({
                 fontSize: 11,
                 fontWeight: 600,
                 color: '#fff',
-                background: '#3fb950',
-                border: '1px solid #3fb950',
+                background: 'var(--diff-color-added, #3fb950)',
+                border: '1px solid var(--diff-border-added, #3fb950)',
                 borderRadius: 6,
                 cursor: 'pointer',
                 display: 'flex',
@@ -1146,7 +1508,7 @@ export default function InlineDiff({
                 e.currentTarget.style.background = '#2ea043'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#3fb950'
+                e.currentTarget.style.background = 'var(--diff-color-added, #3fb950)'
               }}
             >
               <Check size={12} />
