@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Files, Search, GitBranch, Bot, Settings } from 'lucide-react'
+import { Files, Search, GitBranch, Bot, Settings, ListTree } from 'lucide-react'
 
-type PanelView = 'explorer' | 'search' | 'git' | 'agents'
+type PanelView = 'explorer' | 'search' | 'git' | 'agents' | 'outline'
 
 interface Props {
   activeView: PanelView
@@ -14,6 +14,7 @@ const items: { view: PanelView; Icon: typeof Files; label: string; shortcut?: st
   { view: 'search', Icon: Search, label: 'Search', shortcut: 'Ctrl+Shift+F' },
   { view: 'git', Icon: GitBranch, label: 'Source Control', shortcut: 'Ctrl+Shift+G' },
   { view: 'agents', Icon: Bot, label: 'AI Agents', showDot: true },
+  { view: 'outline', Icon: ListTree, label: 'Outline', shortcut: 'Ctrl+Shift+O' },
 ]
 
 /* Tooltip styles injected once */

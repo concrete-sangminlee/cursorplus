@@ -12,6 +12,7 @@ import AgentPanel from './panels/AgentPanel'
 import FileExplorer from './panels/FileExplorer'
 import SearchPanel from '@/panels/SearchPanel'
 import SourceControlPanel from '@/panels/SourceControlPanel'
+import OutlinePanel from '@/panels/OutlinePanel'
 import EditorPanel from './panels/EditorPanel'
 import ChatPanel from './panels/ChatPanel'
 import BottomPanel from './panels/BottomPanel'
@@ -74,6 +75,7 @@ export default function App() {
       'orion:show-search': () => { setSidebarVisible(true); setActiveView('search') },
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
       'orion:show-agents': () => { setSidebarVisible(true); setActiveView('agents') },
+      'orion:show-outline': () => { setSidebarVisible(true); setActiveView('outline') },
     }
     Object.entries(handlers).forEach(([event, handler]) => {
       window.addEventListener(event, handler)
@@ -153,6 +155,13 @@ export default function App() {
         setActiveView('git')
         return
       }
+      // Ctrl+Shift+O -> outline
+      if (ctrl && e.shiftKey && e.key === 'O') {
+        e.preventDefault()
+        setSidebarVisible(true)
+        setActiveView('outline')
+        return
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -202,6 +211,7 @@ export default function App() {
               {activeView === 'search' && <SearchPanel />}
               {activeView === 'explorer' && <FileExplorer />}
               {activeView === 'git' && <SourceControlPanel />}
+              {activeView === 'outline' && <OutlinePanel />}
             </div>
 
             <Resizer direction="horizontal" onResize={handleSideResize} />

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useFileStore } from '@/store/files'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
-import { GitBranch, Check, Plus, Minus, RotateCw, FileText, Trash2, ChevronRight, ChevronDown } from 'lucide-react'
+import { GitBranch, Check, Plus, Minus, RotateCw, FileText, Trash2, ChevronRight, ChevronDown, X } from 'lucide-react'
 
 interface GitFile {
   path: string
@@ -33,6 +33,8 @@ export default function SourceControlPanel() {
   const [stagedExpanded, setStagedExpanded] = useState(true)
   const [changesExpanded, setChangesExpanded] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [selectedDiff, setSelectedDiff] = useState<{ path: string; diff: string } | null>(null)
+  const [isDiffLoading, setIsDiffLoading] = useState(false)
 
   const rootPath = useFileStore((s) => s.rootPath)
   const openFile = useEditorStore((s) => s.openFile)
@@ -104,9 +106,16 @@ export default function SourceControlPanel() {
     }
   }
 
-  const handleFileClick = (filePath: string) => {
-    if (rootPath) {
-      openFile(`${rootPath}/${filePath}`)
+  const handleFileClick = async (filePath: string) => {
+    if (!rootPath) return
+    setIsDiffLoading(true)
+    try {
+      const diff = await (window as any).api.gitDiff(rootPath, filePath)
+      setSelectedDiff({ path: filePath, diff: diff || 'No changes detected' })
+    } catch {
+      setSelectedDiff({ path: filePath, diff: 'Failed to load diff' })
+    } finally {
+      setIsDiffLoading(false)
     }
   }
 
@@ -129,6 +138,28 @@ export default function SourceControlPanel() {
   }
 
   const totalChanges = stagedFiles.length + unstagedFiles.length
+
+  const getDiffLineStyle = (line: string): React.CSSProperties => {
+    if (line.startsWith('@@')) {
+      return {
+        background: 'rgba(130, 100, 210, 0.12)',
+        color: '#b392f0',
+      }
+    }
+    if (line.startsWith('+')) {
+      return {
+        background: 'rgba(63, 185, 80, 0.1)',
+        color: '#3fb950',
+      }
+    }
+    if (line.startsWith('-')) {
+      return {
+        background: 'rgba(248, 81, 73, 0.1)',
+        color: '#f85149',
+      }
+    }
+    return {}
+  }
 
   const renderFileItem = (file: GitFile, isStaged: boolean) => {
     const color = STATUS_COLORS[file.state]
@@ -509,6 +540,137 @@ export default function SourceControlPanel() {
           </div>
         )}
       </div>
+
+      {/* Diff Viewer */}
+      {selectedDiff && (
+        <div
+          style={{
+            flexShrink: 0,
+            maxHeight: '50%',
+            display: 'flex',
+            flexDirection: 'column',
+            borderTop: '2px solid var(--accent-blue, #388bfd)',
+          }}
+        >
+          {/* Diff header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '6px 10px',
+              background: 'var(--bg-tertiary, #2d333b)',
+              fontSize: 12,
+              fontWeight: 600,
+              flexShrink: 0,
+              gap: 6,
+            }}
+          >
+            <FileText size={13} style={{ opacity: 0.7, flexShrink: 0 }} />
+            <span
+              style={{
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={selectedDiff.path}
+            >
+              {fileName(selectedDiff.path)}
+              {dirName(selectedDiff.path) && (
+                <span style={{ opacity: 0.5, marginLeft: 4, fontWeight: 400 }}>
+                  {dirName(selectedDiff.path)}
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => setSelectedDiff(null)}
+              title="Close Diff"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 3,
+                color: 'var(--text-secondary)',
+                flexShrink: 0,
+              }}
+              className="source-control-action-btn"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Diff content */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              overflowX: 'auto',
+              background: 'var(--bg-primary)',
+              fontSize: 12,
+              lineHeight: 1.5,
+              fontFamily: 'var(--font-mono, "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace)',
+            }}
+          >
+            {isDiffLoading ? (
+              <div
+                style={{
+                  padding: '16px',
+                  color: 'var(--text-disabled, #545d68)',
+                  textAlign: 'center',
+                }}
+              >
+                Loading diff...
+              </div>
+            ) : (
+              selectedDiff.diff.split('\n').map((line, idx) => {
+                const lineStyle = getDiffLineStyle(line)
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      minHeight: 18,
+                      ...lineStyle,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 40,
+                        flexShrink: 0,
+                        textAlign: 'right',
+                        paddingRight: 8,
+                        color: 'var(--text-disabled, #545d68)',
+                        userSelect: 'none',
+                        opacity: 0.6,
+                        borderRight: '1px solid var(--border)',
+                      }}
+                    >
+                      {idx + 1}
+                    </span>
+                    <pre
+                      style={{
+                        margin: 0,
+                        paddingLeft: 8,
+                        paddingRight: 8,
+                        whiteSpace: 'pre',
+                        fontFamily: 'inherit',
+                        fontSize: 'inherit',
+                        lineHeight: 'inherit',
+                      }}
+                    >
+                      {line}
+                    </pre>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Inline styles for hover effects and animations */}
       <style>{`

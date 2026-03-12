@@ -183,6 +183,27 @@ function buildMenus(
           action: () =>
             window.dispatchEvent(new CustomEvent('orion:toggle-sidebar')),
         },
+        { type: 'separator' },
+        {
+          type: 'action',
+          label: 'Toggle Word Wrap',
+          shortcut: 'Alt+Z',
+          action: () =>
+            window.dispatchEvent(new CustomEvent('orion:toggle-wordwrap')),
+        },
+        {
+          type: 'action',
+          label: 'Toggle Minimap',
+          action: () =>
+            window.dispatchEvent(new CustomEvent('orion:toggle-minimap')),
+        },
+        {
+          type: 'action',
+          label: 'Zen Mode',
+          shortcut: 'Ctrl+K Z',
+          action: () =>
+            window.dispatchEvent(new CustomEvent('orion:zen-mode')),
+        },
       ],
     },
     {
@@ -200,6 +221,26 @@ function buildMenus(
     {
       label: 'Help',
       items: [
+        {
+          type: 'action',
+          label: 'Keyboard Shortcuts',
+          shortcut: 'Ctrl+K Ctrl+S',
+          action: () =>
+            window.dispatchEvent(new CustomEvent('orion:open-settings')),
+        },
+        {
+          type: 'action',
+          label: 'Documentation',
+          action: () =>
+            window.open('https://github.com/concrete-sangminlee/orion', '_blank'),
+        },
+        {
+          type: 'action',
+          label: 'Report Issue',
+          action: () =>
+            window.open('https://github.com/concrete-sangminlee/orion/issues', '_blank'),
+        },
+        { type: 'separator' },
         {
           type: 'action',
           label: 'About Orion',
@@ -437,7 +478,7 @@ export default function TitleBar() {
       {/* Center drag region */}
       <div className="flex-1" />
 
-      {/* Window title (subtle, centered) */}
+      {/* Window title (shows active file name) */}
       <div
         style={{
           position: 'absolute',
@@ -447,9 +488,20 @@ export default function TitleBar() {
           color: 'var(--text-muted)',
           pointerEvents: 'none',
           opacity: 0.6,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
         }}
       >
-        Orion
+        {editorStore.activeFilePath ? (
+          <>
+            <span>{editorStore.openFiles.find(f => f.path === editorStore.activeFilePath)?.name || 'Untitled'}</span>
+            <span style={{ opacity: 0.5 }}>—</span>
+            <span>Orion</span>
+          </>
+        ) : (
+          'Orion'
+        )}
       </div>
 
       {/* Window controls */}

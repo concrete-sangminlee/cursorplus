@@ -280,13 +280,26 @@ export default function EditorPanel() {
       },
     }
 
+    // Go-to-line handler (used by Outline panel)
+    const goToLineHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.line && editorRef.current) {
+        const lineNumber = detail.line as number
+        editorRef.current.revealLineInCenter(lineNumber)
+        editorRef.current.setPosition({ lineNumber, column: 1 })
+        editorRef.current.focus()
+      }
+    }
+
     Object.entries(handlers).forEach(([event, handler]) => {
       window.addEventListener(event, handler)
     })
+    window.addEventListener('orion:go-to-line', goToLineHandler)
     return () => {
       Object.entries(handlers).forEach(([event, handler]) => {
         window.removeEventListener(event, handler)
       })
+      window.removeEventListener('orion:go-to-line', goToLineHandler)
     }
   }, [activeFilePath, activeFile, closeFile, closeAllFiles, markSaved, addToast])
 

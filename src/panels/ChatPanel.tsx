@@ -5,7 +5,7 @@ import {
   Sparkles, Bot, User, Zap, MessageSquare,
   ArrowUp, Paperclip, AtSign, CheckCircle2, Loader2, Circle,
   ChevronDown, Copy, Check, Code, Lightbulb, Wrench, BookOpen,
-  Play, Trash2,
+  Play, Trash2, FileCode, X,
 } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -909,6 +909,46 @@ export default function ChatPanel() {
 
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const mentionRef = useRef<HTMLDivElement>(null)
+
+  /* ── File context state ────────────────────────────────── */
+  const activeFilePath = useEditorStore((s) => s.activeFilePath)
+  const openFiles = useEditorStore((s) => s.openFiles)
+  const activeFile = openFiles.find((f) => f.path === activeFilePath)
+
+  const [includeContext, setIncludeContext] = useState(true)
+  const [selectionText, setSelectionText] = useState<string | null>(null)
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionedFiles, setMentionedFiles] = useState<string[]>([])
+
+  // Listen for selection context from editor
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ text: string }>).detail
+      if (detail?.text) {
+        setSelectionText(detail.text)
+      }
+    }
+    window.addEventListener('orion:selection-for-chat', handler)
+    return () => window.removeEventListener('orion:selection-for-chat', handler)
+  }, [])
+
+  // Clear selection when active file changes
+  useEffect(() => {
+    setSelectionText(null)
+  }, [activeFilePath])
+
+  // Close mention dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
+        setShowMentionDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -919,17 +959,43 @@ export default function ChatPanel() {
 
   const handleSend = () => {
     if (!input.trim()) return
+
+    const userText = input.trim()
+
+    // Build context-enriched message for the AI
+    let aiMessage = userText
+
+    if (includeContext) {
+      // Gather mentioned file contents
+      const mentionedFileContents = mentionedFiles
+        .map((path) => openFiles.find((f) => f.path === path))
+        .filter(Boolean)
+        .map((f) => `[Referenced file: ${f!.name}]\n\`\`\`${f!.language}\n${f!.content}\n\`\`\``)
+        .join('\n\n')
+
+      if (selectionText && activeFile) {
+        // Selection takes priority over full file content
+        aiMessage = `[Current file: ${activeFile.name} (selection)]\n\`\`\`${activeFile.language}\n${selectionText}\n\`\`\`\n\n${mentionedFileContents ? mentionedFileContents + '\n\n' : ''}User question: ${userText}`
+      } else if (activeFile) {
+        aiMessage = `[Current file: ${activeFile.name}]\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\n${mentionedFileContents ? mentionedFileContents + '\n\n' : ''}User question: ${userText}`
+      } else if (mentionedFileContents) {
+        aiMessage = `${mentionedFileContents}\n\nUser question: ${userText}`
+      }
+    }
+
     addMessage({
       id: uuid(),
       role: 'user',
-      content: input.trim(),
+      content: userText,
       timestamp: Date.now(),
     })
     window.api?.omoSend({
       type: 'chat',
-      payload: { message: input.trim(), mode, model: selectedModel },
+      payload: { message: aiMessage, mode, model: selectedModel },
     })
     setInput('')
+    setMentionedFiles([])
+    setSelectionText(null)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -937,7 +1003,50 @@ export default function ChatPanel() {
       e.preventDefault()
       handleSend()
     }
+    if (e.key === 'Escape' && showMentionDropdown) {
+      setShowMentionDropdown(false)
+    }
   }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setInput(val)
+
+    // Detect @ mentions
+    const cursorPos = e.target.selectionStart ?? val.length
+    const textBeforeCursor = val.slice(0, cursorPos)
+    const atMatch = textBeforeCursor.match(/@(\S*)$/)
+
+    if (atMatch) {
+      setShowMentionDropdown(true)
+      setMentionQuery(atMatch[1].toLowerCase())
+    } else {
+      setShowMentionDropdown(false)
+      setMentionQuery('')
+    }
+  }
+
+  const handleMentionSelect = (file: { path: string; name: string }) => {
+    // Replace the @query with @filename in the input
+    const cursorPos = input.length
+    const textBeforeCursor = input.slice(0, cursorPos)
+    const atMatch = textBeforeCursor.match(/@(\S*)$/)
+    if (atMatch) {
+      const before = input.slice(0, atMatch.index!)
+      const after = input.slice(atMatch.index! + atMatch[0].length)
+      setInput(before + '@' + file.name + ' ' + after)
+    }
+    if (!mentionedFiles.includes(file.path)) {
+      setMentionedFiles((prev) => [...prev, file.path])
+    }
+    setShowMentionDropdown(false)
+  }
+
+  const filteredMentionFiles = openFiles.filter(
+    (f) =>
+      f.name.toLowerCase().includes(mentionQuery) &&
+      !mentionedFiles.includes(f.path),
+  )
 
   return (
     <div
@@ -1060,12 +1169,107 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+        {/* Context badge */}
+        {activeFile && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 12px',
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              borderBottom: '1px solid var(--border)',
+              marginBottom: 6,
+            }}
+          >
+            <FileCode size={12} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Context: {activeFile.name}
+              {selectionText && (
+                <span style={{ color: 'var(--accent-purple)', marginLeft: 4 }}>
+                  (selection)
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => setIncludeContext(!includeContext)}
+              style={{
+                fontSize: 10,
+                padding: '1px 8px',
+                borderRadius: 4,
+                border: '1px solid',
+                borderColor: includeContext ? 'var(--accent)' : 'var(--border)',
+                background: includeContext ? 'rgba(88,166,255,0.1)' : 'transparent',
+                color: includeContext ? 'var(--accent)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {includeContext ? 'Attached' : 'Detached'}
+            </button>
+          </div>
+        )}
+
+        {/* Mentioned files badges */}
+        {mentionedFiles.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 4,
+              padding: '2px 4px 6px',
+            }}
+          >
+            {mentionedFiles.map((path) => {
+              const f = openFiles.find((of) => of.path === path)
+              return (
+                <span
+                  key={path}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: 'rgba(188,140,255,0.1)',
+                    color: 'var(--accent-purple)',
+                    border: '1px solid rgba(188,140,255,0.2)',
+                  }}
+                >
+                  <FileCode size={10} />
+                  {f?.name || path.split(/[\\/]/).pop()}
+                  <button
+                    onClick={() =>
+                      setMentionedFiles((prev) => prev.filter((p) => p !== path))
+                    }
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )}
+
         <div
           className="transition-colors duration-150"
           style={{
             background: 'var(--bg-secondary)',
             border: '1px solid var(--border)',
             borderRadius: 12,
+            position: 'relative',
           }}
           onFocus={(e) => {
             e.currentTarget.style.borderColor = 'var(--accent)'
@@ -1074,14 +1278,90 @@ export default function ChatPanel() {
             e.currentTarget.style.borderColor = 'var(--border)'
           }}
         >
+          {/* @ mention dropdown */}
+          {showMentionDropdown && filteredMentionFiles.length > 0 && (
+            <div
+              ref={mentionRef}
+              style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                right: 0,
+                marginBottom: 4,
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: 4,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                zIndex: 50,
+                maxHeight: 180,
+                overflowY: 'auto',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text-muted)',
+                  padding: '4px 8px 2px',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Open Files
+              </div>
+              {filteredMentionFiles.map((file) => (
+                <button
+                  key={file.path}
+                  onClick={() => handleMentionSelect(file)}
+                  className="flex items-center gap-2 w-full transition-colors duration-75"
+                  style={{
+                    fontSize: 11,
+                    padding: '5px 8px',
+                    borderRadius: 5,
+                    background: 'transparent',
+                    color: 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  <FileCode size={12} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {file.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono, monospace)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: 140,
+                    }}
+                  >
+                    {file.path}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={
               mode === 'agent'
-                ? 'Ask the agent to do something...'
-                : 'Ask anything...'
+                ? 'Ask the agent to do something... (type @ to mention a file)'
+                : 'Ask anything... (type @ to mention a file)'
             }
             rows={1}
             style={{
@@ -1120,22 +1400,30 @@ export default function ChatPanel() {
               <Paperclip size={13} />
             </button>
             <button
+              onClick={() => {
+                setShowMentionDropdown(!showMentionDropdown)
+                setMentionQuery('')
+              }}
               style={{
                 padding: 6,
-                color: 'var(--text-muted)',
+                color: showMentionDropdown ? 'var(--accent)' : 'var(--text-muted)',
                 borderRadius: 4,
-                background: 'transparent',
+                background: showMentionDropdown ? 'rgba(88,166,255,0.1)' : 'transparent',
                 border: 'none',
                 cursor: 'pointer',
               }}
-              title="Mention file"
+              title="Mention file (@)"
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--text-secondary)'
-                e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                if (!showMentionDropdown) {
+                  e.currentTarget.style.color = 'var(--text-secondary)'
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--text-muted)'
-                e.currentTarget.style.background = 'transparent'
+                if (!showMentionDropdown) {
+                  e.currentTarget.style.color = 'var(--text-muted)'
+                  e.currentTarget.style.background = 'transparent'
+                }
               }}
             >
               <AtSign size={13} />
