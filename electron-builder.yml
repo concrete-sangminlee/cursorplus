@@ -1,19 +1,267 @@
-appId: com.bebut.orion
-productName: Orion
+# -------------------------------------------------------
+# Orion IDE - Electron Builder Configuration
+# -------------------------------------------------------
+
+appId: com.orion.ide
+productName: Orion IDE
+copyright: Copyright (c) 2026 Orion Team
+
 directories:
   buildResources: build
-  output: release
+  output: release/${version}
+
 files:
   - dist-electron
   - dist
+
 npmRebuild: true
+asar: true
+compression: maximum
+
+# ---------------------------
+# Auto-update via GitHub
+# ---------------------------
 publish:
   provider: github
-  owner: concrete-sangminlee
-  repo: orion
+  owner: orion-ide
+  repo: orion-ide
+  releaseType: release
+
+# ---------------------------
+# Protocol handler: orion://
+# ---------------------------
+protocols:
+  - name: Orion IDE URL
+    role: Viewer
+    schemes:
+      - orion
+
+# ---------------------------
+# File associations
+# ---------------------------
+fileAssociations:
+  - ext: ts
+    name: TypeScript Source
+    role: Editor
+    mimeType: text/typescript
+  - ext: tsx
+    name: TypeScript React
+    role: Editor
+    mimeType: text/tsx
+  - ext: js
+    name: JavaScript Source
+    role: Editor
+    mimeType: text/javascript
+  - ext: jsx
+    name: JavaScript React
+    role: Editor
+    mimeType: text/jsx
+  - ext: json
+    name: JSON Document
+    role: Editor
+    mimeType: application/json
+  - ext: md
+    name: Markdown Document
+    role: Editor
+    mimeType: text/markdown
+  - ext: py
+    name: Python Script
+    role: Editor
+    mimeType: text/x-python
+  - ext: html
+    name: HTML Document
+    role: Editor
+    mimeType: text/html
+  - ext: css
+    name: CSS Stylesheet
+    role: Editor
+    mimeType: text/css
+  - ext: scss
+    name: SCSS Stylesheet
+    role: Editor
+    mimeType: text/x-scss
+  - ext: yaml
+    name: YAML Document
+    role: Editor
+    mimeType: text/yaml
+  - ext: yml
+    name: YAML Document
+    role: Editor
+    mimeType: text/yaml
+  - ext: toml
+    name: TOML Document
+    role: Editor
+    mimeType: application/toml
+  - ext: rs
+    name: Rust Source
+    role: Editor
+    mimeType: text/rust
+  - ext: go
+    name: Go Source
+    role: Editor
+    mimeType: text/x-go
+  - ext: java
+    name: Java Source
+    role: Editor
+    mimeType: text/x-java
+  - ext: c
+    name: C Source
+    role: Editor
+    mimeType: text/x-c
+  - ext: cpp
+    name: C++ Source
+    role: Editor
+    mimeType: text/x-c++
+  - ext: h
+    name: C/C++ Header
+    role: Editor
+    mimeType: text/x-c
+  - ext: sh
+    name: Shell Script
+    role: Editor
+    mimeType: application/x-sh
+  - ext: sql
+    name: SQL Script
+    role: Editor
+    mimeType: application/sql
+  - ext: xml
+    name: XML Document
+    role: Editor
+    mimeType: application/xml
+  - ext: env
+    name: Environment File
+    role: Editor
+    mimeType: text/plain
+  - ext: txt
+    name: Text Document
+    role: Editor
+    mimeType: text/plain
+
+# ---------------------------
+# Windows
+# ---------------------------
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: ${name}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Orion IDE
+  uninstallDisplayName: Orion IDE
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  license: LICENSE
+
+# ---------------------------
+# macOS
+# ---------------------------
 mac:
-  target: dmg
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  artifactName: ${name}-${version}-mac-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Code signing placeholder - set these env vars in CI:
+  #   CSC_LINK: path to .p12 certificate
+  #   CSC_KEY_PASSWORD: certificate password
+  #   APPLE_ID: Apple ID for notarization
+  #   APPLE_APP_SPECIFIC_PASSWORD: app-specific password
+
+dmg:
+  background: build/dmg-background.png
+  iconSize: 100
+  iconTextSize: 12
+  window:
+    width: 660
+    height: 500
+  contents:
+    - x: 180
+      y: 170
+      type: file
+    - x: 480
+      y: 170
+      type: link
+      path: /Applications
+
+# ---------------------------
+# Linux
+# ---------------------------
 linux:
-  target: AppImage
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: snap
+      arch:
+        - x64
+  icon: build/icons
+  category: Development
+  artifactName: ${name}-${version}-linux-${arch}.${ext}
+  synopsis: AI-Powered Code Editor
+  description: >-
+    Orion IDE is an AI-powered code editor built with modern web technologies.
+    Features intelligent code completion, integrated terminal, and AI chat assistance.
+  desktop:
+    StartupWMClass: orion-ide
+    MimeType: >-
+      text/typescript;text/javascript;application/json;text/markdown;
+      text/x-python;text/html;text/css;text/plain;application/xml
+
+deb:
+  depends:
+    - gconf2
+    - gconf-service
+    - libnotify4
+    - libappindicator1
+    - libsecret-1-0
+    - libxtst6
+    - libnss3
+  priority: optional
+  afterInstall: build/linux/after-install.sh
+  afterRemove: build/linux/after-remove.sh
+
+snap:
+  stagePackages:
+    - default
+  plugs:
+    - default
+    - removable-media
+    - network
+    - network-bind
+    - home
+    - desktop
+    - desktop-legacy
+    - wayland
+    - x11
+    - unity7
+    - browser-support

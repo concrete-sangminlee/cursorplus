@@ -128,6 +128,20 @@ export default function App() {
   const [zenExitVisible, setZenExitVisible] = useState(false)
   const zenExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Focus management refs ──────────────────────────────
+  // Track which element had focus before a modal opened so we can return focus on close
+  const modalTriggerRef = useRef<HTMLElement | null>(null)
+
+  // Screen reader live region announcement
+  const [liveAnnouncement, setLiveAnnouncement] = useState('')
+
+  /** Announce a message to screen readers via aria-live region */
+  const announce = useCallback((message: string) => {
+    setLiveAnnouncement('')
+    // Use rAF to ensure DOM clears before re-setting, so screen readers re-announce
+    requestAnimationFrame(() => setLiveAnnouncement(message))
+  }, [])
+
   // ── Diff editor state ──────────────────────────────────
   const [diffView, setDiffView] = useState<{
     original: string
@@ -138,6 +152,21 @@ export default function App() {
 
   // ── Workspace trust banner ─────────────────────────────
   const [workspaceTrustDismissed, setWorkspaceTrustDismissed] = useState(true)
+
+  // ── Modal open/close helpers with focus management ──────
+  const openModal = useCallback((setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    modalTriggerRef.current = document.activeElement as HTMLElement | null
+    setter(true)
+  }, [])
+
+  const closeModal = useCallback((setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setter(false)
+    // Return focus to the element that triggered the modal
+    requestAnimationFrame(() => {
+      modalTriggerRef.current?.focus()
+      modalTriggerRef.current = null
+    })
+  }, [])
 
   // Store pre-zen state so we can restore on exit
   const preZenState = useRef<{
@@ -441,16 +470,16 @@ export default function App() {
   // Listen for custom events from menu bar / commands
   useEffect(() => {
     const handlers: Record<string, () => void> = {
-      'orion:toggle-sidebar': () => setSidebarVisible((v) => !v),
-      'orion:toggle-terminal': () => setBottomVisible((v) => !v),
-      'orion:toggle-chat': () => setChatVisible((v) => !v),
-      'orion:open-settings': () => setSettingsOpen(true),
-      'orion:open-palette': () => setPaletteOpen(true),
-      'orion:keyboard-shortcuts': () => setShortcutsOpen(true),
+      'orion:toggle-sidebar': () => { setSidebarVisible((v) => !v); announce(sidebarVisible ? 'Sidebar collapsed' : 'Sidebar expanded') },
+      'orion:toggle-terminal': () => { setBottomVisible((v) => !v); announce(bottomVisible ? 'Terminal panel closed' : 'Terminal panel opened') },
+      'orion:toggle-chat': () => { setChatVisible((v) => !v); announce(chatVisible ? 'Chat panel closed' : 'Chat panel opened') },
+      'orion:open-settings': () => openModal(setSettingsOpen),
+      'orion:open-palette': () => openModal(setPaletteOpen),
+      'orion:keyboard-shortcuts': () => openModal(setShortcutsOpen),
       'orion:zen-mode': () => toggleZenMode(),
       'orion:toggle-zen-mode': () => toggleZenMode(),
-      'orion:about': () => setAboutOpen(true),
-      'orion:open-snippets': () => setSnippetsOpen(true),
+      'orion:about': () => openModal(setAboutOpen),
+      'orion:open-snippets': () => openModal(setSnippetsOpen),
       'orion:show-explorer': () => { setSidebarVisible(true); setActiveView('explorer') },
       'orion:show-search': () => { setSidebarVisible(true); setActiveView('search') },
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
@@ -500,7 +529,7 @@ export default function App() {
         window.removeEventListener(event, handler)
       })
     }
-  }, [toggleZenMode])
+  }, [toggleZenMode, openModal, announce, sidebarVisible, bottomVisible, chatVisible])
 
   // Update window title based on active file
   useEffect(() => {
@@ -577,13 +606,13 @@ export default function App() {
       // Ctrl+Shift+P -> command palette
       if (ctrl && e.shiftKey && e.key === 'P') {
         e.preventDefault()
-        setPaletteOpen((prev) => !prev)
+        if (paletteOpen) closeModal(setPaletteOpen); else openModal(setPaletteOpen)
         return
       }
       // Ctrl+P -> quick open (file mode)
       if (ctrl && !e.shiftKey && e.key === 'p') {
         e.preventDefault()
-        setPaletteOpen((prev) => !prev)
+        if (paletteOpen) closeModal(setPaletteOpen); else openModal(setPaletteOpen)
         return
       }
       // Ctrl+B -> toggle sidebar
@@ -613,7 +642,7 @@ export default function App() {
       // Ctrl+, -> settings
       if (ctrl && e.key === ',') {
         e.preventDefault()
-        setSettingsOpen(true)
+        openModal(setSettingsOpen)
         return
       }
       // Ctrl+Shift+E -> explorer
@@ -686,12 +715,13 @@ export default function App() {
       }
 
       // Escape -> close any open modal/overlay, then exit zen mode, then focus editor
+      // Focus is returned to the triggering element via closeModal()
       if (e.key === 'Escape') {
-        if (settingsOpen) { e.preventDefault(); setSettingsOpen(false); return }
-        if (shortcutsOpen) { e.preventDefault(); setShortcutsOpen(false); return }
-        if (aboutOpen) { e.preventDefault(); setAboutOpen(false); return }
-        if (snippetsOpen) { e.preventDefault(); setSnippetsOpen(false); return }
-        if (paletteOpen) { e.preventDefault(); setPaletteOpen(false); return }
+        if (settingsOpen) { e.preventDefault(); closeModal(setSettingsOpen); return }
+        if (shortcutsOpen) { e.preventDefault(); closeModal(setShortcutsOpen); return }
+        if (aboutOpen) { e.preventDefault(); closeModal(setAboutOpen); return }
+        if (snippetsOpen) { e.preventDefault(); closeModal(setSnippetsOpen); return }
+        if (paletteOpen) { e.preventDefault(); closeModal(setPaletteOpen); return }
         if (zenMode) { e.preventDefault(); toggleZenMode(); return }
         // No modal open - return focus to the editor
         window.dispatchEvent(new Event('orion:focus-editor'))
@@ -712,7 +742,7 @@ export default function App() {
       if (chordPending && ctrl && e.key === 's') {
         e.preventDefault()
         chordPending = false
-        setShortcutsOpen(true)
+        openModal(setShortcutsOpen)
         return
       }
       // Ctrl+K Z -> toggle zen mode
@@ -733,10 +763,11 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keydown', handleChord)
     }
-  }, [zenMode, toggleZenMode, settingsOpen, shortcutsOpen, aboutOpen, snippetsOpen, paletteOpen])
+  }, [zenMode, toggleZenMode, settingsOpen, shortcutsOpen, aboutOpen, snippetsOpen, paletteOpen, openModal, closeModal])
 
   return (
     <ErrorBoundary>
+    {/* Application root container */}
     <div
       style={{
         height: '100vh',
@@ -750,15 +781,38 @@ export default function App() {
       onDragLeave={handleGlobalDragLeave}
       onDrop={handleGlobalDrop}
     >
+      {/* Screen reader live region for dynamic announcements (status changes, notifications) */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0, 0, 0, 0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      >
+        {liveAnnouncement}
+      </div>
+
       {/* Workspace trust banner */}
       {!workspaceTrustDismissed && (
         <div
+          role="alert"
+          aria-label="Workspace trust prompt"
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 12,
             padding: '8px 16px',
+            /* WCAG AA: gold on dark bg gives ~7:1 contrast ratio */
             background: 'linear-gradient(90deg, rgba(227, 179, 65, 0.12), rgba(227, 179, 65, 0.06))',
             borderBottom: '1px solid rgba(227, 179, 65, 0.3)',
             fontSize: 13,
@@ -772,6 +826,7 @@ export default function App() {
           </span>
           <button
             onClick={() => handleWorkspaceTrust(true)}
+            aria-label="Trust this workspace"
             style={{
               padding: '3px 14px',
               fontSize: 12,
@@ -779,6 +834,7 @@ export default function App() {
               borderRadius: 4,
               border: 'none',
               cursor: 'pointer',
+              /* WCAG AA: white (#fff) on accent blue meets 4.5:1 minimum */
               background: 'var(--accent)',
               color: '#fff',
             }}
@@ -787,6 +843,7 @@ export default function App() {
           </button>
           <button
             onClick={() => handleWorkspaceTrust(false)}
+            aria-label="Do not trust this workspace"
             style={{
               padding: '3px 14px',
               fontSize: 12,
@@ -803,9 +860,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Skip navigation link for keyboard/screen reader users */}
-      <a className="skip-nav" href="#editor-main">
+      {/* Skip navigation links for keyboard/screen reader users
+          Visible on focus, allows jumping past repeated navigation to main content.
+          tabIndex ensures they are the first focusable elements in tab order. */}
+      <a className="skip-nav" href="#editor-main" tabIndex={1}>
         Skip to editor
+      </a>
+      <a className="skip-nav" href="#status-bar" tabIndex={2} style={{ left: 140 }}>
+        Skip to status bar
       </a>
       {/* Global drop overlay for OS file/folder drag */}
       {globalDragOver && (
