@@ -226,7 +226,7 @@ function buildMenus(
           label: 'Keyboard Shortcuts',
           shortcut: 'Ctrl+K Ctrl+S',
           action: () =>
-            window.dispatchEvent(new CustomEvent('orion:open-settings')),
+            window.dispatchEvent(new CustomEvent('orion:keyboard-shortcuts')),
         },
         {
           type: 'action',

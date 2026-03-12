@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react'
 import TerminalPanel from './TerminalPanel'
+import ProblemsPanel from './ProblemsPanel'
 import { useAgentStore } from '@/store/agents'
+import { useProblemsStore } from '@/store/problems'
 import {
   Terminal, Activity, AlertTriangle, FileOutput,
   ChevronRight, AlertCircle, Info, Zap, Plus, X, Trash2,
@@ -60,7 +62,10 @@ export default function BottomPanel() {
   }, [activeTerminal])
 
   // Counts for badges
-  const errorCount = logs.filter((l) => l.type === 'error').length
+  const problems = useProblemsStore((s) => s.problems)
+  const problemsErrorCount = problems.filter((p) => p.severity === 'error').length
+  const problemsWarningCount = problems.filter((p) => p.severity === 'warning').length
+  const problemsBadge = problemsErrorCount + problemsWarningCount
   const logCount = logs.length
 
   return (
@@ -84,7 +89,7 @@ export default function BottomPanel() {
           const isActive = activeTab === id
           const badge =
             id === 'problems'
-              ? errorCount
+              ? problemsBadge
               : id === 'agent-log'
                 ? logCount
                 : 0
@@ -330,13 +335,7 @@ export default function BottomPanel() {
           </div>
         )}
 
-        {activeTab === 'problems' && (
-          <EmptyTabContent
-            Icon={AlertTriangle}
-            message="No problems detected"
-            sub="Errors and warnings from your workspace will appear here"
-          />
-        )}
+        {activeTab === 'problems' && <ProblemsPanel />}
 
         {activeTab === 'output' && (
           <EmptyTabContent

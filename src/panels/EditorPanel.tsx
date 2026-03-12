@@ -3,14 +3,39 @@ import Editor, { type Monaco } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
+import { useProblemsStore } from '@/store/problems'
 import TabBar from '@/components/TabBar'
 import InlineEdit from '@/components/InlineEdit'
 import {
   Zap, FolderOpen, MessageSquare, Terminal, Command,
   ChevronRight, FilePlus, Loader2, Keyboard, Clock,
   Search, Settings, GitBranch, Columns, Sparkles,
-  FileText,
+  FileText, ZoomIn, ZoomOut, Maximize2, Minimize2,
+  Image as ImageIcon,
 } from 'lucide-react'
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'])
+
+function isImageFile(filePath: string): boolean {
+  const ext = filePath.replace(/\\/g, '/').split('/').pop()?.split('.').pop()?.toLowerCase() || ''
+  return IMAGE_EXTENSIONS.has(ext)
+}
+
+function filePathToFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  // On Windows paths like C:/foo/bar, prepend file:///
+  // On Unix paths like /foo/bar, prepend file://
+  if (/^[a-zA-Z]:/.test(normalized)) {
+    return `file:///${normalized}`
+  }
+  return `file://${normalized}`
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 export default function EditorPanel() {
   const { openFiles, activeFilePath, updateFileContent, markSaved, closeFile, closeAllFiles } = useEditorStore()
@@ -23,6 +48,7 @@ export default function EditorPanel() {
 
   // Editor config state for command palette toggling
   const [editorConfig, setEditorConfig] = useState({ fontSize: 13, minimap: true, wordWrap: false })
+  const minimapRef = useRef(true)
 
   // Inline edit (Ctrl+K) state
   const [inlineEditVisible, setInlineEditVisible] = useState(false)
@@ -35,9 +61,21 @@ export default function EditorPanel() {
   const [splitFilePath, setSplitFilePath] = useState<string | null>(null)
   const splitFile = splitFilePath ? openFiles.find((f) => f.path === splitFilePath) : null
 
+  const scanFile = useProblemsStore((s) => s.scanFile)
+
+  // Scan the active file for problems when it changes
+  useEffect(() => {
+    if (activeFile) {
+      scanFile(activeFile.path, activeFile.content)
+    }
+  }, [activeFilePath]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleChange = (value: string | undefined) => {
     if (activeFilePath && value !== undefined) {
       updateFileContent(activeFilePath, value)
+
+      // Scan for problems on content change
+      scanFile(activeFilePath, value)
 
       // Auto-save with 2-second debounce
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
@@ -217,10 +255,12 @@ export default function EditorPanel() {
   useEffect(() => {
     const handlers: Record<string, () => void> = {
       'orion:toggle-minimap': () => {
+        const current = minimapRef.current
+        const next = !current
+        minimapRef.current = next
         setEditorConfig(prev => {
-          const next = { ...prev, minimap: !prev.minimap }
-          editorRef.current?.updateOptions({ minimap: { enabled: next.minimap } })
-          return next
+          editorRef.current?.updateOptions({ minimap: { enabled: next } })
+          return { ...prev, minimap: next }
         })
       },
       'orion:toggle-wordwrap': () => {
@@ -399,27 +439,33 @@ export default function EditorPanel() {
       <div className="flex-1 overflow-hidden" style={{ display: 'flex' }}>
         {activeFile ? (
           <>
-            {/* Primary editor */}
+            {/* Primary editor or image preview */}
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-              <Editor
-                theme="vs-dark"
-                language={activeFile.language}
-                value={activeFile.content}
-                onChange={handleChange}
-                onMount={handleEditorMount}
-                loading={<EditorLoading />}
-                options={editorOptions}
-              />
-              {/* Inline Edit Overlay */}
-              {inlineEditVisible && (
-                <InlineEdit
-                  visible={inlineEditVisible}
-                  onClose={() => setInlineEditVisible(false)}
-                  onSubmit={handleInlineEditSubmit}
-                  isProcessing={inlineProcessing}
-                  selectedText={inlineEditText}
-                  position={inlineEditPos}
-                />
+              {isImageFile(activeFile.path) ? (
+                <ImagePreview filePath={activeFile.path} />
+              ) : (
+                <>
+                  <Editor
+                    theme="vs-dark"
+                    language={activeFile.language}
+                    value={activeFile.content}
+                    onChange={handleChange}
+                    onMount={handleEditorMount}
+                    loading={<EditorLoading />}
+                    options={editorOptions}
+                  />
+                  {/* Inline Edit Overlay */}
+                  {inlineEditVisible && (
+                    <InlineEdit
+                      visible={inlineEditVisible}
+                      onClose={() => setInlineEditVisible(false)}
+                      onSubmit={handleInlineEditSubmit}
+                      isProcessing={inlineProcessing}
+                      selectedText={inlineEditText}
+                      position={inlineEditPos}
+                    />
+                  )}
+                </>
               )}
             </div>
 
@@ -573,6 +619,250 @@ function Breadcrumbs({ path, saving }: { path: string; saving: boolean }) {
         </span>
       )}
     </div>
+  )
+}
+
+function ImagePreview({ filePath }: { filePath: string }) {
+  const [zoom, setZoom] = useState(1)
+  const [fitMode, setFitMode] = useState<'fit' | 'actual' | 'custom'>('fit')
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null)
+  const [fileSize, setFileSize] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  const src = filePathToFileUrl(filePath)
+  const ext = filePath.replace(/\\/g, '/').split('/').pop()?.split('.').pop()?.toLowerCase() || ''
+  const fileName = filePath.replace(/\\/g, '/').split('/').pop() || ''
+
+  // Estimate file size from content length
+  useEffect(() => {
+    setLoadError(false)
+    setDimensions(null)
+    setFileSize(null)
+    setZoom(1)
+    setFitMode('fit')
+  }, [filePath])
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    setDimensions({ width: img.naturalWidth, height: img.naturalHeight })
+
+    // Try to estimate file size via fetch on the file URL
+    fetch(src)
+      .then((res) => res.blob())
+      .then((blob) => setFileSize(formatFileSize(blob.size)))
+      .catch(() => setFileSize(null))
+  }
+
+  const handleZoomIn = () => {
+    setFitMode('custom')
+    setZoom((z) => Math.min(z * 1.25, 10))
+  }
+
+  const handleZoomOut = () => {
+    setFitMode('custom')
+    setZoom((z) => Math.max(z / 1.25, 0.1))
+  }
+
+  const handleFit = () => {
+    setFitMode('fit')
+    setZoom(1)
+  }
+
+  const handleActualSize = () => {
+    setFitMode('actual')
+    setZoom(1)
+  }
+
+  // Compute image style based on fit mode
+  const getImageStyle = (): React.CSSProperties => {
+    if (fitMode === 'fit') {
+      return {
+        maxWidth: '100%',
+        maxHeight: '100%',
+        objectFit: 'contain' as const,
+      }
+    }
+    if (fitMode === 'actual') {
+      return {
+        width: dimensions?.width ?? 'auto',
+        height: dimensions?.height ?? 'auto',
+      }
+    }
+    // custom zoom
+    return {
+      width: dimensions ? dimensions.width * zoom : 'auto',
+      height: dimensions ? dimensions.height * zoom : 'auto',
+    }
+  }
+
+  // Checkered transparency background pattern
+  const checkeredBg = `
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%)
+  `.trim()
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: 'var(--bg-primary)',
+      }}
+    >
+      {/* Image viewport */}
+      <div
+        ref={containerRef}
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundImage: checkeredBg,
+          backgroundSize: '16px 16px',
+          backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0',
+          backgroundColor: '#1e1e1e',
+          padding: 24,
+        }}
+      >
+        {loadError ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+            <ImageIcon size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
+            <p style={{ fontSize: 13 }}>Failed to load image</p>
+            <p style={{ fontSize: 11, marginTop: 4, opacity: 0.6 }}>{fileName}</p>
+          </div>
+        ) : (
+          <img
+            ref={imgRef}
+            src={src}
+            alt={fileName}
+            onLoad={handleImageLoad}
+            onError={() => setLoadError(true)}
+            draggable={false}
+            style={{
+              ...getImageStyle(),
+              imageRendering: zoom > 2 ? 'pixelated' : 'auto',
+              transition: 'width 0.15s ease, height 0.15s ease',
+            }}
+          />
+        )}
+      </div>
+
+      {/* Info bar and controls */}
+      <div
+        style={{
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '6px 12px',
+          borderTop: '1px solid var(--border)',
+          background: 'var(--bg-secondary)',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          gap: 12,
+        }}
+      >
+        {/* Left: file info */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+            {fileName}
+          </span>
+          {dimensions && (
+            <span>{dimensions.width} x {dimensions.height}</span>
+          )}
+          {fileSize && (
+            <span>{fileSize}</span>
+          )}
+          <span style={{ textTransform: 'uppercase', opacity: 0.7 }}>{ext}</span>
+        </div>
+
+        {/* Right: zoom controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <ImagePreviewButton
+            onClick={handleFit}
+            title="Fit to view"
+            active={fitMode === 'fit'}
+          >
+            <Minimize2 size={13} />
+          </ImagePreviewButton>
+          <ImagePreviewButton
+            onClick={handleActualSize}
+            title="100% (actual size)"
+            active={fitMode === 'actual'}
+          >
+            <Maximize2 size={13} />
+          </ImagePreviewButton>
+          <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
+          <ImagePreviewButton onClick={handleZoomOut} title="Zoom out">
+            <ZoomOut size={13} />
+          </ImagePreviewButton>
+          <span style={{
+            minWidth: 40,
+            textAlign: 'center',
+            fontSize: 11,
+            color: 'var(--text-secondary)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {fitMode === 'fit' ? 'Fit' : `${Math.round(zoom * 100)}%`}
+          </span>
+          <ImagePreviewButton onClick={handleZoomIn} title="Zoom in">
+            <ZoomIn size={13} />
+          </ImagePreviewButton>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ImagePreviewButton({
+  onClick,
+  title,
+  active,
+  children,
+}: {
+  onClick: () => void
+  title: string
+  active?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 26,
+        height: 22,
+        border: 'none',
+        borderRadius: 3,
+        cursor: 'pointer',
+        color: active ? 'var(--accent)' : 'var(--text-muted)',
+        background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
+        transition: 'color 0.15s, background 0.15s',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--text-secondary)'
+          e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--text-muted)'
+          e.currentTarget.style.background = 'transparent'
+        }
+      }}
+    >
+      {children}
+    </button>
   )
 }
 

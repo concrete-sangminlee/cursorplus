@@ -35,6 +35,7 @@ export interface OpenFile {
   language: string
   isModified: boolean
   aiModified: boolean
+  isPinned?: boolean
 }
 
 // Chat types

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useFileWatcher } from './hooks/useIpc'
 import { useOmo } from './hooks/useOmo'
 import TitleBar from './components/TitleBar'
@@ -6,6 +6,8 @@ import ActivityBar, { type PanelView } from './components/ActivityBar'
 import Resizer from './components/Resizer'
 import StatusBar from './components/StatusBar'
 import SettingsModal from './components/SettingsModal'
+import AboutDialog from './components/AboutDialog'
+import KeyboardShortcuts from './components/KeyboardShortcuts'
 import CommandPalette from '@/components/CommandPalette'
 import ToastContainer from '@/components/Toast'
 import AgentPanel from './panels/AgentPanel'
@@ -30,9 +32,49 @@ export default function App() {
   const [bottomPanelHeight, setBottomPanelHeight] = useState(DEFAULT_BOTTOM_PANEL_HEIGHT)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [bottomVisible, setBottomVisible] = useState(true)
   const [chatVisible, setChatVisible] = useState(true)
+  const [zenMode, setZenMode] = useState(false)
+  const [zenExitHovered, setZenExitHovered] = useState(false)
+
+  // Store pre-zen state so we can restore on exit
+  const preZenState = useRef<{
+    sidebar: boolean
+    bottom: boolean
+    chat: boolean
+  } | null>(null)
+
+  const toggleZenMode = useCallback(() => {
+    setZenMode((prev) => {
+      if (!prev) {
+        // Entering zen mode: save current state and hide everything
+        preZenState.current = {
+          sidebar: sidebarVisible,
+          bottom: bottomVisible,
+          chat: chatVisible,
+        }
+        setSidebarVisible(false)
+        setBottomVisible(false)
+        setChatVisible(false)
+      } else {
+        // Exiting zen mode: restore previous state
+        if (preZenState.current) {
+          setSidebarVisible(preZenState.current.sidebar)
+          setBottomVisible(preZenState.current.bottom)
+          setChatVisible(preZenState.current.chat)
+          preZenState.current = null
+        } else {
+          setSidebarVisible(true)
+          setBottomVisible(true)
+          setChatVisible(true)
+        }
+      }
+      return !prev
+    })
+  }, [sidebarVisible, bottomVisible, chatVisible])
 
   const handleSideResize = useCallback((delta: number) => {
     setSidePanelWidth((w) => Math.max(MIN_PANEL_WIDTH, w + delta))
@@ -71,6 +113,9 @@ export default function App() {
       'orion:toggle-chat': () => setChatVisible((v) => !v),
       'orion:open-settings': () => setSettingsOpen(true),
       'orion:open-palette': () => setPaletteOpen(true),
+      'orion:keyboard-shortcuts': () => setShortcutsOpen(true),
+      'orion:zen-mode': () => toggleZenMode(),
+      'orion:about': () => setAboutOpen(true),
       'orion:show-explorer': () => { setSidebarVisible(true); setActiveView('explorer') },
       'orion:show-search': () => { setSidebarVisible(true); setActiveView('search') },
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
@@ -85,7 +130,7 @@ export default function App() {
         window.removeEventListener(event, handler)
       })
     }
-  }, [])
+  }, [toggleZenMode])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -162,11 +207,17 @@ export default function App() {
         setActiveView('outline')
         return
       }
+      // Escape -> exit zen mode
+      if (e.key === 'Escape' && zenMode) {
+        e.preventDefault()
+        toggleZenMode()
+        return
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [zenMode, toggleZenMode])
 
   return (
     <div
@@ -178,24 +229,44 @@ export default function App() {
         overflow: 'hidden',
       }}
     >
-      <TitleBar />
+      {/* Title Bar - hidden in zen mode with smooth transition */}
+      <div
+        style={{
+          overflow: 'hidden',
+          maxHeight: zenMode ? 0 : 38,
+          opacity: zenMode ? 0 : 1,
+          transition: 'max-height 0.3s ease, opacity 0.2s ease',
+        }}
+      >
+        <TitleBar />
+      </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <ActivityBar
-          activeView={activeView}
-          onViewChange={(v) => {
-            if (v === activeView && sidebarVisible) {
-              setSidebarVisible(false)
-            } else {
-              setSidebarVisible(true)
-              setActiveView(v)
-            }
+        {/* Activity Bar - hidden in zen mode */}
+        <div
+          style={{
+            overflow: 'hidden',
+            maxWidth: zenMode ? 0 : 48,
+            opacity: zenMode ? 0 : 1,
+            transition: 'max-width 0.3s ease, opacity 0.2s ease',
           }}
-          onSettingsClick={() => setSettingsOpen(true)}
-        />
+        >
+          <ActivityBar
+            activeView={activeView}
+            onViewChange={(v) => {
+              if (v === activeView && sidebarVisible) {
+                setSidebarVisible(false)
+              } else {
+                setSidebarVisible(true)
+                setActiveView(v)
+              }
+            }}
+            onSettingsClick={() => setSettingsOpen(true)}
+          />
+        </div>
 
         {/* Side Panel */}
-        {sidebarVisible && (
+        {sidebarVisible && !zenMode && (
           <>
             <div
               style={{
@@ -223,7 +294,7 @@ export default function App() {
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <EditorPanel />
           </div>
-          {bottomVisible && (
+          {bottomVisible && !zenMode && (
             <>
               <Resizer direction="vertical" onResize={handleBottomResize} />
               <div style={{ height: bottomPanelHeight }}>
@@ -234,7 +305,7 @@ export default function App() {
         </div>
 
         {/* Right Panel: Chat */}
-        {chatVisible && (
+        {chatVisible && !zenMode && (
           <>
             <Resizer direction="horizontal" onResize={handleRightResize} />
             <div style={{ width: rightPanelWidth }}>
@@ -244,12 +315,57 @@ export default function App() {
         )}
       </div>
 
-      <StatusBar
-        onToggleTerminal={() => setBottomVisible((v) => !v)}
-        onToggleChat={() => setChatVisible((v) => !v)}
-      />
+      {/* Status Bar - hidden in zen mode with smooth transition */}
+      <div
+        style={{
+          overflow: 'hidden',
+          maxHeight: zenMode ? 0 : 22,
+          opacity: zenMode ? 0 : 1,
+          transition: 'max-height 0.3s ease, opacity 0.2s ease',
+        }}
+      >
+        <StatusBar
+          onToggleTerminal={() => setBottomVisible((v) => !v)}
+          onToggleChat={() => setChatVisible((v) => !v)}
+        />
+      </div>
+
+      {/* Zen Mode: floating exit button */}
+      {zenMode && (
+        <button
+          onClick={toggleZenMode}
+          onMouseEnter={() => setZenExitHovered(true)}
+          onMouseLeave={() => setZenExitHovered(false)}
+          style={{
+            position: 'fixed',
+            top: 10,
+            right: 10,
+            zIndex: 50,
+            padding: '5px 14px',
+            fontSize: 11,
+            fontWeight: 600,
+            color: zenExitHovered ? 'var(--text-primary)' : 'var(--text-muted)',
+            background: zenExitHovered
+              ? 'rgba(255, 255, 255, 0.12)'
+              : 'rgba(255, 255, 255, 0.06)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            cursor: 'pointer',
+            transition: 'background 0.15s, color 0.15s, opacity 0.3s',
+            opacity: zenExitHovered ? 1 : 0.6,
+            backdropFilter: 'blur(8px)',
+            animation: 'fade-in 0.3s ease-out',
+          }}
+        >
+          Exit Zen Mode
+        </button>
+      )}
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+
+      <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       <CommandPalette
         open={paletteOpen}

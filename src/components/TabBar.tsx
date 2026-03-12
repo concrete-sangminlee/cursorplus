@@ -11,7 +11,7 @@ const extColors: Record<string, string> = {
 }
 
 export default function TabBar() {
-  const { openFiles, activeFilePath, setActiveFile, closeFile, closeAllFiles, reorderFiles } = useEditorStore()
+  const { openFiles, activeFilePath, setActiveFile, closeFile, closeAllFiles, reorderFiles, pinFile, previewPath } = useEditorStore()
   const [hoveredTab, setHoveredTab] = useState<string | null>(null)
   const [dragOverPath, setDragOverPath] = useState<string | null>(null)
   const [draggingPath, setDraggingPath] = useState<string | null>(null)
@@ -34,6 +34,7 @@ export default function TabBar() {
         const isHovered = hoveredTab === file.path
         const isDragOver = dragOverPath === file.path && draggingPath !== file.path
         const isDragging = draggingPath === file.path
+        const isPreview = previewPath === file.path && !file.isPinned
         const ext = file.name.split('.').pop()?.toLowerCase() || ''
         const dotColor = extColors[ext] || '#8b949e'
         const showClose = isActive || isHovered
@@ -72,6 +73,9 @@ export default function TabBar() {
               dragIndexRef.current = -1
             }}
             onClick={() => setActiveFile(file.path)}
+            onDoubleClick={() => {
+              if (isPreview) pinFile(file.path)
+            }}
             className="shrink-0 flex items-center cursor-pointer"
             style={{
               height: 35,
@@ -148,6 +152,11 @@ export default function TabBar() {
                 flex: 1,
                 minWidth: 0,
                 lineHeight: '35px',
+                fontStyle: isPreview ? 'italic' : 'normal',
+                opacity: isPreview && !isActive ? 0.75 : 1,
+                textDecoration: isPreview ? 'underline dotted' : 'none',
+                textDecorationColor: isPreview ? 'var(--text-muted)' : undefined,
+                textUnderlineOffset: 3,
               }}
             >
               {file.name}

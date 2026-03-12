@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAgentStore } from '@/store/agents'
 import { useEditorStore } from '@/store/editor'
 import { useChatStore } from '@/store/chat'
 import { useFileStore } from '@/store/files'
+import { useToastStore } from '@/store/toast'
+import NotificationCenter from '@/components/NotificationCenter'
 import {
   GitBranch,
   AlertTriangle,
@@ -73,7 +75,10 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
   const activeAgents = agents.filter((a) => a.status !== 'idle').length
   const errorCount = logs.filter((l) => l.type === 'error').length
   const warningCount = logs.filter((l) => l.type === 'action').length
-  const unreadNotifications = errorCount + activeAgents
+  const storeUnreadCount = useToastStore((s) => s.getUnreadCount)()
+  const unreadNotifications = storeUnreadCount > 0 ? storeUnreadCount : errorCount + activeAgents
+  const [notifCenterOpen, setNotifCenterOpen] = useState(false)
+  const bellRef = useRef<HTMLDivElement>(null)
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
   const [cursorPos, setCursorPos] = useState({ line: 1, column: 1 })
   const [selectionInfo, setSelectionInfo] = useState<{ chars: number; lines: number } | null>(null)
@@ -305,37 +310,45 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
         <div className="status-divider" />
 
         {/* Notification bell */}
-        <StatusItem
-          title={unreadNotifications > 0 ? `${unreadNotifications} notification(s)` : 'No notifications'}
-          onClick={() => window.dispatchEvent(new CustomEvent('orion:show-agents'))}
-        >
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Bell size={11} style={{ color: unreadNotifications > 0 ? 'var(--accent, #58a6ff)' : 'var(--text-muted)' }} />
-            {unreadNotifications > 0 && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: -4,
-                  right: -6,
-                  background: 'var(--accent-red, #f44747)',
-                  color: '#fff',
-                  fontSize: 8,
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  minWidth: 12,
-                  height: 12,
-                  borderRadius: 6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0 3px',
-                }}
-              >
-                {unreadNotifications > 99 ? '99+' : unreadNotifications}
-              </span>
-            )}
-          </div>
-        </StatusItem>
+        <div ref={bellRef} style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+          <StatusItem
+            title={unreadNotifications > 0 ? `${unreadNotifications} notification(s)` : 'No notifications'}
+            onClick={() => setNotifCenterOpen((v) => !v)}
+          >
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Bell size={11} style={{ color: unreadNotifications > 0 ? 'var(--accent, #58a6ff)' : 'var(--text-muted)' }} />
+              {unreadNotifications > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -6,
+                    background: 'var(--accent-red, #f44747)',
+                    color: '#fff',
+                    fontSize: 8,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    minWidth: 12,
+                    height: 12,
+                    borderRadius: 6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 3px',
+                  }}
+                >
+                  {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                </span>
+              )}
+            </div>
+          </StatusItem>
+        </div>
+
+        <NotificationCenter
+          open={notifCenterOpen}
+          onClose={() => setNotifCenterOpen(false)}
+          anchorRef={bellRef}
+        />
 
         {/* Toggle buttons */}
         <StatusItem onClick={onToggleTerminal} title="Toggle Terminal (Ctrl+`)">

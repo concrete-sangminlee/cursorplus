@@ -450,8 +450,9 @@ function FileTreeNode({
   onInlineCancel: () => void
 }) {
   const { expandedDirs, toggleDir } = useFileStore()
-  const { openFile, activeFilePath } = useEditorStore()
+  const { openFile, activeFilePath, pinFile } = useEditorStore()
   const [contextActive, setContextActive] = useState(false)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isExpanded = expandedDirs.has(node.path)
   const isActive = activeFilePath === node.path
   const isDir = node.type === 'directory'
@@ -460,24 +461,46 @@ function FileTreeNode({
   const isRenaming =
     inlineInput?.mode === 'rename' && inlineInput.existingPath === node.path
 
-  const handleClick = async () => {
-    if (isDir) {
-      toggleDir(node.path)
-    } else {
-      try {
-        const result = await window.api.readFile(node.path)
-        openFile({
+  /** Open the file in the editor (preview or pinned) */
+  const openFileInEditor = async (preview: boolean) => {
+    try {
+      const result = await window.api.readFile(node.path)
+      openFile(
+        {
           path: node.path,
           name: node.name,
           content: result.content,
           language: result.language,
           isModified: false,
           aiModified: false,
-        })
-      } catch (e) {
-        console.error('Failed to open file:', e)
-      }
+        },
+        { preview },
+      )
+    } catch (e) {
+      console.error('Failed to open file:', e)
     }
+  }
+
+  const handleClick = () => {
+    if (isDir) {
+      toggleDir(node.path)
+      return
+    }
+    // Delay single-click to distinguish from double-click
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      openFileInEditor(true) // single-click → preview
+    }, 200)
+  }
+
+  const handleDoubleClick = () => {
+    if (isDir) return
+    // Cancel the pending single-click
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+    openFileInEditor(false) // double-click → pinned
   }
 
   const handleCtx = (e: React.MouseEvent) => {
@@ -528,6 +551,7 @@ function FileTreeNode({
     <>
       <div
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleCtx}
         className="flex items-center cursor-pointer transition-colors duration-75"
         style={{
