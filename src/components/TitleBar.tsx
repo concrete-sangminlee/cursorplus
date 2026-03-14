@@ -51,6 +51,37 @@ function ensureTitleBarStyles() {
       --titlebar-pill-border: rgba(255, 255, 255, 0.08);
       --titlebar-modified-dot: #e5c07b;
     }
+
+    /* Dropdown open/close animation */
+    @keyframes orion-dropdown-in {
+      from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .orion-dropdown-animate {
+      animation: orion-dropdown-in 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      transform-origin: top left;
+    }
+
+    /* Window control button active press state */
+    .orion-winctrl:active {
+      opacity: 0.7;
+    }
+
+    /* Logo subtle glow on hover */
+    .orion-logo-icon {
+      transition: filter 0.25s ease, transform 0.25s ease;
+    }
+    .orion-logo-icon:hover {
+      filter: drop-shadow(0 0 6px rgba(88, 166, 255, 0.45));
+      transform: scale(1.05);
+    }
   `
   document.head.appendChild(style)
 }
@@ -791,6 +822,7 @@ function SubMenu({
 
   return (
     <div
+      className="orion-dropdown-animate"
       style={{
         position: 'absolute',
         top: -4,
@@ -803,6 +835,7 @@ function SubMenu({
         boxShadow: 'var(--titlebar-dropdown-shadow)',
         padding: 4,
         zIndex: 10000,
+        backdropFilter: 'blur(12px)',
       }}
       onMouseDown={(e) => e.preventDefault()}
     >
@@ -848,7 +881,7 @@ function SubMenu({
                   background: isActive ? 'var(--titlebar-item-hover-bg)' : 'transparent',
                   cursor: 'default',
                   lineHeight: '18px',
-                  transition: 'background 0.08s, color 0.08s',
+                  transition: 'background 0.12s ease, color 0.12s ease',
                 }}
               >
                 <span>{item.label}</span>
@@ -973,6 +1006,7 @@ function DropdownMenu({
   return (
     <div
       ref={containerRef}
+      className="orion-dropdown-animate"
       style={{
         position: 'absolute',
         top: '100%',
@@ -985,6 +1019,7 @@ function DropdownMenu({
         boxShadow: 'var(--titlebar-dropdown-shadow)',
         padding: 4,
         zIndex: 9999,
+        backdropFilter: 'blur(12px)',
       }}
       onMouseDown={(e) => e.preventDefault()}
     >
@@ -1027,7 +1062,7 @@ function DropdownMenu({
                   background: isActive ? 'var(--titlebar-item-hover-bg)' : 'transparent',
                   cursor: 'default',
                   lineHeight: '18px',
-                  transition: 'background 0.08s, color 0.08s',
+                  transition: 'background 0.12s ease, color 0.12s ease',
                 }}
               >
                 <span>{item.label}</span>
@@ -1133,11 +1168,17 @@ export default function TitleBar() {
   const isModified = activeFile?.isModified || false
   const folderName = folderNameFromPath(fileStore.rootPath)
 
-  /* Build title string: "[modified dot] filename - folder - Orion IDE" */
-  const titleParts: string[] = []
-  if (fileName) titleParts.push(fileName)
-  if (folderName) titleParts.push(folderName)
-  titleParts.push('Orion IDE')
+  /* Build window title: "filename - Orion IDE" */
+  const windowTitle = fileName
+    ? `${fileName} - Orion IDE`
+    : folderName
+      ? `${folderName} - Orion IDE`
+      : 'Orion IDE'
+
+  /* Keep document.title in sync for the actual window frame */
+  useEffect(() => {
+    document.title = (isModified ? '\u25CF ' : '') + windowTitle
+  }, [windowTitle, isModified])
 
   /* Listen for debug session events */
   useEffect(() => {
@@ -1289,21 +1330,25 @@ export default function TitleBar() {
       <div
         data-no-dblclick
         className="flex items-center gap-2"
-        style={{ paddingLeft: 14, paddingRight: 8, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        style={{ paddingLeft: 14, paddingRight: 12, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <div
+          className="orion-logo-icon"
           style={{
-            width: 18,
-            height: 18,
+            width: 20,
+            height: 20,
             borderRadius: 5,
-            background: 'linear-gradient(135deg, #58a6ff 0%, #bc8cff 100%)',
+            background: 'linear-gradient(135deg, #58a6ff 0%, #8b5cf6 50%, #bc8cff 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
+            boxShadow: '0 1px 3px rgba(88, 166, 255, 0.2), inset 0 1px 0 rgba(255,255,255,0.15)',
+            cursor: 'pointer',
           }}
+          title="Orion IDE"
         >
-          <Zap size={10} color="#fff" fill="#fff" />
+          <Zap size={11} color="#fff" fill="#fff" style={{ filter: 'drop-shadow(0 0.5px 1px rgba(0,0,0,0.3))' }} />
         </div>
       </div>
 
@@ -1341,7 +1386,7 @@ export default function TitleBar() {
                       : 'transparent',
                   borderRadius: 'var(--titlebar-item-radius)',
                   margin: '0 1px',
-                  transition: 'color 0.1s, background 0.1s',
+                  transition: 'color 0.15s ease, background 0.15s ease',
                   cursor: 'default',
                   border: 'none',
                   outline: 'none',
@@ -1464,31 +1509,33 @@ export default function TitleBar() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 7,
             padding: '3px 12px 3px 10px',
-            minWidth: 220,
-            maxWidth: 380,
-            height: 24,
-            fontSize: 11,
+            minWidth: 280,
+            maxWidth: 420,
+            height: 26,
+            fontSize: 12,
             color: 'var(--text-muted)',
             background: 'var(--titlebar-pill-bg)',
             border: '1px solid var(--titlebar-pill-border)',
-            borderRadius: 6,
+            borderRadius: 20,
             cursor: 'pointer',
-            transition: 'background 0.12s, border-color 0.12s',
+            transition: 'background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease',
             outline: 'none',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--titlebar-pill-hover-bg)'
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.14)'
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.16)'
+            e.currentTarget.style.boxShadow = '0 0 0 1px rgba(88, 166, 255, 0.1)'
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'var(--titlebar-pill-bg)'
             e.currentTarget.style.borderColor = 'var(--titlebar-pill-border)'
+            e.currentTarget.style.boxShadow = 'none'
           }}
-          title="Search or run a command (Ctrl+Shift+P)"
+          title="Go to File (Ctrl+P)"
         >
-          <Search size={11} style={{ opacity: 0.5, flexShrink: 0 }} />
+          <Search size={12} style={{ opacity: 0.45, flexShrink: 0 }} />
           <span
             style={{
               flex: 1,
@@ -1496,6 +1543,7 @@ export default function TitleBar() {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              letterSpacing: '0.01em',
             }}
           >
             {/* Show title in the pill */}
@@ -1512,21 +1560,24 @@ export default function TitleBar() {
                 {'\u25CF'}
               </span>
             )}
-            {titleParts.join(' \u2014 ')}
+            {windowTitle}
           </span>
           <span
             style={{
               fontSize: 10,
-              opacity: 0.4,
+              opacity: 0.35,
               flexShrink: 0,
-              marginLeft: 8,
-              padding: '0 4px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: 3,
-              lineHeight: '16px',
+              marginLeft: 10,
+              padding: '1px 5px',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: 4,
+              lineHeight: '15px',
+              fontFamily: 'inherit',
+              letterSpacing: '0.02em',
             }}
           >
-            Ctrl+Shift+P
+            Ctrl+P
           </span>
         </button>
       </div>
@@ -1541,17 +1592,17 @@ export default function TitleBar() {
         {/* Minimize */}
         <button
           onClick={() => window.api?.minimize?.()}
-          className="flex items-center justify-center"
+          className="flex items-center justify-center orion-winctrl"
           aria-label="Minimize"
           style={{
             width: 46,
-            height: '100%',
+            height: 32,
             color: 'var(--text-muted)',
             background: 'transparent',
             border: 'none',
             outline: 'none',
             cursor: 'default',
-            transition: 'background 0.1s, color 0.1s',
+            transition: 'background 0.15s ease, color 0.15s ease',
             borderRadius: 0,
           }}
           onMouseEnter={(e) => {
@@ -1563,7 +1614,7 @@ export default function TitleBar() {
             e.currentTarget.style.color = 'var(--text-muted)'
           }}
         >
-          <Minus size={13} strokeWidth={1.5} />
+          <Minus size={14} strokeWidth={1.2} />
         </button>
 
         {/* Maximize / Restore */}
@@ -1572,17 +1623,17 @@ export default function TitleBar() {
             window.api?.maximize?.()
             setIsMaximized((prev) => !prev)
           }}
-          className="flex items-center justify-center"
+          className="flex items-center justify-center orion-winctrl"
           aria-label={isMaximized ? 'Restore' : 'Maximize'}
           style={{
             width: 46,
-            height: '100%',
+            height: 32,
             color: 'var(--text-muted)',
             background: 'transparent',
             border: 'none',
             outline: 'none',
             cursor: 'default',
-            transition: 'background 0.1s, color 0.1s',
+            transition: 'background 0.15s ease, color 0.15s ease',
             borderRadius: 0,
           }}
           onMouseEnter={(e) => {
@@ -1596,41 +1647,41 @@ export default function TitleBar() {
         >
           {isMaximized ? (
             /* Restore icon: overlapping rectangles (Windows 11 style) */
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.1">
               <rect x="2" y="3" width="6" height="6" rx="0.5" />
               <path d="M3.5 3V1.5C3.5 1.22 3.72 1 4 1H8.5C8.78 1 9 1.22 9 1.5V6C9 6.28 8.78 6.5 8.5 6.5H8" />
             </svg>
           ) : (
-            <Square size={10} strokeWidth={1.5} />
+            <Square size={10} strokeWidth={1.2} />
           )}
         </button>
 
         {/* Close */}
         <button
           onClick={() => window.api?.close?.()}
-          className="flex items-center justify-center"
+          className="flex items-center justify-center orion-winctrl"
           aria-label="Close"
           style={{
             width: 46,
-            height: '100%',
+            height: 32,
             color: 'var(--text-muted)',
             background: 'transparent',
             border: 'none',
             outline: 'none',
             cursor: 'default',
-            transition: 'background 0.1s, color 0.1s',
+            transition: 'background 0.15s ease, color 0.15s ease',
             borderRadius: 0,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--titlebar-close-hover-bg)'
-            e.currentTarget.style.color = 'var(--titlebar-close-hover-color)'
+            e.currentTarget.style.background = '#c42b1c'
+            e.currentTarget.style.color = '#ffffff'
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'transparent'
             e.currentTarget.style.color = 'var(--text-muted)'
           }}
         >
-          <X size={13} strokeWidth={1.5} />
+          <X size={14} strokeWidth={1.2} />
         </button>
       </div>
     </header>

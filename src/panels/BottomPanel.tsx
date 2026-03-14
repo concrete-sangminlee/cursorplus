@@ -69,6 +69,13 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
       60%  { transform: scale(1.1); }
       100% { transform: scale(1); opacity: 1; }
     }
+    @keyframes bp-content-fade {
+      from { opacity: 0; transform: translateY(2px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .bp-content-animated {
+      animation: bp-content-fade 0.18s ease-out;
+    }
     .bp-term-tab { transition: background 0.15s, color 0.15s, box-shadow 0.15s; }
     .bp-term-tab:hover { background: rgba(255,255,255,0.05) !important; }
     .bp-term-tab[data-active="true"] {
@@ -105,8 +112,26 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
       background: var(--accent) !important;
     }
     .bp-resize-handle-top {
-      top: -2px; left: 0; right: 0; height: 4px;
+      top: -3px; left: 0; right: 0; height: 6px;
       cursor: ns-resize;
+    }
+    .bp-resize-handle-top::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 32px;
+      height: 2px;
+      border-radius: 1px;
+      background: var(--border);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .bp-resize-handle-top:hover::before,
+    .bp-resize-handle-top.bp-resize-active::before {
+      opacity: 1;
+      background: var(--accent);
     }
     .bp-resize-handle-left {
       top: 0; left: -2px; bottom: 0; width: 4px;
@@ -602,12 +627,21 @@ export default function BottomPanel() {
   const problemsBadge = problemsErrorCount + problemsWarningCount
   const terminalSessionCount = terminals.filter(t => !t.splitParentId).length
 
-  const getBadge = useCallback((tabId: Tab): { count: number; color: string; bgColor: string } | null => {
+  const getBadge = useCallback((tabId: Tab): { count: number; color: string; bgColor: string; secondary?: { count: number; color: string } } | null => {
     switch (tabId) {
       case 'problems':
-        return problemsBadge > 0
-          ? { count: problemsBadge, color: 'var(--accent-red)', bgColor: 'rgba(248,81,73,0.15)' }
-          : null
+        if (problemsErrorCount > 0 || problemsWarningCount > 0) {
+          return {
+            count: problemsErrorCount,
+            color: problemsErrorCount > 0 ? 'var(--accent-red)' : 'var(--accent-orange)',
+            bgColor: problemsErrorCount > 0 ? 'rgba(248,81,73,0.15)' : 'rgba(227,179,65,0.15)',
+            ...(problemsWarningCount > 0 && problemsErrorCount > 0
+              ? { secondary: { count: problemsWarningCount, color: 'var(--accent-orange)' } }
+              : {}),
+            ...(problemsErrorCount === 0 ? { count: problemsWarningCount } : {}),
+          }
+        }
+        return null
       case 'output':
         return outputUnread > 0
           ? { count: outputUnread, color: 'var(--accent)', bgColor: 'rgba(88,166,255,0.12)' }
@@ -619,7 +653,7 @@ export default function BottomPanel() {
       default:
         return null
     }
-  }, [problemsBadge, outputUnread, terminalSessionCount])
+  }, [problemsErrorCount, problemsWarningCount, outputUnread, terminalSessionCount])
 
   /* ── Build split groups for rendering ────────────────── */
   const terminalGroups = buildTerminalGroups(terminals)
@@ -723,6 +757,7 @@ export default function BottomPanel() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    gap: 3,
                     padding: '0 4px',
                     background: badge.bgColor,
                     color: badge.color,
@@ -731,6 +766,14 @@ export default function BottomPanel() {
                   }}
                 >
                   {badge.count > 99 ? '99+' : badge.count}
+                  {badge.secondary && badge.secondary.count > 0 && (
+                    <>
+                      <span style={{ opacity: 0.4, fontSize: 8 }}>/</span>
+                      <span style={{ color: badge.secondary.color }}>
+                        {badge.secondary.count > 99 ? '99+' : badge.secondary.count}
+                      </span>
+                    </>
+                  )}
                 </span>
               )}
 
@@ -1029,13 +1072,19 @@ export default function BottomPanel() {
               {/* Kill terminal button */}
               <button
                 className="bp-toolbar-btn"
-                onClick={() => closeTerminal(activeTerminal)}
+                onClick={() => killTerminal(activeTerminal)}
                 title="Kill Terminal"
                 style={{
                   width: 24, height: 24,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   borderRadius: 4, border: 'none', cursor: 'pointer',
-                  color: 'var(--text-muted)', background: 'transparent',
+                  color: 'var(--accent-red, #f85149)', background: 'transparent',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(248,81,73,0.15)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent'
                 }}
               >
                 <Trash2 size={13} />
@@ -1166,7 +1215,7 @@ export default function BottomPanel() {
       </div>
 
       {/* ── Content area ───────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden bp-content-animated" key={activeTab}>
         {activeTab === 'terminal' && (
           <div style={{ height: '100%' }}>
             {terminalGroups.map(group => {

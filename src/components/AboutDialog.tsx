@@ -4,222 +4,263 @@ import {
   Sparkles,
   Copy,
   Check,
-  RefreshCw,
   ExternalLink,
   Github,
-  BookOpen,
-  Bug,
   FileText,
-  Star,
+  Scale,
+  Globe,
 } from 'lucide-react'
+import { APP_VERSION } from '@/utils/version'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
 
-/* ── Simulated system info ─────────────────────────────────────────── */
-const SYSTEM_INFO = {
-  electron: '28.2.1',
-  chrome: '120.0.6099.199',
-  node: '18.18.2',
-  v8: '12.0.267.19-electron.0',
-  os: navigator.platform || 'Unknown',
-  arch: navigator.userAgent.includes('x64') || navigator.userAgent.includes('Win64') ? 'x64' : 'arm64',
-  memory: `${((performance as any).memory?.usedJSHeapSize / 1048576)?.toFixed(1) || '128.4'} MB`,
+/* ── App info shape (matches preload.ts AppInfo) ─────────────────── */
+interface AppInfo {
+  version: string
+  electron: string
+  chrome: string
+  node: string
+  v8: string
+  platform: string
+  arch: string
 }
 
-const BUILD_NUMBER = '2026.03.1200'
-const BUILD_DATE = 'March 12, 2026'
-const VERSION = '1.2.0'
+const VERSION_FALLBACK = APP_VERSION
 
-/* ── Tech stack badges ─────────────────────────────────────────────── */
-const TECH_BADGES = [
-  { name: 'React', version: '18.3.1', color: '#61DAFB', bg: 'rgba(97,218,251,0.1)' },
-  { name: 'TypeScript', version: '5.4.5', color: '#3178C6', bg: 'rgba(49,120,198,0.1)' },
-  { name: 'Monaco Editor', version: '0.52.0', color: '#007ACC', bg: 'rgba(0,122,204,0.1)' },
-  { name: 'Electron', version: '28.2.1', color: '#9FEAF9', bg: 'rgba(159,234,249,0.1)' },
-  { name: 'xterm.js', version: '5.5.0', color: '#2E7D32', bg: 'rgba(46,125,50,0.1)' },
+/* ── Orion constellation data (reused from SplashScreen) ─────────── */
+const STARS: { cx: number; cy: number; r: number; delay: number; brightness: number }[] = [
+  { cx: 30, cy: 28, r: 3.2, delay: 0, brightness: 1 },       // Betelgeuse (left shoulder)
+  { cx: 88, cy: 30, r: 2.6, delay: 0.4, brightness: 0.9 },   // Bellatrix (right shoulder)
+  { cx: 44, cy: 56, r: 2.0, delay: 0.8, brightness: 0.85 },  // Alnitak (belt left)
+  { cx: 58, cy: 54, r: 2.4, delay: 1.2, brightness: 0.95 },  // Alnilam (belt center)
+  { cx: 72, cy: 52, r: 2.0, delay: 0.6, brightness: 0.85 },  // Mintaka (belt right)
+  { cx: 36, cy: 90, r: 2.2, delay: 1.0, brightness: 0.8 },   // Saiph (left foot)
+  { cx: 82, cy: 92, r: 3.0, delay: 0.2, brightness: 1 },     // Rigel (right foot)
+  { cx: 58, cy: 10, r: 1.6, delay: 1.4, brightness: 0.7 },   // Meissa (head)
 ]
 
-/* ── Links ─────────────────────────────────────────────────────────── */
+const LINES: [number, number][] = [
+  [7, 0], [7, 1], [0, 2], [1, 4],
+  [2, 3], [3, 4], [2, 5], [4, 6],
+]
+
+/* ── Links ────────────────────────────────────────────────────────── */
 const LINKS = [
-  { label: 'GitHub Repository', icon: Github, url: 'https://github.com/orion-ide/orion' },
-  { label: 'Documentation', icon: BookOpen, url: 'https://docs.orion-ide.dev' },
-  { label: 'Report Issue', icon: Bug, url: 'https://github.com/orion-ide/orion/issues/new' },
+  { label: 'Website',       icon: Globe,    url: 'https://orion-ide.dev' },
+  { label: 'GitHub',        icon: Github,   url: 'https://github.com/orion-ide/orion' },
+  { label: 'License',       icon: Scale,    url: 'https://github.com/orion-ide/orion/blob/main/LICENSE' },
   { label: 'Release Notes', icon: FileText, url: 'https://github.com/orion-ide/orion/releases' },
 ]
 
-/* ── Easter egg messages ───────────────────────────────────────────── */
-const EASTER_EGGS = [
-  'Per aspera ad astra!',
-  'You found a secret constellation!',
-  'The stars align for great code!',
-  'May your builds always succeed!',
-  'Orion watches over your code...',
-]
+/* ── Human-readable OS name ───────────────────────────────────────── */
+function formatPlatform(platform: string): string {
+  switch (platform) {
+    case 'win32': return 'Windows'
+    case 'darwin': return 'macOS'
+    case 'linux': return 'Linux'
+    default: return platform
+  }
+}
 
-/* ── Constellation SVG logo ────────────────────────────────────────── */
-function OrionLogo({ size = 36, animate = false }: { size?: number; animate?: boolean }) {
+/* ── Injected CSS ─────────────────────────────────────────────────── */
+const cssText = `
+  @keyframes about-overlay-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes about-dialog-in {
+    from { opacity: 0; transform: scale(0.92) translateY(12px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes about-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes about-twinkle {
+    0%, 100% { opacity: 0.4; transform: scale(0.85); }
+    50%      { opacity: 1; transform: scale(1.15); }
+  }
+  @keyframes about-line-draw {
+    from { stroke-dashoffset: 200; }
+    to   { stroke-dashoffset: 0; }
+  }
+  @keyframes about-star-glow {
+    0%, 100% { filter: drop-shadow(0 0 2px currentColor); }
+    50%      { filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 16px currentColor); }
+  }
+  .about-scroll::-webkit-scrollbar { width: 6px; }
+  .about-scroll::-webkit-scrollbar-track { background: transparent; }
+  .about-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .about-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+`
+
+/* ── Constellation SVG (reuses SplashScreen data) ─────────────────── */
+function OrionConstellation({ size = 80 }: { size?: number }) {
   return (
     <svg
+      viewBox="0 0 120 120"
       width={size}
       height={size}
-      viewBox="0 0 64 64"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={animate ? { animation: 'orion-spin 1.5s ease-in-out' } : undefined}
     >
-      {/* Constellation lines */}
-      <line x1="20" y1="10" x2="44" y2="10" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="20" y1="10" x2="14" y2="28" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="44" y1="10" x2="50" y2="28" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="14" y1="28" x2="22" y2="32" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="50" y1="28" x2="42" y2="32" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="22" y1="32" x2="32" y2="32" stroke="rgba(88,166,255,0.8)" strokeWidth="1.5" />
-      <line x1="32" y1="32" x2="42" y2="32" stroke="rgba(88,166,255,0.8)" strokeWidth="1.5" />
-      <line x1="22" y1="32" x2="16" y2="50" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="42" y1="32" x2="48" y2="50" stroke="rgba(188,140,255,0.5)" strokeWidth="1" />
-      <line x1="16" y1="50" x2="10" y2="58" stroke="rgba(188,140,255,0.4)" strokeWidth="1" />
-      <line x1="48" y1="50" x2="54" y2="58" stroke="rgba(188,140,255,0.4)" strokeWidth="1" />
-      {/* Stars — shoulder */}
-      <circle cx="20" cy="10" r="2.5" fill="#bc8cff">
-        {animate && <animate attributeName="r" values="2.5;4;2.5" dur="0.8s" />}
-      </circle>
-      <circle cx="44" cy="10" r="2.5" fill="#bc8cff">
-        {animate && <animate attributeName="r" values="2.5;4;2.5" dur="0.8s" begin="0.1s" />}
-      </circle>
-      {/* Stars — arms */}
-      <circle cx="14" cy="28" r="2" fill="#9ecbff" />
-      <circle cx="50" cy="28" r="2" fill="#9ecbff" />
-      {/* Belt — Orion's belt, 3 bright stars */}
-      <circle cx="22" cy="32" r="3" fill="#58a6ff">
-        {animate && <animate attributeName="opacity" values="1;0.5;1" dur="0.6s" />}
-      </circle>
-      <circle cx="32" cy="32" r="3.5" fill="#58a6ff">
-        {animate && <animate attributeName="opacity" values="1;0.5;1" dur="0.6s" begin="0.15s" />}
-      </circle>
-      <circle cx="42" cy="32" r="3" fill="#58a6ff">
-        {animate && <animate attributeName="opacity" values="1;0.5;1" dur="0.6s" begin="0.3s" />}
-      </circle>
-      {/* Stars — legs */}
-      <circle cx="16" cy="50" r="2" fill="#9ecbff" />
-      <circle cx="48" cy="50" r="2" fill="#9ecbff" />
-      {/* Stars — feet */}
-      <circle cx="10" cy="58" r="1.5" fill="rgba(158,203,255,0.7)" />
-      <circle cx="54" cy="58" r="1.5" fill="rgba(158,203,255,0.7)" />
-      {/* Nebula glow behind belt */}
-      <ellipse cx="32" cy="32" rx="16" ry="6" fill="url(#belt-glow)" opacity="0.3" />
-      <defs>
-        <radialGradient id="belt-glow">
-          <stop offset="0%" stopColor="#58a6ff" stopOpacity="0.6" />
-          <stop offset="100%" stopColor="#58a6ff" stopOpacity="0" />
-        </radialGradient>
-      </defs>
+      {LINES.map(([from, to], i) => (
+        <line
+          key={`l-${i}`}
+          x1={STARS[from].cx}
+          y1={STARS[from].cy}
+          x2={STARS[to].cx}
+          y2={STARS[to].cy}
+          stroke="var(--accent-purple, #bc8cff)"
+          strokeWidth="0.6"
+          opacity="0.25"
+          strokeDasharray="200"
+          style={{
+            animation: `about-line-draw 1.8s ease-out ${0.2 + i * 0.15}s forwards`,
+          }}
+        />
+      ))}
+      {STARS.map((star, i) => (
+        <g key={`s-${i}`}>
+          <circle
+            cx={star.cx}
+            cy={star.cy}
+            r={star.r * 2.5}
+            fill={`rgba(188, 140, 255, ${star.brightness * 0.08})`}
+            style={{
+              animation: `about-star-glow ${2.5 + star.delay * 0.5}s ease-in-out ${star.delay}s infinite`,
+              color: 'var(--accent-purple, #bc8cff)',
+            }}
+          />
+          <circle
+            cx={star.cx}
+            cy={star.cy}
+            r={star.r}
+            fill={star.brightness >= 0.95 ? 'var(--accent, #58a6ff)' : 'var(--accent-purple, #bc8cff)'}
+            style={{
+              animation: `about-twinkle ${2 + star.delay * 0.6}s ease-in-out ${star.delay}s infinite`,
+              transformOrigin: `${star.cx}px ${star.cy}px`,
+            }}
+          />
+          <circle
+            cx={star.cx}
+            cy={star.cy}
+            r={star.r * 0.4}
+            fill="#fff"
+            opacity={star.brightness * 0.7}
+          />
+        </g>
+      ))}
     </svg>
   )
 }
 
-/* ── Main component ────────────────────────────────────────────────── */
+/* ── Main component ───────────────────────────────────────────────── */
 export default function AboutDialog({ open, onClose }: Props) {
   const [copied, setCopied] = useState(false)
-  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'done'>('idle')
-  const [logoClicks, setLogoClicks] = useState(0)
-  const [easterEgg, setEasterEgg] = useState<string | null>(null)
-  const [logoAnimate, setLogoAnimate] = useState(false)
-  const easterEggTimer = useRef<ReturnType<typeof setTimeout>>()
-  const clickResetTimer = useRef<ReturnType<typeof setTimeout>>()
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Fetch real system info from main process via IPC
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    window.api?.appGetInfo?.().then((info: AppInfo) => {
+      if (!cancelled) setAppInfo(info)
+    }).catch(() => {
+      // Fallback: leave appInfo null, the UI will show placeholders
+    })
+    return () => { cancelled = true }
+  }, [open])
 
   // Reset state when dialog closes
   useEffect(() => {
     if (!open) {
       setCopied(false)
-      setUpdateState('idle')
-      setLogoClicks(0)
-      setEasterEgg(null)
-      setLogoAnimate(false)
+      setAppInfo(null)
     }
   }, [open])
 
-  const handleCopySystemInfo = useCallback(() => {
-    const info = [
-      `Orion IDE v${VERSION}`,
-      `Build: ${BUILD_NUMBER} (${BUILD_DATE})`,
+  // Escape key handler
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [open, onClose])
+
+  // Focus trap: focus dialog on mount
+  useEffect(() => {
+    if (open && dialogRef.current) {
+      dialogRef.current.focus()
+    }
+  }, [open])
+
+  const version = appInfo?.version || VERSION_FALLBACK
+  const osLabel = appInfo
+    ? `${formatPlatform(appInfo.platform)} (${appInfo.arch})`
+    : `${navigator.platform || 'Unknown'}`
+
+  const handleCopy = useCallback(() => {
+    const lines = [
+      `Orion IDE v${version}`,
       '',
       'System Information:',
-      `  Electron: ${SYSTEM_INFO.electron}`,
-      `  Chrome: ${SYSTEM_INFO.chrome}`,
-      `  Node.js: ${SYSTEM_INFO.node}`,
-      `  V8: ${SYSTEM_INFO.v8}`,
-      `  OS: ${SYSTEM_INFO.os} (${SYSTEM_INFO.arch})`,
-      `  Memory: ${SYSTEM_INFO.memory}`,
+      `  Electron: ${appInfo?.electron || 'N/A'}`,
+      `  Chrome:   ${appInfo?.chrome || 'N/A'}`,
+      `  Node.js:  ${appInfo?.node || 'N/A'}`,
+      `  V8:       ${appInfo?.v8 || 'N/A'}`,
+      `  OS:       ${osLabel}`,
     ].join('\n')
-    navigator.clipboard.writeText(info).then(() => {
+    navigator.clipboard.writeText(lines).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
-  }, [])
+  }, [appInfo, version, osLabel])
 
-  const handleCheckUpdates = useCallback(() => {
-    if (updateState === 'checking') return
-    setUpdateState('checking')
-    setTimeout(() => setUpdateState('done'), 2200)
-  }, [updateState])
-
-  const handleLogoClick = useCallback(() => {
-    const next = logoClicks + 1
-    setLogoClicks(next)
-
-    // Reset click counter after 3 seconds of no clicks
-    if (clickResetTimer.current) clearTimeout(clickResetTimer.current)
-    clickResetTimer.current = setTimeout(() => setLogoClicks(0), 3000)
-
-    if (next >= 5) {
-      setLogoAnimate(true)
-      const msg = EASTER_EGGS[Math.floor(Math.random() * EASTER_EGGS.length)]
-      setEasterEgg(msg)
-      setLogoClicks(0)
-      setTimeout(() => setLogoAnimate(false), 1500)
-      if (easterEggTimer.current) clearTimeout(easterEggTimer.current)
-      easterEggTimer.current = setTimeout(() => setEasterEgg(null), 4000)
+  const handleLink = useCallback((url: string) => {
+    if (window.api?.shellOpenExternal) {
+      window.api.shellOpenExternal(url)
+    } else {
+      window.open(url, '_blank')
     }
-  }, [logoClicks])
+  }, [])
 
   if (!open) return null
 
   return (
     <>
-      {/* Keyframe injection */}
-      <style>{`
-        @keyframes orion-spin { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.3); } 100% { transform: rotate(360deg) scale(1); } }
-        @keyframes orion-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes orion-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        @keyframes orion-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-        @keyframes orion-egg-in { 0% { opacity: 0; transform: scale(0.8) translateY(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
-        .about-scroll::-webkit-scrollbar { width: 6px; }
-        .about-scroll::-webkit-scrollbar-track { background: transparent; }
-        .about-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-        .about-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
-      `}</style>
+      <style>{cssText}</style>
 
-      {/* Backdrop */}
+      {/* Overlay with glass effect */}
       <div
         style={{
           position: 'fixed',
           inset: 0,
-          zIndex: 100,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 10000,
+          background: 'rgba(0, 0, 0, 0.55)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          animation: 'about-overlay-in 0.25s ease-out both',
         }}
         onClick={onClose}
       >
-        {/* Dialog */}
+        {/* Dialog card */}
         <div
-          className="anim-scale-in"
+          ref={dialogRef}
+          tabIndex={-1}
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 460,
@@ -227,13 +268,16 @@ export default function AboutDialog({ open, onClose }: Props) {
             background: 'var(--bg-secondary, #1e1e2e)',
             border: '1px solid var(--border, #333)',
             borderRadius: 14,
-            boxShadow: '0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset',
+            boxShadow:
+              '0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
+            outline: 'none',
+            animation: 'about-dialog-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both',
           }}
         >
-          {/* Header bar */}
+          {/* Header */}
           <div
             style={{
               display: 'flex',
@@ -243,9 +287,20 @@ export default function AboutDialog({ open, onClose }: Props) {
               flexShrink: 0,
             }}
           >
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted, #666)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>About</span>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--text-muted, #666)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+              }}
+            >
+              About
+            </span>
             <button
               onClick={onClose}
+              aria-label="Close"
               style={{
                 padding: 4,
                 borderRadius: 6,
@@ -257,8 +312,12 @@ export default function AboutDialog({ open, onClose }: Props) {
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
               <X size={16} />
             </button>
@@ -277,133 +336,129 @@ export default function AboutDialog({ open, onClose }: Props) {
               flex: 1,
             }}
           >
-            {/* ── Logo ────────────────────────────────────── */}
+            {/* Constellation logo */}
             <div
-              onClick={handleLogoClick}
               style={{
-                width: 72,
-                height: 72,
-                borderRadius: 18,
-                background: 'linear-gradient(135deg, rgba(88,166,255,0.15) 0%, rgba(188,140,255,0.15) 100%)',
-                border: '1px solid rgba(88,166,255,0.2)',
+                width: 88,
+                height: 88,
+                borderRadius: 22,
+                background:
+                  'linear-gradient(135deg, rgba(88,166,255,0.12) 0%, rgba(188,140,255,0.12) 100%)',
+                border: '1px solid rgba(88,166,255,0.18)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'pointer',
-                userSelect: 'none',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                boxShadow: logoAnimate
-                  ? '0 0 30px rgba(88,166,255,0.5), 0 0 60px rgba(188,140,255,0.3)'
-                  : '0 4px 24px rgba(88,166,255,0.15)',
+                boxShadow: '0 4px 24px rgba(88,166,255,0.12)',
               }}
-              title="Click me 5 times..."
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.06)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)' }}
             >
-              <OrionLogo size={42} animate={logoAnimate} />
+              <OrionConstellation size={64} />
             </div>
 
-            {/* ── Easter egg message ──────────────────────── */}
-            {easterEgg && (
-              <div
-                style={{
-                  animation: 'orion-egg-in 0.4s ease-out',
-                  padding: '6px 16px',
-                  borderRadius: 20,
-                  background: 'linear-gradient(135deg, rgba(88,166,255,0.15), rgba(188,140,255,0.15))',
-                  border: '1px solid rgba(188,140,255,0.3)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#bc8cff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Star size={12} fill="#bc8cff" />
-                {easterEgg}
-                <Star size={12} fill="#bc8cff" />
-              </div>
-            )}
-
-            {/* ── Title ───────────────────────────────────── */}
+            {/* Title with gradient text */}
             <div style={{ textAlign: 'center' }}>
               <h2
                 style={{
-                  fontSize: 22,
+                  fontSize: 26,
                   fontWeight: 800,
-                  letterSpacing: '0.5px',
+                  letterSpacing: '-0.5px',
                   margin: 0,
-                  background: 'linear-gradient(135deg, #58a6ff 0%, #bc8cff 50%, #58a6ff 100%)',
-                  backgroundSize: '200% auto',
+                  background:
+                    'linear-gradient(135deg, var(--accent-purple, #bc8cff) 0%, var(--accent, #58a6ff) 50%, var(--accent-green, #3fb950) 100%)',
+                  backgroundSize: '200% 200%',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
-                  animation: 'orion-shimmer 4s linear infinite',
+                  animation: 'about-shimmer 4s linear infinite',
                 }}
               >
                 Orion IDE
               </h2>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  marginTop: 6,
+                }}
+              >
                 <Sparkles size={13} color="#bc8cff" />
-                <span style={{ fontSize: 12, color: 'var(--text-muted, #888)', fontWeight: 500 }}>AI-Powered Code Editor</span>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-muted, #888)',
+                    fontWeight: 500,
+                  }}
+                >
+                  AI-Powered Code Editor
+                </span>
               </div>
             </div>
 
-            {/* ── Version badge ────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '3px 12px',
-                  borderRadius: 20,
-                  background: 'rgba(88,166,255,0.1)',
-                  border: '1px solid rgba(88,166,255,0.2)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: 'var(--accent, #58a6ff)',
-                  fontFamily: 'var(--font-mono, monospace)',
-                }}
-              >
-                v{VERSION}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted, #666)', fontFamily: 'var(--font-mono, monospace)' }}>
-                Build {BUILD_NUMBER}
-              </span>
-            </div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted, #666)', marginTop: -14 }}>
-              {BUILD_DATE}
+            {/* Version badge */}
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '3px 14px',
+                borderRadius: 20,
+                background: 'rgba(88,166,255,0.1)',
+                border: '1px solid rgba(88,166,255,0.2)',
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--accent, #58a6ff)',
+                fontFamily: 'var(--font-mono, monospace)',
+              }}
+            >
+              v{version}
             </span>
 
-            {/* ── System Information ──────────────────────── */}
+            {/* System Information */}
             <SectionLabel text="System Information" />
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border, #333)' }}>
-              <SysRow label="Electron" value={SYSTEM_INFO.electron} />
-              <SysRow label="Chrome" value={SYSTEM_INFO.chrome} />
-              <SysRow label="Node.js" value={SYSTEM_INFO.node} />
-              <SysRow label="V8" value={SYSTEM_INFO.v8} />
-              <SysRow label="OS" value={`${SYSTEM_INFO.os} (${SYSTEM_INFO.arch})`} />
-              <SysRow label="Memory" value={SYSTEM_INFO.memory} last />
+            <div
+              style={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1,
+                borderRadius: 8,
+                overflow: 'hidden',
+                border: '1px solid var(--border, #333)',
+              }}
+            >
+              <SysRow label="Electron" value={appInfo?.electron || '...'} />
+              <SysRow label="Chrome" value={appInfo?.chrome || '...'} />
+              <SysRow label="Node.js" value={appInfo?.node || '...'} />
+              <SysRow label="V8" value={appInfo?.v8 || '...'} />
+              <SysRow label="OS" value={osLabel} />
+              <SysRow
+                label="Architecture"
+                value={appInfo?.arch || '...'}
+                last
+              />
             </div>
 
-            {/* ── Built With ─────────────────────────────── */}
-            <SectionLabel text="Built With" />
-            <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
-              {TECH_BADGES.map((b) => (
-                <TechBadge key={b.name} name={b.name} version={b.version} color={b.color} bg={b.bg} />
-              ))}
-            </div>
-
-            {/* ── Links ──────────────────────────────────── */}
+            {/* Links */}
             <SectionLabel text="Links" />
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div
+              style={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+              }}
+            >
               {LINKS.map((link) => (
-                <LinkRow key={link.label} label={link.label} icon={link.icon} url={link.url} />
+                <LinkRow
+                  key={link.label}
+                  label={link.label}
+                  icon={link.icon}
+                  onClick={() => handleLink(link.url)}
+                />
               ))}
             </div>
 
-            {/* ── License ─────────────────────────────────── */}
+            {/* Copyright */}
             <div
               style={{
                 width: '100%',
@@ -417,45 +472,58 @@ export default function AboutDialog({ open, onClose }: Props) {
                 textAlign: 'center',
               }}
             >
-              Released under the <span style={{ color: 'var(--text-secondary, #aaa)', fontWeight: 600 }}>MIT License</span>.
+              Released under the{' '}
+              <span
+                style={{
+                  color: 'var(--text-secondary, #aaa)',
+                  fontWeight: 600,
+                }}
+              >
+                MIT License
+              </span>
+              .
               <br />
               Copyright &copy; 2024-2026 Orion IDE Contributors.
             </div>
 
-            {/* ── Action buttons ──────────────────────────── */}
-            <div style={{ width: '100%', display: 'flex', gap: 8, marginTop: 2 }}>
-              {/* Copy System Info */}
-              <ActionButton
-                onClick={handleCopySystemInfo}
-                style={{ flex: 1 }}
-                icon={copied ? <Check size={14} /> : <Copy size={14} />}
-                label={copied ? 'Copied!' : 'Copy System Info'}
-                accent={copied}
-              />
-              {/* Check for Updates */}
-              <ActionButton
-                onClick={handleCheckUpdates}
-                style={{ flex: 1 }}
-                icon={
-                  updateState === 'checking' ? (
-                    <RefreshCw size={14} style={{ animation: 'orion-pulse 0.6s ease-in-out infinite' }} />
-                  ) : updateState === 'done' ? (
-                    <Check size={14} />
-                  ) : (
-                    <RefreshCw size={14} />
-                  )
-                }
-                label={
-                  updateState === 'checking'
-                    ? 'Checking...'
-                    : updateState === 'done'
-                      ? 'Up to date!'
-                      : 'Check for Updates'
-                }
-                accent={updateState === 'done'}
-                disabled={updateState === 'checking'}
-              />
-            </div>
+            {/* Copy button */}
+            <button
+              onClick={handleCopy}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '9px 12px',
+                borderRadius: 8,
+                border: copied
+                  ? '1px solid rgba(63,185,80,0.3)'
+                  : '1px solid var(--border, #333)',
+                background: copied
+                  ? 'rgba(63,185,80,0.1)'
+                  : 'var(--bg-primary, #181825)',
+                color: copied
+                  ? 'var(--accent-green, #3fb950)'
+                  : 'var(--text-secondary, #bbb)',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (!copied)
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = copied
+                  ? 'rgba(63,185,80,0.1)'
+                  : 'var(--bg-primary, #181825)'
+              }}
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? 'Copied!' : 'Copy Version Info'}
+            </button>
           </div>
         </div>
       </div>
@@ -463,7 +531,7 @@ export default function AboutDialog({ open, onClose }: Props) {
   )
 }
 
-/* ── Helper components ─────────────────────────────────────────────── */
+/* ── Helper components ────────────────────────────────────────────── */
 
 function SectionLabel({ text }: { text: string }) {
   return (
@@ -494,7 +562,15 @@ function SectionLabel({ text }: { text: string }) {
   )
 }
 
-function SysRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+function SysRow({
+  label,
+  value,
+  last,
+}: {
+  label: string
+  value: string
+  last?: boolean
+}) {
   return (
     <div
       style={{
@@ -506,56 +582,38 @@ function SysRow({ label, value, last }: { label: string; value: string; last?: b
         borderBottom: last ? 'none' : '1px solid var(--border, #333)',
       }}
     >
-      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted, #888)', letterSpacing: '0.3px' }}>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'var(--text-muted, #888)',
+          letterSpacing: '0.3px',
+        }}
+      >
         {label}
       </span>
-      <span style={{ fontSize: 11, color: 'var(--text-secondary, #bbb)', fontFamily: 'var(--font-mono, monospace)' }}>
+      <span
+        style={{
+          fontSize: 11,
+          color: 'var(--text-secondary, #bbb)',
+          fontFamily: 'var(--font-mono, monospace)',
+        }}
+      >
         {value}
       </span>
     </div>
   )
 }
 
-function TechBadge({ name, version, color, bg }: { name: string; version: string; color: string; bg: string }) {
-  return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '4px 10px 4px 8px',
-        borderRadius: 6,
-        background: bg,
-        border: `1px solid ${color}33`,
-        fontSize: 11,
-        fontWeight: 600,
-        color,
-        whiteSpace: 'nowrap',
-        transition: 'transform 0.15s',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)' }}
-    >
-      {/* Colored dot as a mini icon */}
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: color,
-          flexShrink: 0,
-          boxShadow: `0 0 6px ${color}66`,
-        }}
-      />
-      {name}
-      <span style={{ fontWeight: 400, opacity: 0.7, fontFamily: 'var(--font-mono, monospace)', fontSize: 10 }}>
-        {version}
-      </span>
-    </div>
-  )
-}
-
-function LinkRow({ label, icon: Icon, url }: { label: string; icon: typeof Github; url: string }) {
+function LinkRow({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string
+  icon: typeof Globe
+  onClick: () => void
+}) {
   return (
     <div
       style={{
@@ -569,62 +627,17 @@ function LinkRow({ label, icon: Icon, url }: { label: string; icon: typeof Githu
         fontSize: 12,
         transition: 'background 0.15s',
       }}
-      onClick={() => window.open(url, '_blank')}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+      onClick={onClick}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent'
+      }}
     >
       <Icon size={14} style={{ opacity: 0.6, flexShrink: 0 }} />
       <span style={{ flex: 1 }}>{label}</span>
       <ExternalLink size={12} style={{ opacity: 0.3 }} />
     </div>
-  )
-}
-
-function ActionButton({
-  onClick,
-  icon,
-  label,
-  accent,
-  disabled,
-  style,
-}: {
-  onClick: () => void
-  icon: React.ReactNode
-  label: string
-  accent?: boolean
-  disabled?: boolean
-  style?: React.CSSProperties
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        ...style,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        padding: '8px 12px',
-        borderRadius: 8,
-        border: accent ? '1px solid rgba(88,166,255,0.3)' : '1px solid var(--border, #333)',
-        background: accent ? 'rgba(88,166,255,0.1)' : 'var(--bg-primary, #181825)',
-        color: accent ? 'var(--accent, #58a6ff)' : 'var(--text-secondary, #bbb)',
-        fontSize: 12,
-        fontWeight: 600,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.7 : 1,
-        transition: 'all 0.15s',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.background = accent ? 'rgba(88,166,255,0.15)' : 'rgba(255,255,255,0.06)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = accent ? 'rgba(88,166,255,0.1)' : 'var(--bg-primary, #181825)'
-      }}
-    >
-      {icon}
-      {label}
-    </button>
   )
 }

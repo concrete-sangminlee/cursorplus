@@ -99,33 +99,61 @@ const TerminalProfileManager = React.lazy(() => import('./components/TerminalPro
 /** Workspace trust key prefix in localStorage */
 const WORKSPACE_TRUST_KEY = 'orion-workspace-trust'
 
-/** Minimal loading placeholder for lazy panels */
+/** Minimal loading placeholder for lazy panels with shimmer animation */
 function PanelFallback() {
   return (
     <div
       style={{
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         height: '100%',
         width: '100%',
-        color: 'var(--text-muted)',
-        fontSize: 12,
+        gap: 12,
+        padding: 24,
       }}
     >
-      <span
-        style={{
-          display: 'inline-block',
-          width: 16,
-          height: 16,
-          border: '2px solid var(--border)',
-          borderTopColor: 'var(--accent)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-          marginRight: 8,
-        }}
-      />
-      Loading...
+      <style>{`
+        @keyframes orion-shimmer {
+          0% { opacity: 0.3; }
+          50% { opacity: 0.6; }
+          100% { opacity: 0.3; }
+        }
+      `}</style>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 280 }}>
+        <div style={{
+          height: 10,
+          width: '70%',
+          borderRadius: 4,
+          background: 'var(--border)',
+          animation: 'orion-shimmer 1.5s ease-in-out infinite',
+        }} />
+        <div style={{
+          height: 10,
+          width: '100%',
+          borderRadius: 4,
+          background: 'var(--border)',
+          animation: 'orion-shimmer 1.5s ease-in-out infinite',
+          animationDelay: '0.15s',
+        }} />
+        <div style={{
+          height: 10,
+          width: '85%',
+          borderRadius: 4,
+          background: 'var(--border)',
+          animation: 'orion-shimmer 1.5s ease-in-out infinite',
+          animationDelay: '0.3s',
+        }} />
+        <div style={{
+          height: 10,
+          width: '60%',
+          borderRadius: 4,
+          background: 'var(--border)',
+          animation: 'orion-shimmer 1.5s ease-in-out infinite',
+          animationDelay: '0.45s',
+        }} />
+      </div>
     </div>
   )
 }
@@ -170,6 +198,20 @@ export default function App() {
   const [rightPanelTab, setRightPanelTab] = useState<'chat' | 'composer'>('chat')
   const [zenExitVisible, setZenExitVisible] = useState(false)
   const zenExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Window focus/blur tracking ────────────────────────
+  const [windowFocused, setWindowFocused] = useState(true)
+
+  useEffect(() => {
+    const onFocus = () => setWindowFocused(true)
+    const onBlur = () => setWindowFocused(false)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   // ── Focus management refs ──────────────────────────────
   // Track which element had focus before a modal opened so we can return focus on close
@@ -510,6 +552,14 @@ export default function App() {
     return () => window.removeEventListener('orion:show-diff', handler)
   }, [])
 
+  // ── Listen for app:open-about IPC from main process (native menu) ──
+  useEffect(() => {
+    const unsub = window.api?.onAppOpenAbout?.(() => {
+      openModal(setAboutOpen)
+    })
+    return () => { unsub?.() }
+  }, [openModal])
+
   // Listen for custom events from menu bar / commands
   useEffect(() => {
     const handlers: Record<string, () => void> = {
@@ -522,6 +572,7 @@ export default function App() {
       'orion:zen-mode': () => toggleZenMode(),
       'orion:toggle-zen-mode': () => toggleZenMode(),
       'orion:about': () => openModal(setAboutOpen),
+      'orion:show-about': () => openModal(setAboutOpen),
       'orion:open-snippets': () => openModal(setSnippetsOpen),
       'orion:show-explorer': () => { setSidebarVisible(true); setActiveView('explorer') },
       'orion:show-search': () => { setSidebarVisible(true); setActiveView('search') },
@@ -818,6 +869,8 @@ export default function App() {
         flexDirection: 'column',
         background: 'var(--bg-primary)',
         overflow: 'hidden',
+        transition: 'filter 0.2s ease',
+        filter: windowFocused ? 'none' : 'saturate(0.6) brightness(0.92)',
       }}
       onDragEnter={handleGlobalDragEnter}
       onDragOver={handleGlobalDragOver}

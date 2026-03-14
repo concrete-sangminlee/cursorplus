@@ -656,6 +656,9 @@ function FileTreeNode({
   const openFile = useEditorStore((s) => s.openFile)
   const activeFilePath = useEditorStore((s) => s.activeFilePath)
   const pinFile = useEditorStore((s) => s.pinFile)
+  const openFileEntry = useEditorStore((s) => s.openFiles.find((f) => f.path === node.path))
+  const isFileModified = !!(openFileEntry?.isModified)
+  const isAiModified = !!(openFileEntry?.aiModified)
   const [contextActive, setContextActive] = useState(false)
   const [nestedExpanded, setNestedExpanded] = useState(false)
   const [isSelected, setIsSelected] = useState(false)
@@ -793,7 +796,7 @@ function FileTreeNode({
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleCtx}
         onKeyDown={handleKeyDown}
-        className={`flex items-center cursor-pointer transition-colors duration-75${isFolderDropTarget ? ' folder-drop-target' : ''}`}
+        className={`flex items-center cursor-pointer${isFolderDropTarget ? ' folder-drop-target' : ''}`}
         {...(isDir ? { 'data-folder-path': node.path } : {})}
         data-node-path={node.path}
         style={{
@@ -811,9 +814,10 @@ function FileTreeNode({
           color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontSize: 12,
           outline: 'none',
+          transition: 'background 0.12s ease, color 0.12s ease',
         }}
         onMouseEnter={(e) => {
-          if (!isActive && !isFolderDropTarget) e.currentTarget.style.background = 'rgba(255,255,255,0.035)'
+          if (!isActive && !isFolderDropTarget) e.currentTarget.style.background = 'rgba(255,255,255,0.045)'
         }}
         onMouseLeave={(e) => {
           if (!isActive && !contextActive && !isFolderDropTarget) e.currentTarget.style.background = 'transparent'
@@ -890,11 +894,22 @@ function FileTreeNode({
             flex: 1,
             color: node.gitStatus && gitBadgeColors[node.gitStatus]
               ? gitBadgeColors[node.gitStatus]
-              : undefined,
+              : isFileModified
+                ? 'var(--text-primary)'
+                : undefined,
+            fontStyle: isFileModified ? 'italic' : undefined,
           }}
         >
           {node.name}
         </span>
+
+        {/* Modified file dot indicator (in-editor unsaved changes) */}
+        {isFileModified && !isDir && (
+          <span
+            className={`file-modified-dot${isAiModified ? ' ai-modified' : ''}`}
+            title={isAiModified ? 'Modified by AI' : 'Unsaved changes'}
+          />
+        )}
 
         {/* File count for directories */}
         {isDir && fileCount > 0 && (
@@ -1765,9 +1780,9 @@ export default function FileExplorer() {
         </div>
       )}
 
-      {/* Section Header */}
+      {/* Section Header with hover-reveal toolbar */}
       <div
-        className="shrink-0 flex items-center px-4"
+        className="shrink-0 flex items-center px-4 explorer-header-bar"
         style={{
           height: 34,
           color: 'var(--text-secondary)',
@@ -1777,8 +1792,8 @@ export default function FileExplorer() {
           borderBottom: '1px solid var(--border)',
         }}
       >
-        <span>EXPLORER</span>
-        <div className="ml-auto flex items-center gap-0.5">
+        <span>{rootPath ? folderName.toUpperCase() : 'EXPLORER'}</span>
+        <div className="ml-auto flex items-center gap-0.5 explorer-header-actions">
           <HeaderButton
             Icon={FilePlus}
             title="New File"
@@ -1808,35 +1823,43 @@ export default function FileExplorer() {
         </div>
       </div>
 
-      {/* Workspace name */}
+      {/* Workspace name - prominent display */}
       {rootPath && (
         <div
-          className="shrink-0 flex items-center gap-1.5 px-3 cursor-pointer"
+          className="shrink-0 flex items-center gap-2 px-3 cursor-pointer"
           style={{
-            height: 26,
-            fontSize: 11,
+            height: 28,
+            fontSize: 12,
             fontWeight: 700,
-            color: 'var(--text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            background: 'rgba(255,255,255,0.015)',
+            color: 'var(--text-primary)',
+            letterSpacing: '0.02em',
+            background: 'rgba(255,255,255,0.02)',
+            borderBottom: '1px solid var(--border)',
+            transition: 'background 0.15s ease',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+            e.currentTarget.style.background = 'rgba(255,255,255,0.045)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.015)'
+            e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
           }}
         >
-          <ChevronRight
-            size={12}
+          <FolderOpen
+            size={13}
             style={{
-              transform: 'rotate(90deg)',
-              transition: 'transform 0.15s ease',
+              color: '#dcb67a',
               flexShrink: 0,
             }}
           />
-          {folderName}
+          <span className="truncate" style={{ flex: 1 }}>{folderName}</span>
+          <GitBranch
+            size={11}
+            style={{
+              color: 'var(--text-muted)',
+              flexShrink: 0,
+              opacity: 0.6,
+            }}
+          />
         </div>
       )}
 

@@ -223,7 +223,7 @@ export default function EditorPanel() {
     const defaults = {
       fontSize: 14, minimap: true, wordWrap: false,
       fontFamily: 'Cascadia Code', lineHeight: 1.5,
-      fontLigatures: true, cursorStyle: 'line' as string,
+      fontLigatures: true, cursorStyle: 'line-thin' as string,
       renderWhitespace: 'selection' as string, letterSpacing: 0,
       formatOnSave: false, trimTrailingWhitespace: true, insertFinalNewline: true,
     }

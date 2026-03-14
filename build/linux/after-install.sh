@@ -1,19 +1,15 @@
 #!/bin/bash
+# Orion IDE - Post-installation script for Linux (.deb)
 
-# Create symlink for CLI usage
-ln -sf /opt/${productFilename}/orion-ide /usr/local/bin/orion
+# Create symlink so the binary is accessible from PATH
+ln -sf "/opt/Orion IDE/orion-ide" /usr/local/bin/orion-ide
 
-# Update desktop database
-if hash update-desktop-database 2>/dev/null; then
+# Update desktop database so the .desktop entry is recognized
+if command -v update-desktop-database > /dev/null 2>&1; then
     update-desktop-database /usr/share/applications || true
 fi
 
-# Update icon cache
-if hash gtk-update-icon-cache 2>/dev/null; then
+# Update icon cache so the application icon appears correctly
+if command -v gtk-update-icon-cache > /dev/null 2>&1; then
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
-fi
-
-# Update MIME database
-if hash update-mime-database 2>/dev/null; then
-    update-mime-database /usr/share/mime || true
 fi

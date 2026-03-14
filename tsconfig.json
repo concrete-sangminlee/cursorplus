@@ -19,5 +19,5 @@
     }
   },
   "include": ["src", "shared"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": ["dist", "dist-electron", "release", "node_modules"]
 }

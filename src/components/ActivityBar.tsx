@@ -515,10 +515,10 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
       <nav
         className="activity-bar shrink-0 flex flex-col items-center"
         style={{
-          width: 48,
+          width: 50,
           background: 'var(--bg-tertiary)',
           borderRight: '1px solid var(--border)',
-          paddingTop: 4,
+          paddingTop: 6,
           paddingBottom: 8,
           userSelect: 'none',
         }}

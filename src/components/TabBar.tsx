@@ -1183,6 +1183,12 @@ export default function TabBar() {
                 if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
                 setContextMenu({ x: e.clientX, y: e.clientY, path: file.path })
               }}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault()
+                  handleCloseTab(file.path)
+                }
+              }}
               onMouseEnter={(e) => handleTabMouseEnter(file.path, e.currentTarget as HTMLElement)}
               onMouseLeave={handleTabMouseLeave}
               className="shrink-0 flex items-center cursor-pointer"

@@ -395,6 +395,66 @@ export const SETTINGS_SCHEMA: SettingDescriptor[] = [
     category: 'ai',
   },
 
+  {
+    key: 'ai.systemPrompt',
+    type: 'string',
+    default: '',
+    description: 'Custom system prompt for the AI assistant. Leave empty to use default.',
+    category: 'ai',
+  },
+
+  // -- appearance.* -----------------------------------------------------------
+  {
+    key: 'appearance.fontSizeScaling',
+    type: 'number',
+    default: 100,
+    description: 'Scale the entire UI font size as a percentage.',
+    min: 50,
+    max: 200,
+    category: 'appearance',
+  },
+  {
+    key: 'appearance.zoomLevel',
+    type: 'number',
+    default: 0,
+    description: 'Adjust the zoom level of the window.',
+    min: -5,
+    max: 5,
+    category: 'appearance',
+  },
+
+  // -- files.* ----------------------------------------------------------------
+  {
+    key: 'files.encoding',
+    type: 'string',
+    default: 'utf-8',
+    description: 'The default character set encoding for reading and writing files.',
+    enum: ['utf-8', 'utf-8-bom', 'utf-16le', 'utf-16be', 'ascii', 'iso-8859-1', 'windows-1252', 'euc-kr', 'shift-jis', 'gb2312'],
+    category: 'files',
+  },
+  {
+    key: 'files.autoGuessEncoding',
+    type: 'boolean',
+    default: true,
+    description: 'Automatically detect the file encoding when opening.',
+    category: 'files',
+  },
+  {
+    key: 'files.hotExit',
+    type: 'string',
+    default: 'onExit',
+    description: 'Controls whether unsaved files are remembered between sessions.',
+    enum: ['off', 'onExit', 'onExitAndWindowClose'],
+    category: 'files',
+  },
+  {
+    key: 'files.watcherExclude',
+    type: 'array',
+    default: ['**/.git/objects/**', '**/.git/subtree-cache/**', '**/node_modules/**'],
+    description: 'Glob patterns for files and folders excluded from file watching.',
+    category: 'files',
+  },
+
   // -- theme.* ----------------------------------------------------------------
   {
     key: 'theme.colorTheme',

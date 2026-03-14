@@ -505,6 +505,8 @@ const api = {
     onEvent<[]>('app:show-release-notes', callback),
   onAppShowKeybindings: (callback: () => void): Unsubscribe =>
     onEvent<[]>('app:show-keybindings', callback),
+  onAppOpenAbout: (callback: () => void): Unsubscribe =>
+    onEvent<[]>('app:open-about', callback),
   onAppUpdateStatus: (callback: (status: { status: string; version?: string; error?: string }) => void): Unsubscribe =>
     onEvent<[{ status: string; version?: string; error?: string }]>('app:update-status', callback),
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useEditorStore } from '@/store/editor'
-import { ListTree, ChevronRight, ChevronDown, Hash, Braces, Type, Box, Variable, ArrowDownAZ, ArrowDown01, Search, Layers, Package, Shield, Navigation, Eye, Copy, PenLine, FileText, Files, Diamond, Parentheses, SquareFunction, Minus } from 'lucide-react'
+import { ListTree, ChevronRight, Hash, Braces, Type, Box, Variable, ArrowDownAZ, ArrowDown01, Search, Layers, Package, Shield, Navigation, Eye, Copy, PenLine, FileText, Files, Diamond, Parentheses, SquareFunction, Minus } from 'lucide-react'
 
 interface DocSymbol {
   name: string
@@ -729,7 +729,7 @@ export default function OutlinePanel() {
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-tertiary)' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = file.path === activeFilePath ? 'var(--bg-tertiary)' : 'none' }}
           >
-            {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            <ChevronRight size={12} style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.15s ease' }} />
             <FileText size={12} style={{ color: 'var(--text-muted)' }} />
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{flat.length}</span>
@@ -1110,7 +1110,7 @@ export default function OutlinePanel() {
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-tertiary)' }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                 >
-                  {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  <ChevronRight size={12} style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.15s ease' }} />
                   <span style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1353,10 +1353,16 @@ function SymbolItem({
           minHeight: 24,
         }}
       >
-        {/* Collapse/expand chevron */}
+        {/* Collapse/expand chevron with smooth rotation */}
         {hasChildren ? (
           <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, width: 12 }}>
-            {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+            <ChevronRight
+              size={11}
+              style={{
+                transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                transition: 'transform 0.15s ease',
+              }}
+            />
           </span>
         ) : (
           <span style={{ width: 12, flexShrink: 0 }} />

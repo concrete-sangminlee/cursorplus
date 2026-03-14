@@ -704,6 +704,13 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 /* ── Timestamp formatter ──────────────────────────────── */
 
 function formatTime(ts: number) {
+  const now = Date.now()
+  const diff = Math.floor((now - ts) / 1000)
+  if (diff < 10) return 'just now'
+  if (diff < 60) return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  // Fallback to absolute time for older messages
   const d = new Date(ts)
   const hours = d.getHours()
   const minutes = d.getMinutes()
@@ -733,7 +740,7 @@ function ThinkingIndicator() {
 
 function StreamingDots({ streamStats }: { streamStats?: { tokensPerSec: number; elapsed: number; estimatedRemaining: number } | null }) {
   return (
-    <div className="flex items-center gap-1" style={{ padding: '12px 0' }}>
+    <div className="flex items-center gap-1" style={{ padding: '14px 0' }}>
       <div
         style={{
           width: 24,
@@ -742,21 +749,37 @@ function StreamingDots({ streamStats }: { streamStats?: { tokensPerSec: number; 
           flexShrink: 0,
           marginTop: 1,
           background: 'linear-gradient(135deg, rgba(188,140,255,0.15), rgba(88,166,255,0.15))',
-          border: '1px solid rgba(188,140,255,0.15)',
+          border: '1px solid rgba(188,140,255,0.2)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          boxShadow: '0 0 8px rgba(188,140,255,0.08)',
         }}
       >
-        <Bot size={12} style={{ color: 'var(--accent-purple)' }} />
+        <Bot size={13} style={{ color: 'var(--accent-purple)' }} />
       </div>
-      <div className="flex items-center gap-1 ml-2.5" style={{ height: 24 }}>
+      <div className="flex items-center gap-1.5 ml-2.5" style={{ height: 24 }}>
+        <span style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          color: 'var(--accent-purple)',
+          letterSpacing: '-0.01em',
+        }}>
+          Orion AI
+        </span>
+        <span style={{
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          fontStyle: 'italic',
+        }}>
+          is thinking
+        </span>
         {[0, 1, 2].map((i) => (
           <span
             key={i}
             style={{
-              width: 5,
-              height: 5,
+              width: 4,
+              height: 4,
               borderRadius: '50%',
               background: 'var(--accent-purple)',
               opacity: 0.4,
@@ -918,8 +941,9 @@ function MessageBubble({
     <div
       className="chat-message group"
       style={{
-        padding: '10px 0',
+        padding: '12px 0',
         position: 'relative',
+        marginBottom: 2,
         ...(isPinned
           ? {
               background: 'rgba(188,140,255,0.04)',
@@ -928,17 +952,29 @@ function MessageBubble({
               marginLeft: -12,
               marginRight: -12,
               paddingRight: 12,
+              borderRadius: '0 6px 6px 0',
             }
           : isUser
             ? {
-                background: 'rgba(88, 166, 255, 0.06)',
-                borderLeft: '2px solid var(--accent)',
+                background: 'rgba(88, 166, 255, 0.04)',
+                borderLeft: '2px solid rgba(88,166,255,0.4)',
                 paddingLeft: 10,
                 marginLeft: -12,
                 marginRight: -12,
                 paddingRight: 12,
+                borderRadius: '0 6px 6px 0',
               }
-            : {}),
+            : isAssistant
+              ? {
+                  borderLeft: '2px solid transparent',
+                  borderImage: 'linear-gradient(180deg, rgba(188,140,255,0.5), rgba(88,166,255,0.3)) 1',
+                  paddingLeft: 10,
+                  marginLeft: -12,
+                  marginRight: -12,
+                  paddingRight: 12,
+                  background: 'rgba(188,140,255,0.02)',
+                }
+              : {}),
       }}
     >
       {/* Pinned indicator */}
@@ -1086,21 +1122,20 @@ function MessageBubble({
         ) : (
           <div
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, var(--accent), var(--accent-purple))',
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              flexShrink: 0,
+              marginTop: 1,
+              background: 'linear-gradient(135deg, rgba(188,140,255,0.15), rgba(88,166,255,0.15))',
+              border: '1px solid rgba(188,140,255,0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 10,
-              fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
-              marginTop: 2,
+              boxShadow: '0 0 8px rgba(188,140,255,0.08)',
             }}
           >
-            {message.agentName?.[0] || 'A'}
+            <Bot size={13} style={{ color: 'var(--accent-purple)' }} />
           </div>
         )}
 
@@ -1112,24 +1147,38 @@ function MessageBubble({
                 fontSize: 11,
                 fontWeight: 600,
                 color: isUser ? 'var(--text-primary)' : 'var(--accent-purple)',
+                letterSpacing: '-0.01em',
               }}
             >
-              {isUser ? 'You' : message.agentName || 'AI'}
+              {isUser ? 'You' : message.agentName || 'Orion AI'}
             </span>
-            {message.model && (
+            {message.model && !isUser && (
               <span
                 style={{
-                  fontSize: 9,
-                  color: 'var(--text-muted)',
-                  background: 'rgba(255,255,255,0.04)',
-                  padding: '1px 5px',
-                  borderRadius: 3,
+                  fontSize: 8.5,
+                  color: 'var(--accent-purple)',
+                  background: 'rgba(188,140,255,0.1)',
+                  border: '1px solid rgba(188,140,255,0.15)',
+                  padding: '1px 6px',
+                  borderRadius: 8,
                   fontFamily: 'var(--font-mono, monospace)',
+                  fontWeight: 600,
+                  letterSpacing: '0.02em',
                 }}
               >
                 {message.model}
               </span>
             )}
+            <span
+              style={{
+                fontSize: 9,
+                color: 'var(--text-muted)',
+                opacity: 0.6,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {formatTime(message.timestamp)}
+            </span>
           </div>
 
           {/* Message body */}
@@ -1256,19 +1305,6 @@ function MessageBubble({
               )}
             </div>
           )}
-
-          {/* Message timestamp below content */}
-          <div
-            style={{
-              fontSize: 9.5,
-              color: 'var(--text-muted)',
-              marginTop: 4,
-              opacity: 0.7,
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {formatTime(message.timestamp)}
-          </div>
 
           {/* Task Progress */}
           {message.taskProgress && (
@@ -2848,15 +2884,28 @@ export default function ChatPanel() {
           background: 'var(--bg-tertiary)',
         }}
       >
-        <Sparkles size={13} style={{ color: 'var(--accent)', marginRight: 8 }} />
+        <div style={{
+          width: 20,
+          height: 20,
+          borderRadius: 5,
+          background: 'linear-gradient(135deg, rgba(88,166,255,0.2), rgba(188,140,255,0.25))',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 7,
+          flexShrink: 0,
+        }}>
+          <Sparkles size={11} style={{ color: '#bc8cff' }} />
+        </div>
         <span
           style={{
             fontSize: 12,
-            fontWeight: 600,
+            fontWeight: 700,
             color: 'var(--text-primary)',
+            letterSpacing: '-0.02em',
           }}
         >
-          AI Chat
+          Orion AI
         </span>
 
         {/* Mode Toggle */}
@@ -3071,9 +3120,10 @@ export default function ChatPanel() {
         </div>
       )}
 
-      {/* Hover styles for message actions */}
+      {/* Hover styles for message actions + message separators */}
       <style>{`
         .chat-message:hover .chat-msg-actions { opacity: 1 !important; }
+        .chat-message + .chat-message { border-top: 1px solid rgba(255,255,255,0.03); }
       `}</style>
 
       {/* Messages */}
@@ -3407,7 +3457,7 @@ export default function ChatPanel() {
         )}
 
         <div
-          className="transition-colors duration-150"
+          className="transition-all duration-200"
           style={{
             background: 'var(--bg-secondary)',
             border: '1px solid var(--border)',
@@ -3415,10 +3465,12 @@ export default function ChatPanel() {
             position: 'relative',
           }}
           onFocus={(e) => {
-            e.currentTarget.style.borderColor = 'var(--accent)'
+            e.currentTarget.style.borderColor = 'rgba(188,140,255,0.4)'
+            e.currentTarget.style.boxShadow = '0 0 0 2px rgba(88,166,255,0.08), 0 2px 12px rgba(0,0,0,0.15)'
           }}
           onBlur={(e) => {
             e.currentTarget.style.borderColor = 'var(--border)'
+            e.currentTarget.style.boxShadow = 'none'
           }}
         >
           {/* @ mention dropdown */}
@@ -3589,8 +3641,8 @@ export default function ChatPanel() {
             onKeyDown={handleKeyDown}
             placeholder={
               mode === 'agent'
-                ? 'Ask the agent to do something... (type @ to mention a file)'
-                : 'Ask anything... (type @ to mention a file)'
+                ? 'Ask Orion to build, fix, or refactor...  (@ to mention, / for commands)'
+                : 'Ask Orion anything about your code...  (@ to mention, / for commands)'
             }
             rows={1}
             style={{
@@ -3725,8 +3777,8 @@ export default function ChatPanel() {
                   className="chat-stop-btn transition-all duration-150"
                   title="Stop generation"
                   style={{
-                    width: 28,
-                    height: 28,
+                    width: 30,
+                    height: 30,
                     borderRadius: 8,
                     display: 'flex',
                     alignItems: 'center',
@@ -3735,9 +3787,16 @@ export default function ChatPanel() {
                     color: '#f85149',
                     cursor: 'pointer',
                     border: '1px solid rgba(248,81,73,0.3)',
+                    animation: 'chat-stop-pulse 2s ease-in-out infinite',
                   }}
                 >
                   <Square size={12} fill="currentColor" />
+                  <style>{`
+                    @keyframes chat-stop-pulse {
+                      0%, 100% { box-shadow: 0 0 0 0 rgba(248,81,73,0.3); }
+                      50% { box-shadow: 0 0 0 4px rgba(248,81,73,0.08); }
+                    }
+                  `}</style>
                 </button>
               ) : (
                 <button
@@ -3745,20 +3804,20 @@ export default function ChatPanel() {
                   disabled={!input.trim()}
                   className="transition-all duration-150"
                   style={{
-                    width: 28,
-                    height: 28,
+                    width: 30,
+                    height: 30,
                     borderRadius: 8,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     background: input.trim()
-                      ? 'var(--accent)'
+                      ? 'linear-gradient(135deg, #58a6ff, #bc8cff)'
                       : 'var(--bg-hover)',
                     color: input.trim() ? '#fff' : 'var(--text-muted)',
                     cursor: input.trim() ? 'pointer' : 'default',
                     border: 'none',
                     boxShadow: input.trim()
-                      ? '0 2px 8px rgba(88,166,255,0.2)'
+                      ? '0 2px 12px rgba(88,166,255,0.25), 0 0 20px rgba(188,140,255,0.1)'
                       : 'none',
                   }}
                 >
@@ -3778,99 +3837,193 @@ export default function ChatPanel() {
 
 function EmptyChat({ onInsertPrompt }: { onInsertPrompt?: (text: string) => void }) {
   const suggestions = [
-    { icon: Search, text: 'Explain this file', color: 'var(--accent)' },
-    { icon: Lightbulb, text: 'Find bugs', color: '#f78166' },
-    { icon: TestTube, text: 'Write tests', color: 'var(--accent-green)' },
-    { icon: Wrench, text: 'Refactor', color: 'var(--accent-purple)' },
+    { icon: Search, text: 'Explain this file', desc: 'Understand code structure and logic', color: 'var(--accent)' },
+    { icon: Lightbulb, text: 'Find bugs', desc: 'Detect potential issues and edge cases', color: '#f78166' },
+    { icon: TestTube, text: 'Write tests', desc: 'Generate unit and integration tests', color: 'var(--accent-green)' },
+    { icon: Wrench, text: 'Refactor', desc: 'Improve code quality and readability', color: 'var(--accent-purple)' },
+    { icon: Rocket, text: 'Optimize performance', desc: 'Find bottlenecks and improve speed', color: '#e2b657' },
+    { icon: Code, text: 'Generate documentation', desc: 'Create JSDoc and inline comments', color: '#58a6ff' },
   ]
 
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-6 px-6">
-      <div
-        style={{
-          width: 72,
-          height: 72,
-          borderRadius: 20,
-          background:
-            'linear-gradient(135deg, rgba(88,166,255,0.12), rgba(188,140,255,0.14))',
-          border: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
-        }}
-      >
-        <Sparkles size={30} style={{ color: 'var(--accent)' }} />
-      </div>
+    <div
+      className="h-full flex flex-col items-center justify-center gap-5 px-6"
+      style={{
+        background: 'radial-gradient(ellipse at 50% 30%, rgba(88,166,255,0.04) 0%, rgba(188,140,255,0.03) 40%, transparent 70%)',
+      }}
+    >
+      {/* Animated background accents */}
+      <style>{`
+        @keyframes orion-glow {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.05); }
+        }
+      `}</style>
 
-      <div className="text-center">
+      {/* Orion AI branding */}
+      <div style={{ textAlign: 'center' }}>
+        <div
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 22,
+            background:
+              'linear-gradient(135deg, rgba(88,166,255,0.18), rgba(188,140,255,0.22))',
+            border: '1px solid rgba(188,140,255,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.3), 0 0 60px rgba(88,166,255,0.08), inset 0 1px 0 rgba(255,255,255,0.06)',
+            margin: '0 auto 16px',
+            animation: 'orion-glow 4s ease-in-out infinite',
+            position: 'relative',
+          }}
+        >
+          <Sparkles size={30} style={{ color: '#bc8cff' }} />
+        </div>
+
         <h3
           style={{
-            fontSize: 17,
+            fontSize: 20,
             fontWeight: 700,
             color: 'var(--text-primary)',
             marginBottom: 6,
-            letterSpacing: '-0.01em',
+            letterSpacing: '-0.03em',
           }}
         >
-          Ask anything about your code
+          How can I help?
         </h3>
         <p
           style={{
-            fontSize: 12,
+            fontSize: 11.5,
             color: 'var(--text-muted)',
-            lineHeight: 1.5,
-            maxWidth: 240,
-            margin: '0 auto',
+            lineHeight: 1.7,
+            maxWidth: 280,
+            margin: '0 auto 4px',
           }}
         >
-          Get explanations, find issues, generate tests, or refactor with AI assistance
+          Ask questions, generate code, refactor, debug, write tests, or explore your codebase.
         </p>
+
+        {/* Model info badge */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            fontSize: 10,
+            fontWeight: 500,
+            color: 'var(--text-muted)',
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: '4px 12px',
+            marginTop: 10,
+          }}
+        >
+          <Bot size={10} style={{ color: 'var(--accent-purple)' }} />
+          <span style={{ fontWeight: 600, color: 'var(--accent-purple)' }}>Orion AI</span>
+          <span style={{ color: 'var(--border)' }}>|</span>
+          <Cpu size={9} style={{ color: 'var(--accent)' }} />
+          <span>Multi-model</span>
+          <span style={{ color: 'var(--border)' }}>|</span>
+          <span>Context-aware</span>
+        </div>
       </div>
 
-      {/* Suggestion chips */}
+      {/* Suggestion cards grid */}
       <div
         style={{
-          display: 'flex',
-          flexWrap: 'wrap',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
           gap: 8,
-          justifyContent: 'center',
-          maxWidth: 300,
+          maxWidth: 360,
+          width: '100%',
         }}
       >
-        {suggestions.map(({ icon: ChipIcon, text, color }) => (
+        {suggestions.map(({ icon: ChipIcon, text, desc, color }) => (
           <button
             key={text}
             onClick={() => onInsertPrompt?.(text)}
-            className="flex items-center gap-2 transition-all duration-150 chat-suggestion-chip"
+            className="flex flex-col items-start gap-1.5 transition-all duration-150 chat-suggestion-chip"
             style={{
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: 500,
               color: 'var(--text-secondary)',
-              background: 'rgba(255,255,255,0.03)',
-              padding: '8px 14px',
-              borderRadius: 20,
+              background: 'rgba(255,255,255,0.02)',
+              padding: '11px 12px 11px 13px',
+              borderRadius: 10,
               border: '1px solid var(--border)',
+              borderLeft: `2px solid ${color}40`,
               cursor: 'pointer',
+              textAlign: 'left',
+              position: 'relative',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-              e.currentTarget.style.borderColor = 'var(--border-bright)'
-              e.currentTarget.style.color = 'var(--text-primary)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+              e.currentTarget.style.borderColor = color
+              e.currentTarget.style.borderLeftColor = color
+              e.currentTarget.style.boxShadow = `0 4px 16px ${color}15, 0 0 0 1px ${color}15`
+              e.currentTarget.style.transform = 'translateY(-1px)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
               e.currentTarget.style.borderColor = 'var(--border)'
-              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.borderLeftColor = `${color}40`
+              e.currentTarget.style.boxShadow = 'none'
+              e.currentTarget.style.transform = 'translateY(0)'
             }}
           >
-            <ChipIcon
-              size={13}
-              style={{ color, flexShrink: 0 }}
-            />
-            {text}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ChipIcon
+                size={13}
+                style={{ color, flexShrink: 0 }}
+              />
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 11.5 }}>{text}</span>
+            </div>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.4, paddingLeft: 19 }}>{desc}</span>
           </button>
         ))}
+      </div>
+
+      {/* Keyboard shortcut hint */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          marginTop: 4,
+        }}
+      >
+        <kbd
+          style={{
+            padding: '1px 5px',
+            borderRadius: 3,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid var(--border)',
+            fontFamily: 'var(--font-mono, monospace)',
+            fontSize: 9,
+          }}
+        >
+          Ctrl+L
+        </kbd>
+        <span>to focus chat</span>
+        <span style={{ color: 'var(--border)' }}>|</span>
+        <kbd
+          style={{
+            padding: '1px 5px',
+            borderRadius: 3,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid var(--border)',
+            fontFamily: 'var(--font-mono, monospace)',
+            fontSize: 9,
+          }}
+        >
+          @
+        </kbd>
+        <span>to mention files</span>
       </div>
     </div>
   )

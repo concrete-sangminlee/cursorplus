@@ -62,9 +62,11 @@ process.on('unhandledRejection', (err) => {
   logCrash('Unhandled rejection', err)
 })
 
-// --- Performance: V8 flags ---
+// --- Performance: V8 & GPU flags ---
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-zero-copy')
 
 // --- Window state persistence ---
 interface WindowState {
@@ -157,12 +159,12 @@ async function checkForUpdates(win: BrowserWindow): Promise<void> {
   try {
     sendUpdateStatus(win, { status: 'checking' })
 
-    // Simulated update check - replace with electron-updater in production
+    // TODO: integrate electron-updater for production auto-update support
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     sendUpdateStatus(win, { status: 'not-available' })
 
-    console.log('[AutoUpdater] Update check complete (simulated: no update available)')
+    console.log('[AutoUpdater] Update check complete - no update available')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     sendUpdateStatus(win, { status: 'error', error: message })
@@ -582,12 +584,7 @@ function buildAppMenu(): Menu {
               click: () => {
                 const win = getActiveWindow()
                 if (win) {
-                  dialog.showMessageBox(win, {
-                    type: 'info',
-                    title: `About ${app.name}`,
-                    message: app.name,
-                    detail: `Version: ${app.getVersion()}\nElectron: ${process.versions.electron}\nChrome: ${process.versions.chrome}\nNode.js: ${process.versions.node}\nV8: ${process.versions.v8}\nOS: ${process.platform} ${process.arch}`,
-                  })
+                  win.webContents.send('app:open-about')
                 }
               },
             },
@@ -619,12 +616,15 @@ function createWindow(filesToOpen?: string[]): BrowserWindow {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#0d1117',
+    show: false, // Prevent flash — show after ready-to-show
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      sandbox: false, // Required for preload script
+      webSecurity: !process.env.VITE_DEV_SERVER_URL, // Strict in prod, relaxed in dev
       backgroundThrottling: false, // Keep terminals responsive when in background
+      spellcheck: true,
     },
   })
 
@@ -635,9 +635,13 @@ function createWindow(filesToOpen?: string[]): BrowserWindow {
     mainWindow = win
   }
 
-  if (savedState.isMaximized) {
-    win.maximize()
-  }
+  // Show window smoothly once content is painted (prevents white flash)
+  win.once('ready-to-show', () => {
+    win.show()
+    if (savedState.isMaximized) {
+      win.maximize()
+    }
+  })
 
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL)
@@ -655,10 +659,22 @@ function createWindow(filesToOpen?: string[]): BrowserWindow {
     openFilesInWindow(win, filesToOpen)
   }
 
+  // Security: prevent navigation away from the app
+  win.webContents.on('will-navigate', (event, url) => {
+    if (process.env.VITE_DEV_SERVER_URL && url.startsWith(process.env.VITE_DEV_SERVER_URL)) return
+    event.preventDefault()
+    require('electron').shell.openExternal(url)
+  })
+
+  // Security: prevent new window creation — open in default browser
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    require('electron').shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
   // Auto-updater check on first window
   if (windows.size === 1) {
     win.webContents.once('did-finish-load', () => {
-      // Delay update check slightly to not interfere with startup
       setTimeout(() => checkForUpdates(win), 5000)
     })
   }

@@ -977,8 +977,12 @@ function Toolbar(props: ToolbarProps) {
             borderRadius: 4,
             cursor: 'pointer',
             whiteSpace: 'nowrap',
+            transition: 'border-color 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent, #58a6ff)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
         >
+          <FileOutput size={11} style={{ opacity: 0.6, flexShrink: 0 }} />
           {active}
           {(unreadCounts.get(active) ?? 0) > 0 && (
             <UnreadBadge count={unreadCounts.get(active)!} />
@@ -1191,9 +1195,34 @@ function Toolbar(props: ToolbarProps) {
       </ToolbarButton>
 
       {/* ── Clear ────────────────────────────────────────────── */}
-      <ToolbarButton title="Clear output" onClick={onClear}>
+      <button
+        title="Clear output"
+        onClick={onClear}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          height: 22,
+          padding: '0 5px',
+          borderRadius: 3,
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--accent-red, #f85149)',
+          background: 'transparent',
+          transition: 'background 0.1s, color 0.1s',
+          opacity: 0.8,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(248,81,73,0.15)'
+          e.currentTarget.style.opacity = '1'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent'
+          e.currentTarget.style.opacity = '0.8'
+        }}
+      >
         <Trash2 size={13} />
-      </ToolbarButton>
+      </button>
     </div>
   )
 }

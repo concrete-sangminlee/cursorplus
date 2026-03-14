@@ -49,7 +49,10 @@ export default defineConfig({
           'monaco-editor': ['monaco-editor'],
 
           // Terminal emulator + addons
-          'xterm': ['xterm', 'xterm-addon-fit', 'xterm-addon-web-links'],
+          'xterm': ['xterm', 'xterm-addon-fit', 'xterm-addon-web-links', 'xterm-addon-search'],
+
+          // AI SDKs
+          'ai-sdk': ['react-syntax-highlighter'],
         },
       },
     },
@@ -68,6 +71,8 @@ export default defineConfig({
       'xterm',
       'xterm-addon-fit',
       'xterm-addon-web-links',
+      'xterm-addon-search',
+      'react-syntax-highlighter',
     ],
   },
   server: {

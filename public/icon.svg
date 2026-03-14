@@ -1,70 +1,89 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4F46E5"/>
-      <stop offset="50%" stop-color="#7C3AED"/>
-      <stop offset="100%" stop-color="#6366F1"/>
+      <stop offset="0%" stop-color="#1a1b3a"/>
+      <stop offset="50%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
     </linearGradient>
-    <linearGradient id="oGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#C7D2FE"/>
-      <stop offset="100%" stop-color="#E0E7FF"/>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#bc8cff"/>
+      <stop offset="50%" stop-color="#58a6ff"/>
+      <stop offset="100%" stop-color="#3fb950"/>
     </linearGradient>
     <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FDE68A"/>
-      <stop offset="100%" stop-color="#FCD34D"/>
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#c9d1d9"/>
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+    <filter id="starGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="innerGlow" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="rgba(88,166,255,0.12)"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
   </defs>
 
-  <!-- Background rounded square -->
-  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+  <!-- Background rounded square with subtle inner glow -->
+  <rect x="16" y="16" width="480" height="480" rx="108" ry="108" fill="url(#bgGrad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" ry="108" fill="url(#innerGlow)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" ry="108" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
 
-  <!-- Stylized "O" ring -->
-  <circle cx="256" cy="270" r="140" fill="none" stroke="url(#oGrad)" stroke-width="36" stroke-linecap="round" opacity="0.95"/>
+  <!-- Stylized "O" ring with gradient -->
+  <circle cx="256" cy="268" r="135" fill="none" stroke="url(#ringGrad)" stroke-width="30" stroke-linecap="round" opacity="0.95"/>
 
-  <!-- Gap in the O (top-right) to stylize it -->
-  <circle cx="256" cy="270" r="140" fill="none" stroke="url(#bgGrad)" stroke-width="40" stroke-dasharray="60 820" stroke-dashoffset="-40" transform="rotate(-45 256 270)"/>
+  <!-- Gap in the O (top-right) -->
+  <circle cx="256" cy="268" r="135" fill="none" stroke="url(#bgGrad)" stroke-width="36" stroke-dasharray="55 800" stroke-dashoffset="-38" transform="rotate(-50 256 268)"/>
+
+  <!-- Constellation lines (subtle connections) -->
+  <g opacity="0.25" stroke="#bc8cff" stroke-width="1.2" stroke-linecap="round">
+    <line x1="180" y1="194" x2="224" y2="268"/>
+    <line x1="224" y1="268" x2="256" y2="260"/>
+    <line x1="256" y1="260" x2="288" y2="268"/>
+    <line x1="288" y1="268" x2="338" y2="348"/>
+    <line x1="346" y1="180" x2="288" y2="268"/>
+    <line x1="180" y1="194" x2="346" y2="180"/>
+    <line x1="166" y1="358" x2="224" y2="268"/>
+    <line x1="166" y1="358" x2="338" y2="348"/>
+  </g>
 
   <!-- Constellation stars -->
-  <!-- Main bright star (Betelgeuse - top right, in the gap) -->
-  <circle cx="348" cy="178" r="12" fill="url(#starGrad)" filter="url(#glow)"/>
+  <!-- Betelgeuse - top right, in the gap (brightest) -->
+  <circle cx="346" cy="180" r="10" fill="url(#starGrad)" filter="url(#starGlow)"/>
 
-  <!-- Rigel - bottom left -->
-  <circle cx="164" cy="362" r="9" fill="url(#starGrad)" filter="url(#glow)"/>
+  <!-- Rigel - bottom left (bright) -->
+  <circle cx="166" cy="358" r="8" fill="url(#starGrad)" filter="url(#starGlow)"/>
 
   <!-- Bellatrix - top left -->
-  <circle cx="178" cy="192" r="7" fill="url(#starGrad)" filter="url(#glow)" opacity="0.9"/>
+  <circle cx="180" cy="194" r="6" fill="url(#starGrad)" filter="url(#glow)" opacity="0.9"/>
 
   <!-- Saiph - bottom right -->
-  <circle cx="340" cy="352" r="7" fill="url(#starGrad)" filter="url(#glow)" opacity="0.9"/>
+  <circle cx="338" cy="348" r="6" fill="url(#starGrad)" filter="url(#glow)" opacity="0.9"/>
 
   <!-- Belt stars (three in a row, center) -->
-  <circle cx="222" cy="270" r="5" fill="#FDE68A" filter="url(#glow)" opacity="0.85"/>
-  <circle cx="256" cy="262" r="6" fill="#FDE68A" filter="url(#glow)" opacity="0.95"/>
-  <circle cx="290" cy="270" r="5" fill="#FDE68A" filter="url(#glow)" opacity="0.85"/>
+  <circle cx="224" cy="268" r="4.5" fill="#ffffff" filter="url(#glow)" opacity="0.85"/>
+  <circle cx="256" cy="260" r="5.5" fill="#ffffff" filter="url(#glow)" opacity="0.95"/>
+  <circle cx="288" cy="268" r="4.5" fill="#ffffff" filter="url(#glow)" opacity="0.85"/>
 
-  <!-- Constellation lines (faint connections) -->
-  <line x1="178" y1="192" x2="222" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
-  <line x1="222" y1="270" x2="256" y2="262" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
-  <line x1="256" y1="262" x2="290" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
-  <line x1="290" y1="270" x2="340" y2="352" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
-  <line x1="348" y1="178" x2="290" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
-  <line x1="178" y1="192" x2="348" y2="178" stroke="#C7D2FE" stroke-width="1" opacity="0.2"/>
-  <line x1="164" y1="362" x2="222" y2="270" stroke="#C7D2FE" stroke-width="1.5" opacity="0.3"/>
-  <line x1="164" y1="362" x2="340" y2="352" stroke="#C7D2FE" stroke-width="1" opacity="0.2"/>
-
-  <!-- Small ambient stars -->
-  <circle cx="120" cy="120" r="2" fill="#E0E7FF" opacity="0.5"/>
-  <circle cx="400" cy="100" r="2.5" fill="#E0E7FF" opacity="0.4"/>
-  <circle cx="390" cy="420" r="2" fill="#E0E7FF" opacity="0.45"/>
-  <circle cx="100" cy="400" r="1.5" fill="#E0E7FF" opacity="0.35"/>
-  <circle cx="300" cy="130" r="1.5" fill="#E0E7FF" opacity="0.4"/>
-  <circle cx="430" cy="260" r="2" fill="#E0E7FF" opacity="0.3"/>
-  <circle cx="80" cy="280" r="1.5" fill="#E0E7FF" opacity="0.35"/>
+  <!-- Ambient stars (depth) -->
+  <circle cx="110" cy="110" r="1.8" fill="#c9d1d9" opacity="0.4"/>
+  <circle cx="405" cy="95" r="2.2" fill="#c9d1d9" opacity="0.35"/>
+  <circle cx="395" cy="415" r="1.8" fill="#c9d1d9" opacity="0.3"/>
+  <circle cx="95" cy="405" r="1.5" fill="#c9d1d9" opacity="0.25"/>
+  <circle cx="305" cy="125" r="1.3" fill="#c9d1d9" opacity="0.3"/>
+  <circle cx="435" cy="255" r="1.5" fill="#c9d1d9" opacity="0.2"/>
+  <circle cx="75" cy="275" r="1.2" fill="#c9d1d9" opacity="0.25"/>
+  <circle cx="200" cy="105" r="1" fill="#c9d1d9" opacity="0.2"/>
+  <circle cx="360" cy="430" r="1.3" fill="#c9d1d9" opacity="0.22"/>
 </svg>

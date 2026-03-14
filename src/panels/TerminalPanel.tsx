@@ -189,6 +189,26 @@ if (typeof document !== 'undefined' && !document.getElementById(tpStyleId)) {
     .tp-split-header:hover {
       background: rgba(255,255,255,0.03) !important;
     }
+    .tp-kill-btn {
+      color: var(--accent-red, #f85149) !important;
+      opacity: 0.85;
+    }
+    .tp-kill-btn:hover {
+      background: rgba(248,81,73,0.15) !important;
+      color: var(--accent-red, #f85149) !important;
+      opacity: 1;
+    }
+    .tp-xterm-container {
+      padding: 6px 4px 4px 6px;
+      border-radius: 0 0 6px 6px;
+      overflow: hidden;
+    }
+    .tp-xterm-container .xterm {
+      border-radius: 4px;
+    }
+    .tp-xterm-container .xterm-viewport {
+      border-radius: 4px;
+    }
   `
   document.head.appendChild(style)
 }
@@ -1336,7 +1356,7 @@ function SingleTerminal({ sessionId, shellPath, shellArgs, onTitleChange, isActi
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+      <div ref={containerRef} className="tp-xterm-container" style={{ height: '100%', width: '100%' }} />
       <TerminalFindBar
         visible={showFind}
         onClose={() => setShowFind(false)}
@@ -1907,7 +1927,7 @@ export default function TerminalPanel({ sessionId, shellPath, shellArgs, onTitle
 
           {/* Kill terminal */}
           <button
-            className="tp-toolbar-btn"
+            className="tp-toolbar-btn tp-kill-btn"
             onClick={killTerminal}
             title="Kill Terminal"
             style={{ width: 24, height: 24 }}

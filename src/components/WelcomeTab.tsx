@@ -12,6 +12,7 @@ import {
   Layout, Type, Hash, Coffee, Layers, Rocket, Award,
   MousePointer, Maximize2, SplitSquareHorizontal,
 } from 'lucide-react'
+import { APP_VERSION } from '@/utils/version'
 import { useEditorStore } from '@/store/editor'
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -253,7 +254,7 @@ const useWelcomeStore = create<WelcomeStore>((set, get) => ({
    Constants
    ════════════════════════════════════════════════════════════════════════════ */
 
-const VERSION = '1.3.0'
+const VERSION = APP_VERSION
 const TAGLINE = 'The AI-Native Code Editor'
 
 const TIPS = [

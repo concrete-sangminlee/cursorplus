@@ -3,6 +3,8 @@ import React from 'react'
 interface ErrorBoundaryState {
   hasError: boolean
   error: Error | null
+  errorInfo: React.ErrorInfo | null
+  copied: boolean
 }
 
 interface ErrorBoundaryProps {
@@ -12,14 +14,15 @@ interface ErrorBoundaryProps {
 export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props)
-    this.state = { hasError: false, error: null }
+    this.state = { hasError: false, error: null, errorInfo: null, copied: false }
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    this.setState({ errorInfo: info })
     console.error('[Orion ErrorBoundary] Uncaught error:', error)
     console.error('[Orion ErrorBoundary] Component stack:', info.componentStack)
   }
@@ -29,7 +32,29 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
   }
 
   handleDismiss = (): void => {
-    this.setState({ hasError: false, error: null })
+    this.setState({ hasError: false, error: null, errorInfo: null, copied: false })
+  }
+
+  handleCopyError = async (): Promise<void> => {
+    const { error, errorInfo } = this.state
+    const info = [
+      `Orion Error Report`,
+      `---`,
+      `Error: ${error?.message || 'Unknown error'}`,
+      `Stack: ${error?.stack || 'No stack trace'}`,
+      errorInfo?.componentStack ? `Component Stack: ${errorInfo.componentStack}` : '',
+      `---`,
+      `URL: ${window.location.href}`,
+      `Time: ${new Date().toISOString()}`,
+      `UserAgent: ${navigator.userAgent}`,
+    ].filter(Boolean).join('\n')
+    try {
+      await navigator.clipboard.writeText(info)
+      this.setState({ copied: true })
+      setTimeout(() => this.setState({ copied: false }), 2000)
+    } catch {
+      // fallback
+    }
   }
 
   render(): React.ReactNode {
@@ -50,14 +75,30 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
         >
           <div
             style={{
-              maxWidth: 480,
-              padding: 32,
+              maxWidth: 520,
+              width: '90%',
+              padding: '40px 36px',
               background: 'var(--bg-secondary, #161b22)',
               border: '1px solid var(--border, #21262d)',
-              borderRadius: 'var(--radius-lg, 8px)',
+              borderRadius: 'var(--radius-lg, 12px)',
               textAlign: 'center',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             }}
           >
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 700,
+                letterSpacing: '-0.5px',
+                marginBottom: 20,
+                background: 'linear-gradient(135deg, var(--accent, #58a6ff), #a78bfa)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Orion
+            </div>
+
             <div
               style={{
                 width: 48,
@@ -68,7 +109,8 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 24,
+                fontSize: 22,
+                fontWeight: 700,
                 color: 'var(--accent-red, #f85149)',
               }}
               aria-hidden="true"
@@ -80,7 +122,7 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
               style={{
                 fontSize: 16,
                 fontWeight: 600,
-                marginBottom: 8,
+                marginBottom: 6,
               }}
             >
               Something went wrong
@@ -90,11 +132,11 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
               style={{
                 fontSize: 13,
                 color: 'var(--text-secondary, #8b949e)',
-                marginBottom: 8,
-                lineHeight: 1.5,
+                marginBottom: 16,
+                lineHeight: 1.6,
               }}
             >
-              Orion encountered an unexpected error. You can try reloading or dismiss this message.
+              Orion encountered an unexpected error. You can reload the window, copy the error details for a bug report, or try dismissing this message.
             </p>
 
             {this.state.error && (
@@ -104,26 +146,27 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
                   color: 'var(--accent-red, #f85149)',
                   background: 'var(--bg-tertiary, #010409)',
                   border: '1px solid var(--border, #21262d)',
-                  borderRadius: 'var(--radius-sm, 4px)',
-                  padding: 12,
-                  marginBottom: 16,
+                  borderRadius: 'var(--radius-sm, 6px)',
+                  padding: 14,
+                  marginBottom: 20,
                   textAlign: 'left',
                   overflow: 'auto',
-                  maxHeight: 120,
+                  maxHeight: 140,
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   fontFamily: 'var(--font-mono, monospace)',
+                  lineHeight: 1.5,
                 }}
               >
                 {this.state.error.message}
               </pre>
             )}
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={this.handleReload}
                 style={{
-                  padding: '8px 20px',
+                  padding: '8px 22px',
                   fontSize: 13,
                   fontWeight: 600,
                   color: '#fff',
@@ -131,33 +174,35 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
                   border: 'none',
                   borderRadius: 'var(--radius-md, 6px)',
                   cursor: 'pointer',
+                  transition: 'opacity 0.15s',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
               >
-                Reload
+                Reload Window
               </button>
               <button
-                onClick={this.handleDismiss}
+                onClick={this.handleCopyError}
                 style={{
-                  padding: '8px 20px',
+                  padding: '8px 22px',
                   fontSize: 13,
                   fontWeight: 600,
-                  color: 'var(--text-secondary, #8b949e)',
+                  color: this.state.copied ? 'var(--accent, #58a6ff)' : 'var(--text-secondary, #8b949e)',
                   background: 'var(--bg-hover, #1c2128)',
                   border: '1px solid var(--border, #21262d)',
                   borderRadius: 'var(--radius-md, 6px)',
                   cursor: 'pointer',
+                  transition: 'color 0.15s, background 0.15s',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-hover, #1c2128)' }}
               >
-                Dismiss
+                {this.state.copied ? 'Copied!' : 'Copy Error Info'}
               </button>
-              <a
-                href="https://github.com/nicepkg/orion/issues"
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={this.handleDismiss}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '8px 20px',
+                  padding: '8px 22px',
                   fontSize: 13,
                   fontWeight: 600,
                   color: 'var(--text-secondary, #8b949e)',
@@ -165,10 +210,35 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
                   border: '1px solid var(--border, #21262d)',
                   borderRadius: 'var(--radius-md, 6px)',
                   cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div
+              style={{
+                marginTop: 20,
+                paddingTop: 16,
+                borderTop: '1px solid var(--border, #21262d)',
+                fontSize: 11,
+                color: 'var(--text-muted, #484f58)',
+              }}
+            >
+              <a
+                href="https://github.com/nicepkg/orion/issues"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: 'var(--accent, #58a6ff)',
                   textDecoration: 'none',
+                  fontWeight: 500,
                 }}
               >
-                Report Issue
+                Report this issue on GitHub
               </a>
             </div>
           </div>

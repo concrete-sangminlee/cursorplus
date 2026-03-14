@@ -7,6 +7,7 @@ import {
   Play, Box, Globe, Cpu, Layers, MessageCircle, BookOpen, Download, X, Coffee,
   Flame, Rocket, Shield, Eye, Command, Hash, Wand2, Brain, Bot,
 } from 'lucide-react'
+import { APP_VERSION } from '@/utils/version'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ interface WelcomePageProps {
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const VERSION = '1.3.0'
+const VERSION = APP_VERSION
 
 const SHOW_WELCOME_KEY = 'orion-show-welcome-page'
 const WELCOME_TIPS_KEY = 'orion-welcome-tip-idx'
@@ -142,17 +143,66 @@ function injectWelcomePageStyles() {
       from { opacity: 0; transform: translateX(-12px); }
       to   { opacity: 1; transform: translateX(0); }
     }
+    @keyframes wpTipFade {
+      0% { opacity: 0; transform: translateY(8px); }
+      10% { opacity: 1; transform: translateY(0); }
+      90% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-8px); }
+    }
+    @keyframes wpGradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes wpAICardGlow {
+      0%, 100% { box-shadow: 0 0 0 rgba(139, 92, 246, 0); }
+      50% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.08), 0 0 40px rgba(99, 102, 241, 0.04); }
+    }
     .wp-card {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 20px;
       transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+      backdrop-filter: blur(8px);
     }
     .wp-card:hover {
       border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(99,102,241,0.05);
       transform: translateY(-1px);
+    }
+    .wp-kbd-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+    }
+    .wp-kbd-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px; border-radius: 6px; transition: background 0.12s;
+    }
+    .wp-kbd-row:hover { background: var(--bg-hover); }
+    .wp-ai-showcase-card {
+      position: relative;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent-purple) 6%, var(--bg-secondary)), var(--bg-secondary));
+      border: 1px solid color-mix(in srgb, var(--accent-purple) 15%, var(--border));
+      border-radius: 12px;
+      padding: 20px;
+      transition: all 0.25s;
+      overflow: hidden;
+      animation: wpAICardGlow 4s ease-in-out infinite;
+    }
+    .wp-ai-showcase-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent-purple, #a78bfa), var(--accent, #6366f1), #34d399);
+      opacity: 0.6;
+    }
+    .wp-ai-showcase-card:hover {
+      border-color: color-mix(in srgb, var(--accent-purple) 35%, var(--border));
+      box-shadow: 0 8px 32px rgba(99,102,241,0.08);
+      transform: translateY(-2px);
     }
     .wp-action-btn {
       display: flex; align-items: center; gap: 10px;
@@ -168,13 +218,26 @@ function injectWelcomePageStyles() {
       display: flex; flex-direction: column; gap: 8px;
       padding: 16px; background: var(--bg-secondary);
       border: 1px solid var(--border); border-radius: 10px;
-      cursor: pointer; transition: all 0.2s; text-align: left;
-      border: none; width: 100%;
+      cursor: pointer; transition: all 0.2s ease; text-align: left;
+      width: 100%; position: relative; overflow: hidden;
+    }
+    .wp-project-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-purple, #a78bfa));
+      opacity: 0;
+      transition: opacity 0.2s;
     }
     .wp-project-card:hover {
       background: var(--bg-hover);
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
       transform: translateY(-2px);
+      border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
+    }
+    .wp-project-card:hover::after {
+      opacity: 1;
     }
     .wp-template-card {
       display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -200,11 +263,14 @@ function injectWelcomePageStyles() {
       display: flex; align-items: flex-start; gap: 14px;
       padding: 16px; background: var(--bg-secondary);
       border: 1px solid var(--border); border-radius: 10px;
-      transition: all 0.2s; cursor: default;
+      transition: all 0.25s; cursor: default;
+      position: relative;
     }
     .wp-ai-card:hover {
       border-color: color-mix(in srgb, var(--accent-purple) 40%, var(--border));
-      box-shadow: 0 2px 16px rgba(99,102,241,0.08);
+      box-shadow: 0 4px 20px rgba(99,102,241,0.1), 0 0 0 1px rgba(139,92,246,0.05);
+      background: color-mix(in srgb, var(--accent-purple) 3%, var(--bg-secondary));
+      transform: translateY(-1px);
     }
     .wp-search-input {
       width: 100%; padding: 10px 14px 10px 38px;
@@ -263,11 +329,13 @@ function injectWelcomePageStyles() {
       .wp-main-grid { grid-template-columns: 1fr !important; }
       .wp-template-grid { grid-template-columns: repeat(2, 1fr) !important; }
       .wp-ai-grid { grid-template-columns: 1fr !important; }
+      .wp-kbd-grid { grid-template-columns: 1fr !important; }
     }
     @media (max-width: 600px) {
       .wp-template-grid { grid-template-columns: 1fr !important; }
       .wp-project-grid { grid-template-columns: 1fr !important; }
       .wp-hero-title { font-size: 32px !important; }
+      .wp-kbd-grid { grid-template-columns: 1fr !important; }
     }
   `
   document.head.appendChild(el)
@@ -643,15 +711,26 @@ export default function WelcomePage({
         position: 'relative',
       }}
     >
-      {/* Ambient gradient overlay */}
+      {/* Premium ambient gradient overlays */}
       <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: 400,
-        background: 'radial-gradient(ellipse 70% 40% at 50% 0%, color-mix(in srgb, var(--accent-purple) 7%, transparent), transparent)',
+        position: 'absolute', top: 0, left: 0, right: 0, height: 500,
+        background: 'radial-gradient(ellipse 80% 50% at 50% 0%, color-mix(in srgb, var(--accent-purple) 10%, transparent), transparent)',
+        pointerEvents: 'none', zIndex: 0,
+      }} />
+      <div style={{
+        position: 'absolute', top: 50, left: '10%', width: 600, height: 600,
+        background: 'radial-gradient(ellipse at 30% 20%, color-mix(in srgb, var(--accent) 5%, transparent), transparent)',
         pointerEvents: 'none', zIndex: 0,
       }} />
       <div style={{
         position: 'absolute', top: 100, right: 0, width: 500, height: 500,
-        background: 'radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--accent) 4%, transparent), transparent)',
+        background: 'radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent)',
+        pointerEvents: 'none', zIndex: 0,
+      }} />
+      {/* Subtle noise texture for depth */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse 50% 30% at 50% 8%, rgba(139, 92, 246, 0.04), transparent)',
         pointerEvents: 'none', zIndex: 0,
       }} />
 
@@ -664,32 +743,42 @@ export default function WelcomePage({
 
         {/* ═══ HERO SECTION ═══ */}
         <div style={{
-          textAlign: 'center', marginBottom: 36,
-          animation: 'wpFadeInUp 0.5s ease both',
+          textAlign: 'center', marginBottom: 40,
+          animation: 'wpFadeInUp 0.6s ease both',
+          position: 'relative',
         }}>
+          {/* Hero background glow */}
           <div style={{
-            marginBottom: 14, display: 'inline-block',
+            position: 'absolute', top: -40, left: '50%', transform: 'translateX(-50%)',
+            width: 400, height: 200,
+            background: 'radial-gradient(ellipse, rgba(99, 102, 241, 0.08) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
+
+          <div style={{
+            marginBottom: 18, display: 'inline-block',
             animation: 'wpPulseGlow 4s ease-in-out infinite, wpFloat 6s ease-in-out infinite',
             borderRadius: 24,
+            position: 'relative',
           }}>
-            <OrionLogo size={76} />
+            <OrionLogo size={80} />
           </div>
 
           <div className="wp-hero-title" style={{
-            fontSize: 46, fontWeight: 800, letterSpacing: '-2.5px',
-            background: 'linear-gradient(135deg, #818CF8 0%, #6366F1 20%, #A78BFA 45%, #34D399 70%, #6EE7B7 100%)',
-            backgroundSize: '200% auto',
-            animation: 'wpShimmer 6s linear infinite',
+            fontSize: 52, fontWeight: 800, letterSpacing: '-3px',
+            background: 'linear-gradient(135deg, #c4b5fd 0%, #818CF8 15%, #6366F1 30%, #A78BFA 50%, #34D399 70%, #6EE7B7 85%, #818CF8 100%)',
+            backgroundSize: '300% auto',
+            animation: 'wpShimmer 8s linear infinite',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            lineHeight: 1.1, marginBottom: 8,
+            lineHeight: 1.1, marginBottom: 10,
           }}>
             Orion IDE
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 6 }}>
             <span style={{
-              fontSize: 14, color: 'var(--text-secondary)',
+              fontSize: 15, color: 'var(--text-secondary)',
               fontWeight: 400, letterSpacing: '0.3px',
             }}>
               AI-Powered Code Editor for the Modern Developer
@@ -773,6 +862,60 @@ export default function WelcomePage({
               ))}
             </div>
           )}
+        </div>
+
+        {/* ═══ KEYBOARD SHORTCUTS QUICK REFERENCE ═══ */}
+        <div style={{
+          maxWidth: 1060, width: '100%',
+          marginBottom: 28,
+          animation: 'wpFadeInUp 0.5s ease 0.08s both',
+        }}>
+          <div className="wp-card" style={{
+            padding: '16px 20px',
+            background: 'linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--accent) 2%, var(--bg-secondary)))',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: 6,
+                  background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Keyboard size={12} style={{ color: 'var(--accent)' }} />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Quick Reference
+                </span>
+              </div>
+              <button
+                className="wp-link-btn"
+                onClick={() => onOpenKeyboardShortcuts?.()}
+                style={{ fontSize: 11 }}
+              >
+                All Shortcuts <ArrowRight size={10} />
+              </button>
+            </div>
+            <div className="wp-kbd-grid">
+              {[
+                { key: 'Ctrl+P', desc: 'Quick Open' },
+                { key: 'Ctrl+Shift+P', desc: 'Command Palette' },
+                { key: 'Ctrl+L', desc: 'AI Chat' },
+                { key: 'Ctrl+K', desc: 'AI Inline Edit' },
+                { key: 'Ctrl+\\', desc: 'Split Editor' },
+                { key: 'Ctrl+`', desc: 'Toggle Terminal' },
+                { key: 'Ctrl+Shift+F', desc: 'Search All Files' },
+                { key: 'Ctrl+D', desc: 'Multi-Select' },
+              ].map(item => (
+                <div key={item.key} className="wp-kbd-row">
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.desc}</span>
+                  <Kbd>{item.key}</Kbd>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* ═══ MAIN GRID LAYOUT ═══ */}
@@ -887,13 +1030,27 @@ export default function WelcomePage({
               )}
             </CollapsibleSection>
 
-            {/* --- Tips & Tricks --- */}
+            {/* --- Tips & Tricks with smooth transitions --- */}
             <section style={{ animation: 'wpSlideIn 0.4s ease 0.2s both' }}>
               <SectionTitle icon={Lightbulb}>Tips &amp; Tricks</SectionTitle>
-              <div className="wp-card" style={{ position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div className="wp-card" style={{
+                position: 'relative',
+                overflow: 'hidden',
+                background: 'linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--accent-orange, #f59e0b) 3%, var(--bg-secondary)))',
+              }}>
+                {/* Tip content with smooth key-based transition */}
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 14,
+                  minHeight: 56,
+                }}>
                   <IconBadge icon={Lightbulb} color="var(--accent-orange, #f59e0b)" size={36} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    key={tipIndex}
+                    style={{
+                      flex: 1, minWidth: 0,
+                      animation: 'wpTipFade 15s ease both',
+                    }}
+                  >
                     {TIPS[tipIndex].shortcut && (
                       <div style={{ marginBottom: 6 }}>
                         <Kbd>{TIPS[tipIndex].shortcut}</Kbd>
@@ -913,41 +1070,101 @@ export default function WelcomePage({
                       <div
                         key={i}
                         style={{
-                          width: i === tipIndex ? 16 : 4, height: 4,
+                          width: i === tipIndex ? 18 : 4, height: 4,
                           borderRadius: 2,
-                          background: i === tipIndex ? 'var(--accent)' : 'var(--border)',
-                          transition: 'all 0.3s',
+                          background: i === tipIndex
+                            ? 'linear-gradient(90deg, var(--accent-orange, #f59e0b), var(--accent))'
+                            : 'var(--border)',
+                          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                           cursor: 'pointer',
                         }}
                         onClick={() => setTipIndex(i)}
                       />
                     ))}
                   </div>
-                  <button
-                    onClick={nextTip}
-                    className="wp-tip-btn"
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '5px 12px', background: 'transparent',
-                      border: '1px solid var(--border)', borderRadius: 6,
-                      color: 'var(--text-secondary)', cursor: 'pointer',
-                      fontSize: 11, fontWeight: 500, transition: 'all 0.15s',
-                    }}
-                  >
-                    <RefreshCw size={11} />
-                    Next Tip
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      {tipIndex + 1}/{TIPS.length}
+                    </span>
+                    <button
+                      onClick={nextTip}
+                      className="wp-tip-btn"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '5px 12px', background: 'transparent',
+                        border: '1px solid var(--border)', borderRadius: 6,
+                        color: 'var(--text-secondary)', cursor: 'pointer',
+                        fontSize: 11, fontWeight: 500, transition: 'all 0.15s',
+                      }}
+                    >
+                      <RefreshCw size={11} />
+                      Next Tip
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>
 
-            {/* --- AI Features Highlight --- */}
+            {/* --- AI Features Showcase --- */}
             <CollapsibleSection
               title="AI Features"
               icon={Sparkles}
               expanded={expandedSections.aiFeatures}
               onToggle={() => toggleSection('aiFeatures')}
+              badge="Powered by AI"
             >
+              {/* AI Showcase Hero Card */}
+              <div className="wp-ai-showcase-card" style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+                  <div style={{
+                    width: 42, height: 42, borderRadius: 12,
+                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.1))',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid rgba(139, 92, 246, 0.15)',
+                  }}>
+                    <Brain size={20} style={{ color: 'var(--accent-purple, #a78bfa)' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>
+                      AI-First Development
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Code smarter with contextual AI assistance at every step
+                    </div>
+                  </div>
+                </div>
+                {/* Visual code example */}
+                <div style={{
+                  background: 'var(--bg-primary)',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                  fontFamily: 'var(--font-mono, monospace)',
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  border: '1px solid var(--border)',
+                }}>
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    <span style={{ color: '#7c3aed' }}>{'// '}</span>
+                    <span style={{ color: 'rgba(139, 92, 246, 0.6)' }}>Ask AI: &quot;Add error handling&quot;</span>
+                  </div>
+                  <div>
+                    <span style={{ color: '#c084fc' }}>try</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{' {'}</span>
+                  </div>
+                  <div style={{ paddingLeft: 16 }}>
+                    <span style={{ color: '#818cf8' }}>await</span>
+                    <span style={{ color: 'var(--text-secondary)' }}> fetchData()</span>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>{'} '}</span>
+                    <span style={{ color: '#c084fc' }}>catch</span>
+                    <span style={{ color: 'var(--text-muted)' }}> {'{'}</span>
+                    <span style={{ color: '#34d399' }}> ...</span>
+                    <span style={{ color: 'var(--text-muted)' }}> {'}'}</span>
+                  </div>
+                </div>
+              </div>
+
               <div
                 className="wp-ai-grid"
                 style={{
@@ -955,9 +1172,20 @@ export default function WelcomePage({
                   gap: 8,
                 }}
               >
-                {AI_FEATURES.map(feat => (
-                  <div key={feat.title} className="wp-ai-card">
-                    <IconBadge icon={feat.icon} color="var(--accent-purple, #a78bfa)" size={34} />
+                {AI_FEATURES.map((feat, i) => (
+                  <div
+                    key={feat.title}
+                    className="wp-ai-card"
+                    style={{ animationDelay: `${0.1 + i * 0.05}s` }}
+                  >
+                    <div style={{
+                      width: 34, height: 34, borderRadius: 10,
+                      background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(99, 102, 241, 0.08))',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      <feat.icon size={17} style={{ color: 'var(--accent-purple, #a78bfa)' }} />
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
                         fontSize: 12, fontWeight: 600, color: 'var(--text-primary)',
@@ -1243,11 +1471,12 @@ export default function WelcomePage({
 
         {/* ═══ FOOTER ═══ */}
         <footer style={{
-          marginTop: 48, paddingTop: 20,
-          borderTop: '1px solid var(--border)',
+          marginTop: 48, paddingTop: 24,
+          borderTop: '1px solid color-mix(in srgb, var(--border) 60%, transparent)',
           maxWidth: 1060, width: '100%',
           display: 'flex', flexDirection: 'column', gap: 16,
           animation: 'wpFadeInUp 0.5s ease 0.25s both',
+          position: 'relative',
         }}>
           {/* Community links row */}
           <div style={{

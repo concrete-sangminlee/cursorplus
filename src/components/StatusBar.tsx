@@ -6,6 +6,7 @@ import { useFileStore } from '@/store/files'
 import { useToastStore } from '@/store/toast'
 import { useCompletionStore } from '@/store/completion'
 import NotificationCenter from '@/components/NotificationCenter'
+import { extensionHost } from '@/utils/extensionHost'
 import {
   GitBranch,
   AlertTriangle,
@@ -540,7 +541,14 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
   // ── Performance monitoring ──────────────────
   const [memoryMB, setMemoryMB] = useState<number | null>(null)
   const openFilesCount = useEditorStore((s) => s.openFiles.length)
-  const SIMULATED_EXTENSIONS = 12
+  const [extensionCount, setExtensionCount] = useState(() => extensionHost.registry.getEnabled().length)
+
+  // Refresh extension count periodically
+  useEffect(() => {
+    const refreshExtCount = () => setExtensionCount(extensionHost.registry.getEnabled().length)
+    const interval = setInterval(refreshExtCount, 10_000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Memory usage polling (every 10 seconds)
   useEffect(() => {
@@ -603,11 +611,12 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
     <footer
       className="shrink-0 flex items-center select-none"
       style={{
-        height: 22,
+        height: 24,
         background: 'var(--bg-tertiary)',
         borderTop: '1px solid var(--border)',
         fontSize: 11,
         color: 'var(--text-muted)',
+        letterSpacing: '0.01em',
       }}
     >
       {/* LEFT SECTION */}
@@ -616,14 +625,16 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
         <div
           className="flex items-center justify-center"
           style={{
-            height: 22,
-            padding: '0 10px',
-            background: 'linear-gradient(135deg, #58a6ff, #bc8cff)',
+            height: 24,
+            padding: '0 12px',
+            background: 'linear-gradient(135deg, #7c3aed, #58a6ff)',
             color: '#fff',
             fontWeight: 600,
             fontSize: 10,
-            gap: 4,
+            gap: 5,
             display: 'flex',
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase',
           }}
         >
           <Zap size={9} fill="#fff" />
@@ -882,10 +893,10 @@ export default function StatusBar({ onToggleTerminal, onToggleChat }: Props) {
         )}
 
         {/* Extensions count */}
-        <StatusItem title={`${SIMULATED_EXTENSIONS} extensions active`}>
+        <StatusItem title={`${extensionCount} extension${extensionCount !== 1 ? 's' : ''} active`}>
           <Puzzle size={10} style={{ color: 'var(--text-muted)' }} />
           <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
-            {SIMULATED_EXTENSIONS} ext
+            {extensionCount} ext
           </span>
         </StatusItem>
 

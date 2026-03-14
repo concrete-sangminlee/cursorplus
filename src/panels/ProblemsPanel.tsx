@@ -846,7 +846,7 @@ function ProblemRow({ problem, idx, groupBy, onNav, onCopy, onFix, onCtx, copied
         background: selected ? 'rgba(88,166,255,0.10)'
           : hov ? 'rgba(255,255,255,0.05)'
           : idx % 2 ? 'rgba(255,255,255,0.015)' : 'transparent',
-        borderLeft: selected ? '2px solid var(--accent)' : '2px solid transparent',
+        borderLeft: selected ? `2px solid var(--accent)` : `2px solid ${hov ? cfg.color : 'transparent'}`,
       }}>
       {/* Severity icon */}
       <cfg.Icon size={13} style={{ color: cfg.color, flexShrink: 0, marginTop: 2 }} />
@@ -878,15 +878,22 @@ function ProblemRow({ problem, idx, groupBy, onNav, onCopy, onFix, onCtx, copied
           </span>
         )}
         {showFile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 1, cursor: 'pointer' }}
+            onClick={(e) => { e.stopPropagation(); onNav(problem.file, problem.line, problem.column) }}
+            title={`Open ${problem.file}:${problem.line}`}
+          >
             <FileText size={10} style={{ color: fileColor(fn), flexShrink: 0 }} />
             <span style={{
-              color: 'var(--text-muted)', fontSize: 10,
+              color: 'var(--accent, #58a6ff)', fontSize: 10,
               fontFamily: 'var(--font-mono, monospace)',
               overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', opacity: 0.7,
+              whiteSpace: 'nowrap', opacity: 0.8,
+              textDecoration: 'underline',
+              textDecorationColor: 'rgba(88,166,255,0.3)',
+              textUnderlineOffset: 2,
             }}>
-              {fn}
+              {fn}:{problem.line}
             </span>
           </div>
         )}

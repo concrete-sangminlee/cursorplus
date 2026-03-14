@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { X, Check, Eye, EyeOff, Sparkles, Code, Palette, Plus, Trash2, Terminal, Keyboard, Settings, User, Download, Upload, Pencil, Copy } from 'lucide-react'
+import { X, Check, Eye, EyeOff, Sparkles, Code, Palette, Plus, Trash2, Terminal, Keyboard, Settings, User, Download, Upload, Pencil, Copy, FileText, Info, RotateCcw, ZoomIn } from 'lucide-react'
 import { useThemeStore } from '@/store/theme'
 import { useWorkspaceStore, DEFAULT_WORKSPACE_SETTINGS } from '@/store/workspace'
 import { useFileStore } from '@/store/files'
 import { useProfileStore } from '@/store/profiles'
+import { useSettingsStore } from '@/store/settings'
 import type { WorkspaceSettings } from '@shared/types'
 
 interface Props {
@@ -52,7 +53,7 @@ const AI_MODELS: Record<string, { value: string; label: string }[]> = {
 const DEFAULT_SYSTEM_PROMPT = 'You are Orion AI by Bebut, an expert coding assistant integrated into a code editor IDE. You help with code analysis, debugging, feature implementation, and code explanations. Be concise and helpful. Use markdown formatting for code blocks. Respond in the same language the user uses.'
 const DEFAULT_USER_TEMPLATE = '{message}'
 
-type CategoryId = 'general' | 'editor' | 'ai' | 'theme' | 'terminal' | 'shortcuts' | 'profiles'
+type CategoryId = 'general' | 'editor' | 'ai' | 'appearance' | 'terminal' | 'files' | 'shortcuts' | 'profiles' | 'about'
 
 type AutoSaveMode = 'off' | 'afterDelay' | 'onFocusChange' | 'onWindowChange'
 type StartupBehavior = 'welcomeTab' | 'lastSession' | 'empty'
@@ -287,10 +288,12 @@ const categories: { id: CategoryId; label: string; icon: React.ReactNode }[] = [
   { id: 'general', label: 'General', icon: <Settings size={15} /> },
   { id: 'editor', label: 'Editor', icon: <Code size={15} /> },
   { id: 'ai', label: 'AI / Models', icon: <Sparkles size={15} /> },
-  { id: 'theme', label: 'Theme', icon: <Palette size={15} /> },
+  { id: 'appearance', label: 'Appearance', icon: <Palette size={15} /> },
   { id: 'terminal', label: 'Terminal', icon: <Terminal size={15} /> },
+  { id: 'files', label: 'Files', icon: <FileText size={15} /> },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: <Keyboard size={15} /> },
   { id: 'profiles', label: 'Profiles', icon: <User size={15} /> },
+  { id: 'about', label: 'About', icon: <Info size={15} /> },
 ]
 
 /* ============================================================ */
@@ -343,6 +346,24 @@ export default function SettingsModal({ open, onClose }: Props) {
   })
   const [newRuler, setNewRuler] = useState('')
 
+  // Appearance settings
+  const [appearanceSettings, setAppearanceSettings] = useState({
+    fontSizeScaling: 100,
+    zoomLevel: 0,
+  })
+
+  // Files settings
+  const [filesSettings, setFilesSettings] = useState({
+    defaultEncoding: 'utf-8',
+    autoGuessEncoding: true,
+    hotExit: 'onExit' as 'off' | 'onExit' | 'onExitAndWindowClose',
+    watcherExclude: ['**/.git/objects/**', '**/.git/subtree-cache/**', '**/node_modules/**'],
+  })
+  const [newWatcherExclude, setNewWatcherExclude] = useState('')
+
+  // Reset confirmation
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+
   // Workspace settings
   const rootPath = useFileStore((s) => s.rootPath)
   const wsSettings = useWorkspaceStore((s) => s.settings)
@@ -387,6 +408,10 @@ export default function SettingsModal({ open, onClose }: Props) {
         if (storedAi) setAiSettings(prev => ({ ...prev, ...JSON.parse(storedAi) }))
         const storedTerminal = localStorage.getItem('orion-terminal-settings')
         if (storedTerminal) setTerminalSettings(prev => ({ ...prev, ...JSON.parse(storedTerminal) }))
+        const storedAppearance = localStorage.getItem('orion-appearance-settings')
+        if (storedAppearance) setAppearanceSettings(prev => ({ ...prev, ...JSON.parse(storedAppearance) }))
+        const storedFiles = localStorage.getItem('orion-files-settings')
+        if (storedFiles) setFilesSettings(prev => ({ ...prev, ...JSON.parse(storedFiles) }))
       } catch {}
       // Load workspace settings
       if (rootPath) {
@@ -419,14 +444,78 @@ export default function SettingsModal({ open, onClose }: Props) {
     localStorage.setItem('orion-editor-settings', JSON.stringify(editorSettings))
     localStorage.setItem('orion-ai-settings', JSON.stringify(aiSettings))
     localStorage.setItem('orion-terminal-settings', JSON.stringify(terminalSettings))
+    localStorage.setItem('orion-appearance-settings', JSON.stringify(appearanceSettings))
+    localStorage.setItem('orion-files-settings', JSON.stringify(filesSettings))
     // Dispatch config update events
     window.dispatchEvent(new CustomEvent('orion:general-config', { detail: generalSettings }))
     window.dispatchEvent(new CustomEvent('orion:editor-config', { detail: editorSettings }))
     window.dispatchEvent(new CustomEvent('orion:ai-config', { detail: aiSettings }))
     window.dispatchEvent(new CustomEvent('orion:terminal-config', { detail: terminalSettings }))
+    window.dispatchEvent(new CustomEvent('orion:appearance-config', { detail: appearanceSettings }))
+    window.dispatchEvent(new CustomEvent('orion:files-config', { detail: filesSettings }))
 
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleResetAll = () => {
+    // Reset all local state to defaults
+    setGeneralSettings({
+      startupBehavior: 'welcomeTab',
+      windowTitleFormat: 'default',
+      confirmBeforeClose: true,
+      telemetryEnabled: false,
+    })
+    setEditorSettings({
+      fontSize: 14, fontFamily: 'Cascadia Code', lineHeight: 1.5, fontLigatures: true,
+      letterSpacing: 0, cursorStyle: 'line', cursorBlinking: 'blink',
+      renderWhitespace: 'selection',
+      wordWrap: false, wordWrapMode: 'off', wordWrapColumn: 80,
+      insertSpaces: true,
+      minimap: true, minimapSide: 'right', minimapMaxColumn: 120,
+      autoSave: true,
+      autoSaveMode: 'afterDelay', autoSaveDelay: 1000, tabSize: 2,
+      lineNumbers: true, lineNumbersMode: 'on',
+      bracketPairColorization: true, stickyScroll: true, smoothScrolling: true,
+      formatOnSave: false, formatOnPaste: false,
+      trimTrailingWhitespace: true, insertFinalNewline: true,
+      rulers: [],
+    })
+    setAiSettings({
+      activeProvider: 'anthropic',
+      selectedModels: { anthropic: 'claude-sonnet-4-20250514', openai: 'gpt-4o', nvidia: 'meta/llama-3.1-405b-instruct', kimi: 'moonshot-v1-128k', gemini: 'gemini-2.0-flash', custom: 'custom' },
+      temperature: 0.7,
+      maxTokens: 4096,
+      ghostTextEnabled: true,
+      completionDelay: 300,
+      customModelName: '',
+      customEndpointUrl: '',
+    })
+    setTerminalSettings({
+      defaultShell: 'default', fontFamily: 'Cascadia Code',
+      fontSize: 13, cursorStyle: 'block', scrollback: 1000,
+    })
+    setAppearanceSettings({ fontSizeScaling: 100, zoomLevel: 0 })
+    setFilesSettings({
+      defaultEncoding: 'utf-8',
+      autoGuessEncoding: true,
+      hotExit: 'onExit',
+      watcherExclude: ['**/.git/objects/**', '**/.git/subtree-cache/**', '**/node_modules/**'],
+    })
+    setSystemPrompt('')
+    setUserTemplate('')
+    // Reset store layers
+    useSettingsStore.getState().resetAll()
+    // Clear localStorage
+    localStorage.removeItem('orion-general-settings')
+    localStorage.removeItem('orion-editor-settings')
+    localStorage.removeItem('orion-ai-settings')
+    localStorage.removeItem('orion-terminal-settings')
+    localStorage.removeItem('orion-appearance-settings')
+    localStorage.removeItem('orion-files-settings')
+    localStorage.removeItem('orion-prompts')
+    setShowResetConfirm(false)
+    setSaved(false)
   }
 
   if (!open) return null
@@ -1292,8 +1381,44 @@ if (a === b && c >= d) {
               </div>
             )}
 
-            {/* ---- THEME ---- */}
-            {activeCategory === 'theme' && <ThemePicker />}
+            {/* ---- APPEARANCE (replaces Theme) ---- */}
+            {activeCategory === 'appearance' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <SectionHeader title="Zoom & Scaling" />
+
+                <SettingRow label="UI Font Size Scaling" description="Scale the entire UI font size (50% - 200%)">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="range" min={50} max={200} step={10}
+                      value={appearanceSettings.fontSizeScaling}
+                      onChange={(e) => setAppearanceSettings(s => ({ ...s, fontSizeScaling: parseInt(e.target.value, 10) }))}
+                      style={{ width: 90, accentColor: 'var(--accent-blue, #388bfd)' }}
+                    />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', minWidth: 36, textAlign: 'center' }}>
+                      {appearanceSettings.fontSizeScaling}%
+                    </span>
+                  </div>
+                </SettingRow>
+
+                <SettingRow label="Zoom Level" description="Adjust the zoom level of the window (-5 to 5)">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ZoomIn size={14} style={{ color: 'var(--text-muted)' }} />
+                    <input
+                      type="range" min={-5} max={5} step={1}
+                      value={appearanceSettings.zoomLevel}
+                      onChange={(e) => setAppearanceSettings(s => ({ ...s, zoomLevel: parseInt(e.target.value, 10) }))}
+                      style={{ width: 90, accentColor: 'var(--accent-blue, #388bfd)' }}
+                    />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', minWidth: 28, textAlign: 'center' }}>
+                      {appearanceSettings.zoomLevel > 0 ? '+' : ''}{appearanceSettings.zoomLevel}
+                    </span>
+                  </div>
+                </SettingRow>
+
+                <SectionHeader title="Color Theme" />
+                <ThemePicker />
+              </div>
+            )}
 
             {/* ---- TERMINAL ---- */}
             {activeCategory === 'terminal' && (
@@ -1359,6 +1484,171 @@ if (a === b && c >= d) {
               </div>
             )}
 
+            {/* ---- FILES ---- */}
+            {activeCategory === 'files' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <SectionHeader title="Auto Save" />
+
+                <SettingRow label="Auto Save Mode" description="Controls when files are automatically saved">
+                  <SelectDropdown
+                    value={editorSettings.autoSaveMode}
+                    onChange={(v) => {
+                      const mode = v as AutoSaveMode
+                      setEditorSettings(s => ({ ...s, autoSaveMode: mode, autoSave: mode !== 'off' }))
+                    }}
+                    options={[
+                      { value: 'off', label: 'Off' },
+                      { value: 'afterDelay', label: 'After Delay' },
+                      { value: 'onFocusChange', label: 'On Focus Change' },
+                      { value: 'onWindowChange', label: 'On Window Change' },
+                    ]}
+                  />
+                </SettingRow>
+
+                {editorSettings.autoSaveMode === 'afterDelay' && (
+                  <SettingRow label="Auto Save Delay" description="Delay before auto-saving after the last edit">
+                    <SelectDropdown
+                      value={String(editorSettings.autoSaveDelay)}
+                      onChange={(v) => setEditorSettings(s => ({ ...s, autoSaveDelay: parseInt(v, 10) }))}
+                      options={[
+                        { value: '1000', label: '1 second' },
+                        { value: '5000', label: '5 seconds' },
+                        { value: '10000', label: '10 seconds' },
+                        { value: '30000', label: '30 seconds' },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+
+                <SettingRow label="Hot Exit" description="Controls whether unsaved files are remembered between sessions">
+                  <SelectDropdown
+                    value={filesSettings.hotExit}
+                    onChange={(v) => setFilesSettings(s => ({ ...s, hotExit: v as typeof s.hotExit }))}
+                    options={[
+                      { value: 'off', label: 'Off' },
+                      { value: 'onExit', label: 'On Exit' },
+                      { value: 'onExitAndWindowClose', label: 'On Exit & Window Close' },
+                    ]}
+                  />
+                </SettingRow>
+
+                <SectionHeader title="Encoding" />
+
+                <SettingRow label="Default Encoding" description="The default character set encoding for reading and writing files">
+                  <SelectDropdown
+                    value={filesSettings.defaultEncoding}
+                    onChange={(v) => setFilesSettings(s => ({ ...s, defaultEncoding: v }))}
+                    options={[
+                      { value: 'utf-8', label: 'UTF-8' },
+                      { value: 'utf-8-bom', label: 'UTF-8 with BOM' },
+                      { value: 'utf-16le', label: 'UTF-16 LE' },
+                      { value: 'utf-16be', label: 'UTF-16 BE' },
+                      { value: 'ascii', label: 'ASCII' },
+                      { value: 'iso-8859-1', label: 'ISO 8859-1 (Latin-1)' },
+                      { value: 'windows-1252', label: 'Windows 1252' },
+                      { value: 'euc-kr', label: 'EUC-KR' },
+                      { value: 'shift-jis', label: 'Shift JIS' },
+                      { value: 'gb2312', label: 'GB2312' },
+                    ]}
+                  />
+                </SettingRow>
+
+                <SettingRow label="Auto Guess Encoding" description="Automatically detect the file encoding when opening">
+                  <Toggle checked={filesSettings.autoGuessEncoding} onChange={(v) => setFilesSettings(s => ({ ...s, autoGuessEncoding: v }))} />
+                </SettingRow>
+
+                <SectionHeader title="File Exclusion Patterns" />
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, marginBottom: 8 }}>
+                  Glob patterns for files and folders excluded from file watching and search.
+                </p>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {filesSettings.watcherExclude.map((pat) => (
+                    <span key={pat} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '3px 8px', borderRadius: 4,
+                      background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      fontSize: 11, color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono, monospace)',
+                    }}>
+                      {pat}
+                      <button
+                        onClick={() => setFilesSettings(s => ({
+                          ...s,
+                          watcherExclude: s.watcherExclude.filter(p => p !== pat),
+                        }))}
+                        style={{
+                          background: 'transparent', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-muted)', padding: 0, display: 'flex',
+                        }}
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                  {filesSettings.watcherExclude.length === 0 && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>No exclusion patterns configured</span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={newWatcherExclude}
+                    onChange={(e) => setNewWatcherExclude(e.target.value)}
+                    placeholder="e.g. **/dist/**, *.log"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newWatcherExclude.trim()) {
+                        setFilesSettings(s => ({
+                          ...s,
+                          watcherExclude: [...s.watcherExclude, newWatcherExclude.trim()],
+                        }))
+                        setNewWatcherExclude('')
+                      }
+                    }}
+                    style={{
+                      flex: 1, padding: '6px 10px',
+                      background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      borderRadius: 6, outline: 'none',
+                      fontSize: 12, color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono, monospace)',
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (newWatcherExclude.trim()) {
+                        setFilesSettings(s => ({
+                          ...s,
+                          watcherExclude: [...s.watcherExclude, newWatcherExclude.trim()],
+                        }))
+                        setNewWatcherExclude('')
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px', borderRadius: 6, border: 'none',
+                      background: 'var(--accent-blue, #388bfd)', color: '#fff', cursor: 'pointer',
+                      fontSize: 12, display: 'flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    <Plus size={12} /> Add
+                  </button>
+                </div>
+
+                <SectionHeader title="Save Behavior" />
+
+                <SettingRow label="Trim Trailing Whitespace" description="Remove trailing whitespace from lines when saving">
+                  <Toggle checked={editorSettings.trimTrailingWhitespace} onChange={(v) => setEditorSettings(s => ({ ...s, trimTrailingWhitespace: v }))} />
+                </SettingRow>
+
+                <SettingRow label="Insert Final Newline" description="Ensure files end with a newline character when saving">
+                  <Toggle checked={editorSettings.insertFinalNewline} onChange={(v) => setEditorSettings(s => ({ ...s, insertFinalNewline: v }))} />
+                </SettingRow>
+
+                <SettingRow label="Format on Save" description="Automatically format the file when saving">
+                  <Toggle checked={editorSettings.formatOnSave} onChange={(v) => setEditorSettings(s => ({ ...s, formatOnSave: v }))} />
+                </SettingRow>
+              </div>
+            )}
+
             {/* ---- PROFILES ---- */}
             {activeCategory === 'profiles' && <ProfilesPanel />}
 
@@ -1413,6 +1703,104 @@ if (a === b && c >= d) {
                 ))}
               </div>
             )}
+
+            {/* ---- ABOUT ---- */}
+            {activeCategory === 'about' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <SectionHeader title="Application" />
+
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 16,
+                  padding: '20px 16px',
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                  marginBottom: 8,
+                }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: 12,
+                    background: 'linear-gradient(135deg, var(--accent-blue, #388bfd), var(--accent-purple, #a371f7))',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 22, fontWeight: 700, color: '#fff',
+                    flexShrink: 0,
+                  }}>
+                    O
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Orion IDE
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Version 2.0.0
+                    </div>
+                  </div>
+                </div>
+
+                <SettingRow label="Version" description="Current application version">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>2.0.0</span>
+                </SettingRow>
+
+                <SettingRow label="Electron" description="Electron runtime version">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>{(window as unknown as Record<string, unknown>).electronVersion as string || 'N/A'}</span>
+                </SettingRow>
+
+                <SettingRow label="Chrome" description="Chromium engine version">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>{navigator.userAgent.match(/Chrome\/([\d.]+)/)?.[1] || 'N/A'}</span>
+                </SettingRow>
+
+                <SettingRow label="Platform" description="Operating system">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>{navigator.platform || 'N/A'}</span>
+                </SettingRow>
+
+                <SectionHeader title="System" />
+
+                <SettingRow label="Language" description="System language">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>{navigator.language}</span>
+                </SettingRow>
+
+                <SettingRow label="Logical Processors" description="Available CPU cores">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>{navigator.hardwareConcurrency || 'N/A'}</span>
+                </SettingRow>
+
+                <SettingRow label="Memory" description="Device memory (approximate)">
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>{(navigator as unknown as Record<string, unknown>).deviceMemory ? `${(navigator as unknown as Record<string, unknown>).deviceMemory} GB` : 'N/A'}</span>
+                </SettingRow>
+
+                <SectionHeader title="Links" />
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+                  {([
+                    ['Documentation', 'https://orion-ide.dev/docs'],
+                    ['Report Issue', 'https://github.com/orion-ide/orion/issues'],
+                    ['Release Notes', 'https://orion-ide.dev/changelog'],
+                    ['License', 'https://orion-ide.dev/license'],
+                  ] as const).map(([label, url]) => (
+                    <a
+                      key={label}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: 12, color: 'var(--accent-blue, #388bfd)',
+                        textDecoration: 'none', padding: '4px 0',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+                    >
+                      {label}
+                    </a>
+                  ))}
+                </div>
+
+                <SectionHeader title="Legal" />
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Copyright 2024-2026 Orion Team. All rights reserved.
+                  <br />
+                  Built with Electron, React, and Monaco Editor.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1422,6 +1810,47 @@ if (a === b && c >= d) {
           padding: '12px 20px',
           borderTop: '1px solid var(--border)',
         }}>
+          {/* Reset to Defaults button */}
+          {!showResetConfirm ? (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              style={{
+                padding: '6px 16px', borderRadius: 6,
+                fontSize: 12, color: 'var(--accent-red, #f85149)',
+                background: 'transparent', border: '1px solid var(--accent-red, #f85149)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                marginRight: 'auto',
+              }}
+            >
+              <RotateCcw size={12} /> Reset to Defaults
+            </button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 'auto' }}>
+              <span style={{ fontSize: 11, color: 'var(--accent-red, #f85149)', fontWeight: 600 }}>Reset all settings?</span>
+              <button
+                onClick={handleResetAll}
+                style={{
+                  padding: '5px 12px', borderRadius: 6,
+                  fontSize: 11, fontWeight: 600,
+                  background: 'var(--accent-red, #f85149)', color: '#fff',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                style={{
+                  padding: '5px 12px', borderRadius: 6,
+                  fontSize: 11,
+                  background: 'var(--bg-hover)', color: 'var(--text-secondary)',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                No
+              </button>
+            </div>
+          )}
           <button
             onClick={onClose}
             style={{
@@ -1902,7 +2331,7 @@ function ThemePicker() {
               style={{
                 width: 16, height: 16, borderRadius: 4,
                 background: theme.colors[key] || '#333',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: '1px solid var(--border)',
               }}
             />
           ))}

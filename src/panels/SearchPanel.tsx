@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { Search, ChevronRight, ChevronDown, FileText, Loader2, Replace, X, ChevronsUpDown, ChevronsDownUp, ListFilter, AlignJustify, FileOutput, History, Copy, FolderOpen, Undo2, Eye, ArrowDown, ArrowUp } from 'lucide-react'
+import { Search, ChevronRight, FileText, Loader2, Replace, X, ChevronsUpDown, ChevronsDownUp, ListFilter, AlignJustify, FileOutput, History, Copy, FolderOpen, Undo2, Eye, ArrowDown, ArrowUp } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
 import { useToastStore } from '@/store/toast'
@@ -1008,15 +1008,19 @@ export default function SearchPanel() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
                   padding: '4px 12px', cursor: 'pointer', color: 'var(--text-primary)',
+                  transition: 'background 0.12s ease',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
               >
-                {expanded.has(result.filePath) ? (
-                  <ChevronDown size={12} style={{ flexShrink: 0 }} />
-                ) : (
-                  <ChevronRight size={12} style={{ flexShrink: 0 }} />
-                )}
+                <ChevronRight
+                  size={12}
+                  style={{
+                    flexShrink: 0,
+                    transform: expanded.has(result.filePath) ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.15s ease',
+                  }}
+                />
                 <FileText size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                 <span className="truncate" style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 6 }}>
                   <span>{result.fileName}</span>
@@ -1088,6 +1092,7 @@ export default function SearchPanel() {
                           fontFamily: 'var(--font-mono)',
                           background: isActive ? 'rgba(88,166,255,0.12)' : 'transparent',
                           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                          transition: 'background 0.12s ease, border-left-color 0.12s ease',
                         }}
                         onMouseEnter={(e) => {
                           if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'
