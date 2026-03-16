@@ -1567,7 +1567,8 @@ export default function TestExplorerPanel() {
     // In production this would launch a debug session via the debug adapter
     const test = suitesRef.current.flatMap((s) => s.tests).find((t) => t.id === testId)
     if (test) {
-      console.log(`[TestExplorer] Debug test: ${test.name}`)
+      // TODO: launch debug session via debug adapter for test
+      void test
     }
   }, [])
 
@@ -2057,7 +2058,10 @@ export default function TestExplorerPanel() {
                     <IconBtn
                       icon={ExternalLink}
                       title={`Open ${suite.filePath}`}
-                      onClick={() => console.log(`Open: ${suite.filePath}`)}
+                      onClick={() => {
+                        // TODO: open file in editor via EditorStore
+                        void suite.filePath
+                      }}
                       size={11}
                     />
                   </div>

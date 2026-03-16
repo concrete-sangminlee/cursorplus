@@ -908,7 +908,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
     // This is a façade that delegates to the main process for actual conversion.
     try {
       // Attempt via IPC if available (synchronous bridge for simplicity)
-      const result = (window.electronAPI as Record<string, unknown>)?.convertEncodingSync?.(
+      const result = (window.electronAPI as Record<string, ((...args: any[]) => any) | undefined> | undefined)?.convertEncodingSync?.(
         content,
         _from,
         to

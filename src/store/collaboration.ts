@@ -603,8 +603,8 @@ export function transformOT(op1: OTOperation[], op2: OTOperation[]): [OTOperatio
   let op2Remaining: OTOperation | null = null
 
   while (i < op1.length || j < op2.length || op1Remaining || op2Remaining) {
-    const a = op1Remaining || op1[i]
-    const b = op2Remaining || op2[j]
+    const a: OTOperation | undefined = op1Remaining || op1[i]
+    const b: OTOperation | undefined = op2Remaining || op2[j]
 
     if (!a && !b) break
 

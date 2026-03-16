@@ -373,7 +373,7 @@ export class StartupTimer {
   private startTime = performance.now()
 
   addPhase(name: string): () => void {
-    const phase = { name, start: performance.now() }
+    const phase: { name: string; start: number; end?: number } = { name, start: performance.now() }
     this.phases.push(phase)
 
     return () => {

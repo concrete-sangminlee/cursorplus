@@ -572,7 +572,7 @@ export default function SourceControlPanel() {
   const handleConflictFileClick = (filePath: string) => {
     if (!rootPath) return
     const fullPath = rootPath + '/' + filePath
-    openFile(fullPath)
+    openFile({ path: fullPath, name: filePath.split('/').pop() || filePath, content: '', language: '', isModified: false, aiModified: false })
   }
 
   const handleConflictAction = (filePath: string, action: 'accept-current' | 'accept-incoming' | 'accept-both') => {
@@ -581,7 +581,7 @@ export default function SourceControlPanel() {
     window.dispatchEvent(new CustomEvent('orion:resolve-conflict', {
       detail: { path: fullPath, action }
     }))
-    openFile(fullPath)
+    openFile({ path: fullPath, name: filePath.split('/').pop() || filePath, content: '', language: '', isModified: false, aiModified: false })
   }
 
   // Load saved templates from localStorage

@@ -519,8 +519,8 @@ function MessageActions({ message, conversationId, onEdit, onRegenerate, onCopy 
     width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent',
     color: 'var(--orion-chat-text-secondary, #777)', cursor: 'pointer', transition: 'all 0.15s ease', padding: 0,
   }
-  const hoverIn = (e: React.MouseEvent) => { e.currentTarget.style.background = 'var(--orion-chat-btn-hover, rgba(255,255,255,0.1))'; e.currentTarget.style.color = 'var(--orion-chat-text, #e0e0e0)' }
-  const hoverOut = (e: React.MouseEvent) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--orion-chat-text-secondary, #777)' }
+  const hoverIn = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'var(--orion-chat-btn-hover, rgba(255,255,255,0.1))'; e.currentTarget.style.color = 'var(--orion-chat-text, #e0e0e0)' }
+  const hoverOut = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--orion-chat-text-secondary, #777)' }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 2, opacity: 0, transition: 'opacity 0.15s ease', marginTop: 4 }} className="orion-msg-actions">

@@ -219,12 +219,19 @@ export default function EditorPanel() {
   const { scheduleAutoSave } = useAutoSave()
 
   // Editor config state – initialised from saved settings, if any
-  const [editorConfig, setEditorConfig] = useState(() => {
-    const defaults = {
+  interface EditorConfig {
+    fontSize: number; minimap: boolean; wordWrap: boolean;
+    fontFamily: string; lineHeight: number;
+    fontLigatures: boolean; cursorStyle: string;
+    renderWhitespace: string; letterSpacing: number;
+    formatOnSave: boolean; trimTrailingWhitespace: boolean; insertFinalNewline: boolean;
+  }
+  const [editorConfig, setEditorConfig] = useState<EditorConfig>(() => {
+    const defaults: EditorConfig = {
       fontSize: 14, minimap: true, wordWrap: false,
       fontFamily: 'Cascadia Code', lineHeight: 1.5,
-      fontLigatures: true, cursorStyle: 'line-thin' as string,
-      renderWhitespace: 'selection' as string, letterSpacing: 0,
+      fontLigatures: true, cursorStyle: 'line-thin',
+      renderWhitespace: 'selection', letterSpacing: 0,
       formatOnSave: false, trimTrailingWhitespace: true, insertFinalNewline: true,
     }
     try {
@@ -245,14 +252,14 @@ export default function EditorPanel() {
   const [inlineProcessing, setInlineProcessing] = useState(false)
   const [inlineEditSelRange, setInlineEditSelRange] = useState<{ startLine: number; endLine: number } | null>(null)
   const [inlineEditAiResponse, setInlineEditAiResponse] = useState<string | null>(null)
-  const inlineEditSelectionRef = useRef<MonacoEditor.ISelection | null>(null)
+  const inlineEditSelectionRef = useRef<import('monaco-editor').Selection | null>(null)
 
   // Inline diff preview state (shown after AI responds to Ctrl+K)
   const [diffVisible, setDiffVisible] = useState(false)
   const [diffOriginalCode, setDiffOriginalCode] = useState('')
   const [diffSuggestedCode, setDiffSuggestedCode] = useState('')
   const [diffPos, setDiffPos] = useState({ top: 60, left: 100 })
-  const diffSelectionRef = useRef<MonacoEditor.ISelection | null>(null)
+  const diffSelectionRef = useRef<import('monaco-editor').Selection | null>(null)
 
   // Decoration refs for active line highlight, git gutter, and color decorators
   const activeLineDecorationsRef = useRef<string[]>([])
@@ -1050,14 +1057,14 @@ export default function EditorPanel() {
               color: { red: rgba.r, green: rgba.g, blue: rgba.b, alpha: rgba.a },
             })
           }
-          return { colors: results, dispose: () => {} }
+          return results
         },
         provideColorPresentations: (model, colorInfo) => {
           const { red, green, blue, alpha } = colorInfo.color
           const r = Math.round(red * 255)
           const g = Math.round(green * 255)
           const b = Math.round(blue * 255)
-          const presentations: { label: string; textEdit?: { range: InstanceType<typeof monaco.Range>; text: string } }[] = []
+          const presentations: { label: string; textEdit?: { range: import('monaco-editor').IRange; text: string } }[] = []
 
           // Hex presentation
           const hexR = r.toString(16).padStart(2, '0')
@@ -1777,7 +1784,7 @@ export default function EditorPanel() {
     for (const lang of foldingLanguages) {
       monaco.languages.registerFoldingRangeProvider(lang, {
         provideFoldingRanges(model) {
-          const ranges: { start: number; end: number; kind: number }[] = []
+          const ranges: import('monaco-editor').languages.FoldingRange[] = []
           const lineCount = model.getLineCount()
           let importStart = -1
           let importEnd = -1
@@ -1797,7 +1804,7 @@ export default function EditorPanel() {
               ranges.push({
                 start: importStart,
                 end: importEnd,
-                kind: monaco.languages.FoldingRangeKind.Imports.value,
+                kind: monaco.languages.FoldingRangeKind.Imports,
               })
               importStart = -1
               importEnd = -1
@@ -1811,7 +1818,7 @@ export default function EditorPanel() {
             ranges.push({
               start: importStart,
               end: importEnd,
-              kind: monaco.languages.FoldingRangeKind.Imports.value,
+              kind: monaco.languages.FoldingRangeKind.Imports,
             })
           }
           return ranges
@@ -2682,7 +2689,7 @@ export default function EditorPanel() {
               fontFamily: `'${next.fontFamily}', monospace`,
               lineHeight: Math.round(next.fontSize * next.lineHeight),
               fontLigatures: next.fontLigatures,
-              cursorStyle: cursorStyleMap[next.cursorStyle] || 'line',
+              cursorStyle: (cursorStyleMap[next.cursorStyle] || 'line') as 'line' | 'block' | 'underline' | 'line-thin' | 'block-outline' | 'underline-thin',
               renderWhitespace: next.renderWhitespace,
               letterSpacing: next.letterSpacing,
               minimap: { enabled: next.minimap },

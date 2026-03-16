@@ -1286,7 +1286,10 @@ export class SearchEngine {
 
     // Trim to max size, preserving pinned entries
     while (this.searchHistory.length > MAX_SEARCH_HISTORY) {
-      const lastUnpinned = this.searchHistory.findLastIndex(e => !e.pinned)
+      let lastUnpinned = -1
+      for (let idx = this.searchHistory.length - 1; idx >= 0; idx--) {
+        if (!this.searchHistory[idx].pinned) { lastUnpinned = idx; break }
+      }
       if (lastUnpinned === -1) break // all pinned, allow overflow
       this.searchHistory.splice(lastUnpinned, 1)
     }

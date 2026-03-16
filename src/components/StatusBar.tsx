@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAgentStore } from '@/store/agents'
 import { useEditorStore } from '@/store/editor'
 import { useChatStore } from '@/store/chat'
@@ -40,7 +40,7 @@ interface StatusItemProps {
   title?: string
 }
 
-function StatusItem({ children, style, onClick, title }: StatusItemProps) {
+const StatusItem = React.memo(function StatusItem({ children, style, onClick, title }: StatusItemProps) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
@@ -62,7 +62,7 @@ function StatusItem({ children, style, onClick, title }: StatusItemProps) {
       {children}
     </div>
   )
-}
+})
 
 // ── Dropdown component used by all selectors ──────────────────
 interface DropdownItem {

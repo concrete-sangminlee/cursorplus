@@ -609,6 +609,8 @@ function ReferencesView({
             name: ref.fileName,
             content: result.content,
             language: ref.fileName.split('.').pop() || 'text',
+            isModified: false,
+            aiModified: false,
           })
         }
       } catch {
@@ -618,6 +620,8 @@ function ReferencesView({
           name: ref.fileName,
           content: `// Mock content for ${ref.fileName}`,
           language: ref.fileName.split('.').pop() || 'text',
+          isModified: false,
+          aiModified: false,
         })
       }
     }
@@ -1194,6 +1198,8 @@ function CallHierarchyView() {
             name: item.fileName,
             content: result.content,
             language: item.fileName.split('.').pop() || 'text',
+            isModified: false,
+            aiModified: false,
           })
         }
       } catch {
@@ -1202,6 +1208,8 @@ function CallHierarchyView() {
           name: item.fileName,
           content: `// Mock content for ${item.fileName}`,
           language: item.fileName.split('.').pop() || 'text',
+          isModified: false,
+          aiModified: false,
         })
       }
     }

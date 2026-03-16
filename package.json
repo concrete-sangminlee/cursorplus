@@ -33,11 +33,13 @@
     "preview": "vite preview",
     "test": "vitest",
     "electron:dev": "vite build && electron .",
-    "package": "tsc && vite build && electron-builder --config electron-builder.yml",
-    "package:win": "tsc && vite build && electron-builder --config electron-builder.yml --win",
-    "package:mac": "tsc && vite build && electron-builder --config electron-builder.yml --mac",
-    "package:linux": "tsc && vite build && electron-builder --config electron-builder.yml --linux",
-    "package:all": "tsc && vite build && electron-builder --config electron-builder.yml -mwl"
+    "icons": "electron-icon-builder --input=public/icon.png --output=build --flatten",
+    "icons:help": "echo \"To generate icons: 1) Create a 1024x1024 PNG at public/icon.png  2) npm install -D electron-icon-builder  3) npm run icons  -- See build/ICON_README.txt for manual methods\"",
+    "package": "vite build && electron-builder --config electron-builder.yml",
+    "package:win": "vite build && electron-builder --config electron-builder.yml --win",
+    "package:mac": "vite build && electron-builder --config electron-builder.yml --mac",
+    "package:linux": "vite build && electron-builder --config electron-builder.yml --linux",
+    "package:all": "vite build && electron-builder --config electron-builder.yml -mwl"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

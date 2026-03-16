@@ -443,7 +443,7 @@ export default function OutputPanel() {
       .map((l) => `[${fmtTime(l.timestamp)}] ${l.text}`)
       .join('\n')
     const vpath = `output://${active}.log`
-    openFile({ path: vpath, name: `${active} Output`, content: text, language: 'log' })
+    openFile({ path: vpath, name: `${active} Output`, content: text, language: 'log', isModified: false, aiModified: false })
   }, [lines, active, openFile])
 
   /* ── Toggle filter bar ─────────────────────────────────────── */
@@ -469,7 +469,7 @@ export default function OutputPanel() {
   /* ── File click handler ────────────────────────────────────── */
 
   const handleFileClick = useCallback((path: string, line?: number, _col?: number) => {
-    openFile({ path, name: path.split(/[/\\]/).pop() || path, content: '', language: '' })
+    openFile({ path, name: path.split(/[/\\]/).pop() || path, content: '', language: '', isModified: false, aiModified: false })
     // Line navigation would be handled by the editor; for now open the file
     void line
     void _col

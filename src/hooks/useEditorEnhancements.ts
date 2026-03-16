@@ -317,7 +317,7 @@ export function useSmartSelect(
     const content = model.getLineContent(line)
 
     // Find matching bracket pair
-    const bracketMatch = model.bracketPairs?.matchBracket?.(selection.getStartPosition())
+    const bracketMatch = (model as any).bracketPairs?.matchBracket?.(selection.getStartPosition())
     if (bracketMatch) {
       editor.setSelection({
         startLineNumber: bracketMatch[0].startLineNumber,

@@ -1204,8 +1204,9 @@ export class TimelineStore {
 
     if (!candidateIds) return []
 
+    const finalIds: Set<string> = candidateIds
     const results: TimelineEntry[] = []
-    for (const id of candidateIds) {
+    for (const id of finalIds) {
       const entry = this.entries.get(id)
       if (entry && this.matchesFilter(entry, filter)) {
         results.push(entry)

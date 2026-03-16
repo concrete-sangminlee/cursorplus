@@ -901,10 +901,10 @@ function NewProjectWizard({ isOpen = true, onClose, onCreateProject }: NewProjec
         directory: state.directory,
         options: state.options,
       });
-      addToast(`Project "${state.projectName}" created successfully!`, 'success');
+      addToast({ message: `Project "${state.projectName}" created successfully!`, type: 'success' });
       onClose?.();
     } catch {
-      addToast('Failed to create project. Please try again.', 'error');
+      addToast({ message: 'Failed to create project. Please try again.', type: 'error' });
     } finally {
       setCreating(false);
     }

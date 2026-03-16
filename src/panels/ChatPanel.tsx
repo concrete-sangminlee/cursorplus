@@ -3270,7 +3270,7 @@ export default function ChatPanel() {
               >
                 <FileCode size={8} />
                 {activeFile.name}
-                <Star size={7} style={{ opacity: 0.6 }} title="Active file" />
+                <Star size={7} style={{ opacity: 0.6 }} aria-label="Active file" />
               </span>
 
               {/* Selection indicator */}

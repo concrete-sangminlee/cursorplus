@@ -190,6 +190,8 @@ export interface ElectronAPI {
   // Filesystem
   // =========================================================================
   readFile: (filePath: string) => Promise<ReadFileResult>
+  openFile: () => Promise<string | null>
+  saveFile: (filePath: string, content: string) => Promise<SuccessResult>
   writeFile: (filePath: string, content: string) => Promise<SuccessResult>
   deleteFile: (filePath: string) => Promise<SuccessResult>
   renameFile: (oldPath: string, newPath: string) => Promise<SuccessResult>
@@ -331,6 +333,7 @@ export interface ElectronAPI {
   // =========================================================================
   // App events (main -> renderer)
   // =========================================================================
+  onAppOpenAbout: (callback: () => void) => Unsubscribe
   onAppOpenFile: (callback: (filePath: string) => void) => Unsubscribe
   onAppOpenFolder: (callback: (folderPath: string) => void) => Unsubscribe
   onAppNewFile: (callback: () => void) => Unsubscribe
@@ -378,5 +381,11 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     api: ElectronAPI
+    electron?: {
+      invoke: (channel: string, ...args: any[]) => Promise<any>
+      on?: (channel: string, callback: (...args: any[]) => void) => void
+      send?: (channel: string, ...args: any[]) => void
+    }
+    electronAPI?: Record<string, ((...args: any[]) => any) | undefined>
   }
 }

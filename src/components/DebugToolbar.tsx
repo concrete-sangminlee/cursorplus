@@ -1559,7 +1559,7 @@ function WatchRow({
             size={12}
             title="Copy Value"
             onClick={() => {
-              navigator.clipboard.writeText(displayValue).catch(() => {})
+              navigator.clipboard.writeText(displayValue ?? '').catch(() => {})
             }}
           />
           <IconBtn

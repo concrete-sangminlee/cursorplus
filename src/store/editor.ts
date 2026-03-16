@@ -140,7 +140,7 @@ function generateGroupId(position: EditorGroupPosition): string {
 
 // ─── Store interface ─────────────────────────────────────────────────────────
 
-interface EditorStore {
+export interface EditorStore {
   // === Legacy flat state (kept for backward compatibility) ===
   openFiles: OpenFile[]
   activeFilePath: string | null
@@ -544,8 +544,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       }
     }),
 
-  isTabPinned: (path) => {
-    return useEditorStore.getState().pinnedTabs.includes(path)
+  isTabPinned: (path: string): boolean => {
+    return (useEditorStore as unknown as { getState: () => EditorStore }).getState().pinnedTabs.includes(path)
   },
 
   // Silently reload file content (used when file has no unsaved changes)

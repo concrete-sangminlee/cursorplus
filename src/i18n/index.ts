@@ -8,7 +8,15 @@ import { en } from './locales/en'
 /* ── Types ─────────────────────────────────────────────── */
 
 export type Locale = 'en' | 'ko' | 'ja' | 'zh'
-export type TranslationTree = typeof en
+
+/** Recursively widen string-literal leaf values to `string` */
+type DeepStringify<T> = T extends string
+  ? string
+  : T extends Record<string, unknown>
+    ? { [K in keyof T]: DeepStringify<T[K]> }
+    : T
+
+export type TranslationTree = DeepStringify<typeof en>
 
 type FlattenKeys<T, Prefix extends string = ''> = T extends string
   ? Prefix

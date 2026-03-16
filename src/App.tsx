@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react'
+import type { OpenFile } from '@shared/types'
 import { Upload } from 'lucide-react'
 import { useFileWatcher, useExternalFileWatcher } from './hooks/useIpc'
 import { useOmo } from './hooks/useOmo'
@@ -170,7 +171,7 @@ const initialLayout = loadLayout({
 
 /** Wrapper that subscribes to editor store for Breadcrumbs props */
 function BreadcrumbsWrapper() {
-  const activeFilePath = useEditorStore((s) => s.activeFilePath)
+  const activeFilePath = useEditorStore((s: { activeFilePath: string | null }) => s.activeFilePath)
   if (!activeFilePath) return null
   return (
     <Suspense fallback={null}>
@@ -475,6 +476,19 @@ export default function App() {
     })
   }, [])
 
+  // Stable callback for ActivityBar view changes (avoids inline function in JSX)
+  const handleViewChange = useCallback((v: PanelView) => {
+    if (v === activeView && sidebarVisible) {
+      setSidebarVisible(false)
+    } else {
+      setSidebarVisible(true)
+      setActiveView(v)
+    }
+  }, [activeView, sidebarVisible])
+
+  // Stable callback for opening settings from ActivityBar
+  const handleSettingsClick = useCallback(() => openModal(setSettingsOpen), [openModal])
+
   // Persist layout dimensions and panel visibility to localStorage (debounced)
   useLayoutPersistence({
     sidePanelWidth,
@@ -595,8 +609,8 @@ export default function App() {
       },
       'orion:save-all': () => {
         const { openFiles, markSaved } = useEditorStore.getState()
-        const modified = openFiles.filter(f => f.isModified)
-        Promise.all(modified.map(async f => {
+        const modified = openFiles.filter((f: OpenFile) => f.isModified)
+        Promise.all(modified.map(async (f: OpenFile) => {
           try {
             await window.api.writeFile(f.path, f.content)
             markSaved(f.path)
@@ -627,8 +641,8 @@ export default function App() {
 
   // Update window title based on active file
   useEffect(() => {
-    const unsubscribe = useEditorStore.subscribe((state) => {
-      const activeFile = state.openFiles.find((f) => f.path === state.activeFilePath)
+    const unsubscribe = useEditorStore.subscribe((state: { openFiles: OpenFile[]; activeFilePath: string | null }) => {
+      const activeFile = state.openFiles.find((f: OpenFile) => f.path === state.activeFilePath)
       if (activeFile) {
         const modified = activeFile.isModified ? '\u25cf ' : ''
         document.title = `${modified}${activeFile.name} - Orion`
@@ -648,8 +662,8 @@ export default function App() {
       if (ctrl && e.shiftKey && e.key === 'S') {
         e.preventDefault()
         const { openFiles, markSaved } = useEditorStore.getState()
-        const modified = openFiles.filter(f => f.isModified)
-        Promise.all(modified.map(async f => {
+        const modified = openFiles.filter((f: OpenFile) => f.isModified)
+        Promise.all(modified.map(async (f: OpenFile) => {
           try {
             await window.api.writeFile(f.path, f.content)
             markSaved(f.path)
@@ -799,7 +813,7 @@ export default function App() {
         e.preventDefault()
         const { openFiles, activeFilePath, setActiveFile } = useEditorStore.getState()
         if (openFiles.length > 1 && activeFilePath) {
-          const idx = openFiles.findIndex((f) => f.path === activeFilePath)
+          const idx = openFiles.findIndex((f: OpenFile) => f.path === activeFilePath)
           const next = e.shiftKey
             ? (idx - 1 + openFiles.length) % openFiles.length
             : (idx + 1) % openFiles.length
@@ -1060,15 +1074,8 @@ export default function App() {
         >
           <ActivityBar
             activeView={activeView}
-            onViewChange={(v) => {
-              if (v === activeView && sidebarVisible) {
-                setSidebarVisible(false)
-              } else {
-                setSidebarVisible(true)
-                setActiveView(v)
-              }
-            }}
-            onSettingsClick={() => openModal(setSettingsOpen)}
+            onViewChange={handleViewChange}
+            onSettingsClick={handleSettingsClick}
           />
         </div>
 
@@ -1089,15 +1096,17 @@ export default function App() {
               }}
             >
               {activeView === 'explorer' && <FileExplorer />}
-              <Suspense fallback={<PanelFallback />}>
-                {activeView === 'agents' && <AgentPanel />}
-                {activeView === 'search' && <SearchPanel />}
-                {activeView === 'git' && <SourceControlPanel />}
-                {activeView === 'debug' && <DebugPanel />}
-                {activeView === 'outline' && <OutlinePanel />}
-                {activeView === 'extensions' && <ExtensionsPanel />}
-                {activeView === 'testing' && <TestingPanel />}
-              </Suspense>
+              <ErrorBoundary>
+                <Suspense fallback={<PanelFallback />}>
+                  {activeView === 'agents' && <AgentPanel />}
+                  {activeView === 'search' && <SearchPanel />}
+                  {activeView === 'git' && <SourceControlPanel />}
+                  {activeView === 'debug' && <DebugPanel />}
+                  {activeView === 'outline' && <OutlinePanel />}
+                  {activeView === 'extensions' && <ExtensionsPanel />}
+                  {activeView === 'testing' && <TestingPanel />}
+                </Suspense>
+              </ErrorBoundary>
             </div>
 
             <Resizer
@@ -1125,15 +1134,17 @@ export default function App() {
           {!diffView && <BreadcrumbsWrapper />}
           <div className={zenMode ? 'zen-editor-container' : undefined} style={{ flex: 1, overflow: 'hidden' }}>
             {diffView ? (
-              <Suspense fallback={<PanelFallback />}>
-                <DiffEditor
-                  originalContent={diffView.original}
-                  modifiedContent={diffView.modified}
-                  originalPath={diffView.originalPath}
-                  modifiedPath={diffView.modifiedPath}
-                  onClose={() => setDiffView(null)}
-                />
-              </Suspense>
+              <ErrorBoundary>
+                <Suspense fallback={<PanelFallback />}>
+                  <DiffEditor
+                    originalContent={diffView.original}
+                    modifiedContent={diffView.modified}
+                    originalPath={diffView.originalPath}
+                    modifiedPath={diffView.modifiedPath}
+                    onClose={() => setDiffView(null)}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             ) : (
               <EditorPanel />
             )}
@@ -1198,9 +1209,11 @@ export default function App() {
                 ))}
               </div>
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <Suspense fallback={<PanelFallback />}>
-                  {rightPanelTab === 'chat' ? <ChatPanel /> : <ComposerPanel />}
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PanelFallback />}>
+                    {rightPanelTab === 'chat' ? <ChatPanel /> : <ComposerPanel />}
+                  </Suspense>
+                </ErrorBoundary>
               </div>
             </div>
           </>

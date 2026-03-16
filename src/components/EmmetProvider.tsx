@@ -1801,7 +1801,7 @@ function registerWrapWithAbbreviation(monaco: Monaco): IDisposable[] {
         monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyA,
       ],
       precondition: 'editorHasSelection',
-      run: (ed) => {
+      run: (ed: editor.ICodeEditor) => {
         const selection = ed.getSelection()
         if (!selection) return
 

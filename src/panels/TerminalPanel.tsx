@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { SearchAddon } from 'xterm-addon-search'
@@ -575,7 +575,7 @@ function saveToHistory(description: string, command: string) {
 }
 
 /* ── Syntax highlighting for generated commands ───────── */
-function highlightCommand(cmd: string): JSX.Element[] {
+function highlightCommand(cmd: string): React.JSX.Element[] {
   const lines = cmd.split('\n')
   return lines.map((line, lineIdx) => {
     if (line.startsWith('#')) {

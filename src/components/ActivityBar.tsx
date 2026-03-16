@@ -1,9 +1,9 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Files, Search, GitBranch, Bot, Settings, ListTree, Package, CircleUser, Bug, FlaskConical, RotateCcw, EyeOff } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
 import { useProblemsStore, getProblemsCount } from '@/store/problems'
-import type { FileNode } from '@shared/types'
+import type { FileNode, OpenFile } from '@shared/types'
 
 type PanelView = 'explorer' | 'search' | 'git' | 'debug' | 'agents' | 'outline' | 'extensions' | 'testing'
 
@@ -101,7 +101,7 @@ function Tooltip({ label, shortcut, visible, anchorRect }: {
 }
 
 /* ── Badge Component ───────────────────────────────────────────── */
-function Badge({ count, type }: { count: number; type?: 'error' | 'info' }) {
+const Badge = React.memo(function Badge({ count, type }: { count: number; type?: 'error' | 'info' }) {
   const prevCountRef = useRef(count)
   const [pulse, setPulse] = useState(false)
 
@@ -146,7 +146,7 @@ function Badge({ count, type }: { count: number; type?: 'error' | 'info' }) {
       {count > 99 ? '99+' : count}
     </span>
   )
-}
+})
 
 /* ── Debug Session Dot ─────────────────────────────────────────── */
 function DebugDot({ active }: { active: boolean }) {
@@ -297,8 +297,8 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
   } | null>(null)
 
   // Badge counts from stores
-  const openFiles = useEditorStore((s) => s.openFiles)
-  const fileTree = useFileStore((s) => s.fileTree)
+  const openFiles = useEditorStore((s: { openFiles: OpenFile[] }) => s.openFiles)
+  const fileTree = useFileStore((s: { fileTree: FileNode[] }) => s.fileTree)
   const problems = useProblemsStore((s) => s.problems)
   const problemsCounts = useMemo(() => getProblemsCount(problems), [problems])
 
@@ -345,7 +345,7 @@ export default function ActivityBar({ activeView, onViewChange, onSettingsClick 
   const gitChangedCount = useMemo(() => {
     const treeCount = countGitFiles(fileTree)
     if (treeCount > 0) return treeCount
-    return openFiles.filter((f) => f.isModified || f.aiModified).length
+    return openFiles.filter((f: OpenFile) => f.isModified || f.aiModified).length
   }, [fileTree, openFiles, countGitFiles])
 
   const getBadgeCount = useCallback((key?: string): number => {

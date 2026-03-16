@@ -2175,11 +2175,11 @@ export const useKeybindingStore = create<KeybindingCustomizationState>()(
         },
         removeItem: (name) => localStorage.removeItem(name),
       },
-      partialize: (state) => ({
+      partialize: (state: KeybindingCustomizationState) => ({
         customOverrides: state.customOverrides,
         activeContexts: state.activeContexts,
         bindings: state.bindings.filter((b) => b.isCustom),
-      }),
+      } as unknown as KeybindingCustomizationState),
       merge: (persisted, current) => {
         const persistedState = persisted as Partial<KeybindingCustomizationState> | undefined
         const customBindings = (persistedState?.bindings ?? []) as KeyBinding[]

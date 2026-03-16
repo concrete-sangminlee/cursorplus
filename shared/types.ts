@@ -108,7 +108,7 @@ export interface FileNode {
   path: string
   type: 'file' | 'directory'
   children?: FileNode[]
-  gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed'
+  gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed' | 'conflict'
 }
 
 export interface OpenFile {

@@ -493,7 +493,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padd
     input.type = 'file';
     input.accept = importFormat === 'lcov' ? '.info,.lcov' : importFormat === 'istanbul' ? '.json' : '.xml';
     input.onchange = () => {
-      console.log(`Importing ${importFormat} coverage report...`);
+      // TODO: parse and apply imported coverage report
     };
     input.click();
   }, [importFormat]);

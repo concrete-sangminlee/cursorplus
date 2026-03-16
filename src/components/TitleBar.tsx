@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useFileStore } from '@/store/files'
 import { useEditorStore } from '@/store/editor'
+import type { EditorStore } from '@/store/editor'
 import { useRecentFilesStore } from '@/store/recentFiles'
 
 /* ------------------------------------------------------------------ */
@@ -99,7 +100,7 @@ type MenuDef = { label: string; accelerator: string; items: MenuItem[] }
 
 function buildMenus(
   fileStore: ReturnType<typeof useFileStore>,
-  editorStore: ReturnType<typeof useEditorStore>,
+  editorStore: EditorStore,
   recentFiles: { path: string; name: string }[],
 ): MenuDef[] {
   /* ---------- helpers ------------------------------------------------ */
@@ -166,6 +167,7 @@ function buildMenus(
               content: '',
               language: 'plaintext',
               isModified: false,
+              aiModified: false,
             })
           },
         },

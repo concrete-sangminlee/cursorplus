@@ -1069,7 +1069,7 @@ export function getEffectiveSetting(key: string): unknown {
 
   // Final fallback: check the legacy flat AppSettings object (for keys that
   // pre-date the schema, e.g. "theme", "fontSize").
-  const appSettings = useSettingsStore.getState().settings as Record<string, unknown>
+  const appSettings = useSettingsStore.getState().settings as unknown as Record<string, unknown>
   if (key in appSettings) {
     return appSettings[key]
   }

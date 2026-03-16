@@ -1646,9 +1646,9 @@ function NotificationItem({
     setTimeout(() => removeNotification(notification.id), 200)
   }, [notification.id, removeNotification])
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, _id?: string) => {
     e.preventDefault()
-    onContextMenu(e, notification.id)
+    onContextMenu(e, _id ?? notification.id)
   }, [notification.id, onContextMenu])
 
   return (

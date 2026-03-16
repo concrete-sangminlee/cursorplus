@@ -377,7 +377,7 @@ function JsonTreeNode({ label, value, depth }: { label: string; value: unknown; 
   if (typeof value === 'string') return <div style={{ paddingLeft: depth * 16 }}><span style={{ color: 'var(--vscode-debugTokenExpression-name)' }}>{label}</span>: <span style={{ color: '#ce9178' }}>"{value}"</span></div>
 
   const isArray = Array.isArray(value)
-  const entries = isArray ? (value as unknown[]).map((v, i) => [String(i), v]) : Object.entries(value as Record<string, unknown>)
+  const entries: [string, unknown][] = isArray ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown]) : Object.entries(value as Record<string, unknown>)
   const bracket = isArray ? ['[', ']'] : ['{', '}']
 
   return (
