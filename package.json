@@ -9,13 +9,16 @@
     "url": "https://orion-ide.dev"
   },
   "license": "MIT",
-  "homepage": "https://github.com/orion-ide/orion-ide#readme",
+  "homepage": "https://github.com/concrete-sangminlee/orion#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/orion-ide/orion-ide.git"
+    "url": "https://github.com/concrete-sangminlee/orion.git"
   },
   "bugs": {
-    "url": "https://github.com/orion-ide/orion-ide/issues"
+    "url": "https://github.com/concrete-sangminlee/orion/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [
     "ide",

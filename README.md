@@ -115,7 +115,7 @@ Orion IDE is a professional desktop code editor built on Electron, combining the
 
 ### Download
 
-Pre-built binaries for Windows, macOS, and Linux are available on the [Releases](https://github.com/orion-ide/orion-ide/releases) page.
+Pre-built binaries for Windows, macOS, and Linux are available on the [Releases](https://github.com/concrete-sangminlee/orion/releases) page.
 
 | Platform | Format |
 |---|---|
@@ -126,8 +126,8 @@ Pre-built binaries for Windows, macOS, and Linux are available on the [Releases]
 ### Build from Source
 
 ```bash
-git clone https://github.com/orion-ide/orion-ide.git
-cd orion-ide
+git clone https://github.com/concrete-sangminlee/orion.git
+cd orion
 npm install
 npm run package
 ```
@@ -147,26 +147,29 @@ npm run package:all      # All platforms
 
 ### Prerequisites
 
-- **Node.js** 18 or later
+- **Node.js** 18 or later (recommended: 22.x)
 - **npm** 9 or later
+- **C++ Build Tools** (required for `node-pty` native module):
+  - **Windows**: `npm install -g windows-build-tools` (PowerShell 관리자 권한) 또는 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 설치
+  - **macOS**: `xcode-select --install`
+  - **Linux**: `sudo apt install build-essential python3`
 - (Optional) [Ollama](https://ollama.com) for local AI models
 
 ### Getting Started
 
 ```bash
-# Clone the repository
-git clone https://github.com/orion-ide/orion-ide.git
-cd orion-ide
+# 1. Clone the repository
+git clone https://github.com/concrete-sangminlee/orion.git
+cd orion
 
-# Install dependencies
+# 2. Install dependencies
 npm install
 
-# Start development server (Vite + React hot reload)
+# 3. Start (Electron + Vite dev server with hot reload)
 npm run dev
-
-# Or start with Electron
-npm run electron:dev
 ```
+
+That's it! The app will open automatically.
 
 ### Available Scripts
 
@@ -294,7 +297,7 @@ Contributions are welcome! Here is how to get started:
 
 ### Reporting Issues
 
-Use [GitHub Issues](https://github.com/orion-ide/orion-ide/issues) to report bugs or request features. Please include:
+Use [GitHub Issues](https://github.com/concrete-sangminlee/orion/issues) to report bugs or request features. Please include:
 
 - Steps to reproduce the issue
 - Expected vs actual behavior
