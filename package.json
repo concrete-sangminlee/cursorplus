@@ -30,6 +30,9 @@
     "developer-tools"
   ],
   "main": "dist-electron/main.js",
+  "bin": {
+    "orion": "./dist-cli/index.js"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -42,16 +45,22 @@
     "package:win": "vite build && electron-builder --config electron-builder.yml --win",
     "package:mac": "vite build && electron-builder --config electron-builder.yml --mac",
     "package:linux": "vite build && electron-builder --config electron-builder.yml --linux",
-    "package:all": "vite build && electron-builder --config electron-builder.yml -mwl"
+    "package:all": "vite build && electron-builder --config electron-builder.yml -mwl",
+    "cli:build": "npx esbuild cli/index.ts --bundle --platform=node --target=node18 --outfile=dist-cli/index.js --external:@anthropic-ai/sdk --external:openai --external:commander --external:chalk --external:ora --external:inquirer",
+    "cli:dev": "npx tsx cli/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@monaco-editor/react": "^4.7.0",
+    "chalk": "^5.6.2",
     "chokidar": "^4.0.0",
+    "commander": "^14.0.3",
     "electron-store": "^10.0.0",
+    "inquirer": "^13.3.2",
     "lucide-react": "^0.577.0",
     "monaco-editor": "^0.52.0",
     "openai": "^6.27.0",
+    "ora": "^9.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-syntax-highlighter": "^16.1.1",
