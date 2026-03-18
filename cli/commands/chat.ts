@@ -13,6 +13,7 @@ import {
   getProviderDisplay,
   resolveModelShortcut,
   listAvailableModels,
+  listOllamaModels,
   type AIMessage,
   type AIProvider,
 } from '../ai-client.js';
@@ -377,9 +378,21 @@ ${colors.label('Model Shortcuts:')}
         for (const name of listAvailableModels()) {
           const info = resolveModelShortcut(name)!;
           const display = getProviderDisplay(info.provider);
-          console.log(`  ${colors.command(name.padEnd(16))} -> ${display.color(display.name)} ${chalk.dim(info.model)}`);
+          console.log(`    ${colors.command(name.padEnd(18))} ${display.color(display.name.padEnd(8))} ${chalk.dim(info.model)}`);
         }
-        prompt();
+        // Show locally installed Ollama models
+        listOllamaModels().then(models => {
+          if (models.length > 0) {
+            console.log(`\n${colors.label('  Installed Ollama Models:')}`);
+            for (const m of models) {
+              const active = m.replace(':latest', '') === activeModel || m === activeModel;
+              console.log(`    ${active ? chalk.green('\u25CF') : chalk.dim('\u25CB')} ${active ? chalk.white(m) : chalk.dim(m)}${active ? chalk.yellow(' \u2190 active') : ''}`);
+            }
+            console.log(chalk.dim(`\n    Use /model <name> with any installed model name`));
+            console.log(chalk.dim(`    Install new: ollama pull <model>`));
+          }
+          prompt();
+        });
         return true;
 
       case '/providers': {

@@ -54,6 +54,27 @@ const MODEL_SHORTCUTS: Record<string, { provider: AIProvider; model: string }> =
   'codex': { provider: 'openai', model: 'gpt-4o' },
   'ollama': { provider: 'ollama', model: 'llama3.2' },
   'llama': { provider: 'ollama', model: 'llama3.2' },
+  'llama3': { provider: 'ollama', model: 'llama3.2' },
+  'llama3.1': { provider: 'ollama', model: 'llama3.1' },
+  'llama3.2': { provider: 'ollama', model: 'llama3.2' },
+  'llama3.3': { provider: 'ollama', model: 'llama3.3' },
+  'codellama': { provider: 'ollama', model: 'codellama' },
+  'deepseek': { provider: 'ollama', model: 'deepseek-coder-v2' },
+  'deepseek-coder': { provider: 'ollama', model: 'deepseek-coder-v2' },
+  'deepseek-r1': { provider: 'ollama', model: 'deepseek-r1' },
+  'mistral': { provider: 'ollama', model: 'mistral' },
+  'mixtral': { provider: 'ollama', model: 'mixtral' },
+  'gemma': { provider: 'ollama', model: 'gemma2' },
+  'gemma2': { provider: 'ollama', model: 'gemma2' },
+  'phi': { provider: 'ollama', model: 'phi3' },
+  'phi3': { provider: 'ollama', model: 'phi3' },
+  'qwen': { provider: 'ollama', model: 'qwen2.5-coder' },
+  'qwen2.5': { provider: 'ollama', model: 'qwen2.5-coder' },
+  'starcoder': { provider: 'ollama', model: 'starcoder2' },
+  'codegemma': { provider: 'ollama', model: 'codegemma' },
+  'wizardcoder': { provider: 'ollama', model: 'wizardcoder' },
+  'yi': { provider: 'ollama', model: 'yi' },
+  'command-r': { provider: 'ollama', model: 'command-r' },
 };
 
 export function getProviderDisplay(provider: AIProvider) {
@@ -62,7 +83,24 @@ export function getProviderDisplay(provider: AIProvider) {
 
 export function resolveModelShortcut(input: string): { provider: AIProvider; model: string } | null {
   const lower = input.toLowerCase().trim();
-  return MODEL_SHORTCUTS[lower] || null;
+  // Check static shortcuts first
+  if (MODEL_SHORTCUTS[lower]) return MODEL_SHORTCUTS[lower];
+  // Any unknown name → treat as Ollama model (user can install any model)
+  if (!lower.includes('/') && !lower.startsWith('sk-')) {
+    return { provider: 'ollama', model: lower };
+  }
+  return null;
+}
+
+/** List Ollama models installed locally */
+export async function listOllamaModels(host?: string): Promise<string[]> {
+  try {
+    const baseUrl = host || 'http://localhost:11434';
+    const res = await fetch(`${baseUrl}/api/tags`);
+    if (!res.ok) return [];
+    const data = await res.json() as { models?: { name: string }[] };
+    return (data.models || []).map(m => m.name);
+  } catch { return []; }
 }
 
 export function listAvailableModels(): string[] {
