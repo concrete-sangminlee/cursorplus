@@ -138,19 +138,25 @@ export async function commitCommand(): Promise<void> {
     }
 
     if (action === 'commit') {
-      const commitSpinner = startSpinner('Committing...');
-      try {
-        const result = commitWithMessage(commitMessage);
-        stopSpinner(commitSpinner, 'Committed successfully!');
-        if (!pipelineOpts.quiet) {
-          console.log(colors.dim(`  ${result}`));
+      // Dry-run mode: show the commit message but don't actually commit
+      if (pipelineOpts.dryRun) {
+        printInfo('Dry run: commit was not created.');
+        jsonOutput('commit_result', { success: true, message: commitMessage, dryRun: true });
+      } else {
+        const commitSpinner = startSpinner('Committing...');
+        try {
+          const result = commitWithMessage(commitMessage);
+          stopSpinner(commitSpinner, 'Committed successfully!');
+          if (!pipelineOpts.quiet) {
+            console.log(colors.dim(`  ${result}`));
+          }
+          jsonOutput('commit_result', { success: true, result });
+        } catch (err: any) {
+          stopSpinner(commitSpinner, `Commit failed: ${err.message}`, false);
+          printInfo('Check that your staged files are valid and try again.');
+          jsonOutput('commit_result', { success: false, error: err.message });
+          process.exit(1);
         }
-        jsonOutput('commit_result', { success: true, result });
-      } catch (err: any) {
-        stopSpinner(commitSpinner, `Commit failed: ${err.message}`, false);
-        printInfo('Check that your staged files are valid and try again.');
-        jsonOutput('commit_result', { success: false, error: err.message });
-        process.exit(1);
       }
     } else if (action === 'edit') {
       const { editedMessage } = await inquirer.prompt([

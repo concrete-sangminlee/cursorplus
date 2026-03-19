@@ -311,6 +311,111 @@ export function fileExists(filePath: string): boolean {
   return fs.existsSync(path.resolve(filePath));
 }
 
+// ─── Shell Command Runner ────────────────────────────────────────────────
+
+/**
+ * Run a shell command and capture its output.
+ * Returns exit code, stdout, and stderr.
+ */
+export function runShellCommand(cmd: string): { exitCode: number; stdout: string; stderr: string } {
+  try {
+    const stdout = execSync(cmd, {
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024,
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return { exitCode: 0, stdout: stdout.trim(), stderr: '' };
+  } catch (err: any) {
+    return {
+      exitCode: err.status ?? 1,
+      stdout: (err.stdout || '').toString().trim(),
+      stderr: (err.stderr || '').toString().trim(),
+    };
+  }
+}
+
+// ─── Test Command Detection ─────────────────────────────────────────────────
+
+/**
+ * Auto-detect the project's test command.
+ * Checks package.json scripts, then common test runners (pytest, cargo test, go test).
+ * Returns the test command string or null if none found.
+ */
+export function detectTestCommand(): string | null {
+  const cwd = process.cwd();
+
+  // 1. Check package.json for "test" script
+  const pkgPath = path.join(cwd, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      if (pkg.scripts?.test && pkg.scripts.test !== 'echo "Error: no test specified" && exit 1') {
+        return 'npm test';
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // 2. Check for Python test runners
+  const pytestCfg = ['pytest.ini', 'pyproject.toml', 'setup.cfg'];
+  for (const cfg of pytestCfg) {
+    if (fs.existsSync(path.join(cwd, cfg))) {
+      // Check if pytest is likely configured
+      if (cfg === 'pyproject.toml') {
+        try {
+          const content = fs.readFileSync(path.join(cwd, cfg), 'utf-8');
+          if (content.includes('[tool.pytest') || content.includes('pytest')) {
+            return 'pytest';
+          }
+        } catch { /* ignore */ }
+      } else {
+        return 'pytest';
+      }
+    }
+  }
+  if (fs.existsSync(path.join(cwd, 'requirements.txt'))) {
+    try {
+      const reqs = fs.readFileSync(path.join(cwd, 'requirements.txt'), 'utf-8');
+      if (reqs.includes('pytest')) {
+        return 'pytest';
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 3. Check for Rust (Cargo.toml)
+  if (fs.existsSync(path.join(cwd, 'Cargo.toml'))) {
+    return 'cargo test';
+  }
+
+  // 4. Check for Go (go.mod)
+  if (fs.existsSync(path.join(cwd, 'go.mod'))) {
+    return 'go test ./...';
+  }
+
+  // 5. Check for Java (pom.xml / build.gradle)
+  if (fs.existsSync(path.join(cwd, 'pom.xml'))) {
+    return 'mvn test';
+  }
+  if (fs.existsSync(path.join(cwd, 'build.gradle')) || fs.existsSync(path.join(cwd, 'build.gradle.kts'))) {
+    return 'gradle test';
+  }
+
+  return null;
+}
+
+// ─── Git Auto-Commit Helper ─────────────────────────────────────────────────
+
+/**
+ * Stage a file and commit with a message prefixed by "ai(orion): ".
+ * Returns the commit hash or throws on failure.
+ */
+export function gitAutoCommit(filePath: string, description: string): string {
+  const resolvedPath = path.resolve(filePath);
+  runGitCommand(`add "${resolvedPath}"`);
+  const message = `ai(orion): ${description}`;
+  return commitWithMessage(message);
+}
+
 // ─── Diff Formatting ─────────────────────────────────────────────────────────
 
 export function formatDiff(original: string, modified: string, filename?: string): string {

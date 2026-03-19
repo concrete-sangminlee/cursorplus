@@ -8,9 +8,10 @@ export interface PipelineOptions {
   yes: boolean;
   noColor: boolean;
   quiet: boolean;
+  dryRun: boolean;
 }
 
-let pipelineOpts: PipelineOptions = { json: false, yes: false, noColor: false, quiet: false };
+let pipelineOpts: PipelineOptions = { json: false, yes: false, noColor: false, quiet: false, dryRun: false };
 
 export function setPipelineOptions(opts: Partial<PipelineOptions>) {
   pipelineOpts = { ...pipelineOpts, ...opts };

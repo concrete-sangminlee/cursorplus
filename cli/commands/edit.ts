@@ -11,10 +11,13 @@ import {
   printDivider,
   printInfo,
   printSuccess,
+  printWarning,
   startSpinner,
   writeFileContent,
   formatDiff,
   loadProjectContext,
+  isGitRepo,
+  gitAutoCommit,
 } from '../utils.js';
 import {
   createSilentStreamHandler,
@@ -24,6 +27,7 @@ import {
 } from '../shared.js';
 import { getPipelineOptions, jsonOutput } from '../pipeline.js';
 import { commandHeader, diffBlock, palette } from '../ui.js';
+import { createBackup } from '../backup.js';
 
 const EDIT_SYSTEM_PROMPT = `You are Orion, an expert code editor. The user will provide a file and editing instructions.
 
@@ -36,7 +40,11 @@ Rules:
 6. Keep all existing code that wasn't asked to be changed
 7. Output the raw file content, ready to be written to disk`;
 
-export async function editCommand(filePath: string): Promise<void> {
+export interface EditCommandOptions {
+  noCommit?: boolean;
+}
+
+export async function editCommand(filePath: string, options?: EditCommandOptions): Promise<void> {
   const file = readAndValidateFile(filePath);
   if (!file) {
     process.exit(1);
@@ -130,11 +138,60 @@ export async function editCommand(filePath: string): Promise<void> {
     }
 
     if (action === 'apply') {
-      writeFileContent(filePath, modifiedContent);
-      printSuccess(`File updated: ${file.resolvedPath}`);
-      jsonOutput('edit_result', { success: true, file: file.resolvedPath });
+      // Dry-run mode: show what would change without writing
+      if (pipelineOpts.dryRun) {
+        printInfo('Dry run: no files were modified.');
+        jsonOutput('edit_result', { success: true, file: file.resolvedPath, dryRun: true });
+      } else {
+        // Create backup before modifying the file
+        try {
+          const backupPath = createBackup(filePath);
+          printInfo(`Backup saved: ${palette.dim(backupPath)}`);
+        } catch (backupErr: any) {
+          printInfo(`Backup skipped: ${backupErr.message}`);
+        }
+
+        writeFileContent(filePath, modifiedContent);
+        printSuccess(`File updated: ${file.resolvedPath}`);
+        jsonOutput('edit_result', { success: true, file: file.resolvedPath });
+
+        // ─── Git Auto-Commit ────────────────────────────────────────────
+        if (!options?.noCommit) {
+          if (isGitRepo()) {
+            let shouldCommit = false;
+
+            if (pipelineOpts.yes) {
+              shouldCommit = true;
+            } else {
+              const commitAnswer = await inquirer.prompt([
+                {
+                  type: 'confirm',
+                  name: 'commit',
+                  message: 'Changes applied. Auto-commit?',
+                  default: true,
+                },
+              ]);
+              shouldCommit = commitAnswer.commit;
+            }
+
+            if (shouldCommit) {
+              try {
+                const commitDesc = `edit ${file.fileName} - ${instruction}`;
+                // Truncate long instructions in commit message
+                const truncatedDesc = commitDesc.length > 72
+                  ? commitDesc.substring(0, 69) + '...'
+                  : commitDesc;
+                gitAutoCommit(filePath, truncatedDesc);
+                printSuccess(`Committed: ai(orion): ${truncatedDesc}`);
+              } catch (commitErr: any) {
+                printWarning(`Auto-commit failed: ${commitErr.message}`);
+              }
+            }
+          }
+        }
+      }
     } else if (action === 'retry') {
-      await editCommand(filePath);
+      await editCommand(filePath, options);
     } else {
       printInfo('Edit cancelled. File unchanged.');
     }

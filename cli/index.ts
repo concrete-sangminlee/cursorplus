@@ -21,6 +21,12 @@ import { configCommand, initCommand } from './commands/config.js';
 import { agentCommand } from './commands/agent.js';
 import { sessionCommand } from './commands/session.js';
 import { watchCommand } from './commands/watch.js';
+import { searchCommand } from './commands/search.js';
+import { diffCommand } from './commands/diff.js';
+import { runCommand } from './commands/run.js';
+import { testCommand } from './commands/test.js';
+import { undoCommand } from './commands/undo.js';
+import { statusCommand } from './commands/status.js';
 import { setPipelineOptions } from './pipeline.js';
 import { errorDisplay, palette } from './ui.js';
 
@@ -51,6 +57,7 @@ program
   .option('-y, --yes', 'Auto-confirm all prompts (non-interactive mode)')
   .option('--no-color', 'Disable color output')
   .option('--quiet', 'Minimal output')
+  .option('--dry-run', 'Show what would be changed without writing files')
   .addHelpText('beforeAll', () => {
     printBanner();
     return '';
@@ -62,6 +69,7 @@ program
       yes: opts.yes || false,
       noColor: opts.color === false,
       quiet: opts.quiet || false,
+      dryRun: opts.dryRun || false,
     });
   });
 
@@ -80,10 +88,11 @@ program
 
 program
   .command('ask <question>')
-  .description('Ask a quick one-shot question')
-  .action(async (question: string) => {
+  .description('Ask a quick one-shot question (supports @file references)')
+  .argument('[refs...]', 'Optional @file references for multi-file context')
+  .action(async (question: string, refs: string[]) => {
     try {
-      await askCommand(question);
+      await askCommand(question, refs);
     } catch (err: any) {
       handleCommandError(err, 'ask', 'Ensure your AI provider is configured. Run `orion config`.');
     }
@@ -92,9 +101,12 @@ program
 program
   .command('edit <file>')
   .description('AI-assisted file editing')
-  .action(async (file: string) => {
+  .option('--no-commit', 'Skip the auto-commit prompt after applying edits')
+  .action(async (file: string, opts?: { commit?: boolean }) => {
     try {
-      await editCommand(file);
+      await editCommand(file, {
+        noCommit: opts?.commit === false,
+      });
     } catch (err: any) {
       handleCommandError(err, 'edit', 'Check that the file exists and your AI provider is configured.');
     }
@@ -136,11 +148,67 @@ program
 program
   .command('fix [file]')
   .description('Find and fix issues in a file (accepts piped input)')
-  .action(async (file?: string) => {
+  .option('--auto', 'Auto-run tests after fix; re-fix on failure (edit-lint-test loop)')
+  .option('--max-iterations <n>', 'Max fix-test iterations for --auto (default: 3)')
+  .option('--no-commit', 'Skip the auto-commit prompt after applying fixes')
+  .action(async (file?: string, opts?: { auto?: boolean; maxIterations?: string; commit?: boolean }) => {
     try {
-      await fixCommand(file);
+      await fixCommand(file, {
+        auto: opts?.auto,
+        maxIterations: opts?.maxIterations ? parseInt(opts.maxIterations, 10) : undefined,
+        noCommit: opts?.commit === false,
+      });
     } catch (err: any) {
       handleCommandError(err, 'fix', 'Check that the file exists and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('run <command>')
+  .description('Run a command with AI error analysis')
+  .option('--fix', 'Auto-apply AI-suggested fixes on failure')
+  .action(async (command: string, options: { fix?: boolean }) => {
+    try {
+      await runCommand(command, { fix: options.fix });
+    } catch (err: any) {
+      handleCommandError(err, 'run', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('test')
+  .description('Run tests with AI failure analysis or generate tests')
+  .option('--generate <file>', 'Generate tests for a source file')
+  .action(async (options: { generate?: string }) => {
+    try {
+      await testCommand({ generate: options.generate });
+    } catch (err: any) {
+      handleCommandError(err, 'test', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('undo')
+  .description('Undo last file change (restore from backup)')
+  .option('--list', 'List available backups')
+  .option('--file <file>', 'Undo a specific file')
+  .option('--clean', 'Remove old backups (older than 7 days)')
+  .action(async (options: { list?: boolean; file?: string; clean?: boolean }) => {
+    try {
+      await undoCommand(options);
+    } catch (err: any) {
+      handleCommandError(err, 'undo', 'Check that backups exist in .orion/backups/.');
+    }
+  });
+
+program
+  .command('status')
+  .description('Show Orion environment status')
+  .action(async () => {
+    try {
+      await statusCommand();
+    } catch (err: any) {
+      handleCommandError(err, 'status');
     }
   });
 
@@ -244,11 +312,61 @@ program
     }
   });
 
+// ─── Codebase-wide AI Operations ─────────────────────────────────────────────
+
+program
+  .command('search <pattern>')
+  .description('Search codebase for a pattern and get AI analysis')
+  .option('--type <type>', 'Filter by type: comment, code, all (default: all)', 'all')
+  .option('--max <n>', 'Max results to return (default: 100)', '100')
+  .option('--no-ai', 'Skip AI analysis, just show search results')
+  .action(async (pattern: string, options: { type?: string; max?: string; ai?: boolean }) => {
+    try {
+      await searchCommand(pattern, {
+        type: options.type,
+        maxResults: parseInt(options.max || '100', 10),
+        noAi: options.ai === false,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'search', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('diff [ref]')
+  .description('Review git diff with AI analysis')
+  .option('--staged', 'Review only staged changes')
+  .action(async (ref: string | undefined, options: { staged?: boolean }) => {
+    try {
+      await diffCommand(ref, { staged: options.staged });
+    } catch (err: any) {
+      handleCommandError(err, 'diff', 'Ensure you are in a git repository and your AI provider is configured.');
+    }
+  });
+
 // ─── Default Action (no command) ─────────────────────────────────────────────
 
 program.action(() => {
   printBanner();
 
+  // ─── Categorized Quick Reference ────────────────────────────────────────
+  const category = (label: string, cmds: string) => {
+    const padded = (label + ':').padEnd(10);
+    return `    ${palette.violet.bold(padded)}${cmds}`;
+  };
+
+  const cn = (name: string) => colors.command(name);
+  const sep = palette.dim(' \u00B7 ');
+
+  console.log(palette.violet.bold('  Commands'));
+  console.log();
+  console.log(category('Core', [cn('chat'), cn('ask'), cn('explain'), cn('review'), cn('fix'), cn('edit'), cn('commit')].join(sep)));
+  console.log(category('Code', [cn('search'), cn('diff'), cn('run'), cn('test'), cn('agent')].join(sep)));
+  console.log(category('Safety', [cn('undo'), cn('status')].join(sep)));
+  console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init')].join(sep)));
+  console.log();
+
+  // ─── Detailed Command List ──────────────────────────────────────────────
   const cmd = (name: string, args: string, desc: string) => {
     const cmdStr = colors.command(name);
     const argStr = args ? ' ' + palette.dim(args) : '';
@@ -256,33 +374,50 @@ program.action(() => {
     return `    ${cmdStr}${argStr}${' '.repeat(Math.max(padLen, 2))}${palette.dim(desc)}`;
   };
 
-  console.log(palette.violet.bold('  Core Commands'));
+  console.log(palette.violet.bold('  Core'));
   console.log();
   console.log(cmd('orion chat', '', 'Interactive AI chat session'));
-  console.log(cmd('orion ask', '"question"', 'Quick one-shot AI question'));
-  console.log(cmd('orion edit', '<file>', 'AI-assisted file editing'));
-  console.log(cmd('orion review', '[file]', 'AI code review'));
-  console.log(cmd('orion commit', '', 'Generate AI commit message'));
+  console.log(cmd('orion ask', '"q" @files', 'AI question with file context'));
   console.log(cmd('orion explain', '[file]', 'Explain what a file does'));
+  console.log(cmd('orion review', '[file]', 'AI code review'));
   console.log(cmd('orion fix', '[file]', 'Find and fix issues'));
+  console.log(cmd('orion fix', '--auto [file]', 'Fix, test, iterate until passing'));
+  console.log(cmd('orion edit', '<file>', 'AI-assisted file editing'));
   console.log();
-  console.log(palette.violet.bold('  Multi-Agent & Automation'));
+  console.log(palette.violet.bold('  Code'));
   console.log();
+  console.log(cmd('orion search', '"pattern"', 'Search codebase + AI analysis'));
+  console.log(cmd('orion diff', '[ref]', 'AI-powered diff review'));
+  console.log(cmd('orion run', '"command"', 'Run command, AI analyzes errors'));
+  console.log(cmd('orion run', '--fix "cmd"', 'Run & auto-apply AI fixes'));
+  console.log(cmd('orion test', '', 'Run tests, AI analyzes failures'));
+  console.log(cmd('orion test', '--generate <f>', 'Generate tests for a file'));
   console.log(cmd('orion agent', '<tasks...>', 'Run AI tasks in parallel'));
+  console.log();
+  console.log(palette.violet.bold('  Safety'));
+  console.log();
+  console.log(cmd('orion undo', '', 'Undo last file change'));
+  console.log(cmd('orion status', '', 'Show environment status'));
+  console.log();
+  console.log(palette.violet.bold('  Session'));
+  console.log();
   console.log(cmd('orion session', '<action>', 'Manage named AI sessions'));
   console.log(cmd('orion watch', '<pattern>', 'Watch files & auto-run AI'));
-  console.log();
-  console.log(palette.violet.bold('  Setup'));
-  console.log();
-  console.log(cmd('orion init', '', 'Initialize Orion config'));
-  console.log(cmd('orion gui', '', 'Launch desktop app'));
   console.log(cmd('orion config', '', 'Configure API keys'));
+  console.log(cmd('orion init', '', 'Initialize Orion config'));
   console.log();
   console.log(palette.violet.bold('  Pipe Support'));
   console.log();
   console.log(`    ${palette.dim('cat file.ts | orion ask "What\'s wrong?"')}`);
   console.log(`    ${palette.dim('git diff | orion review')}`);
-  console.log(`    ${palette.dim('cat app.ts | orion explain')}`);
+  console.log(`    ${palette.dim('orion run "npm test"')}`);
+  console.log();
+  console.log(palette.violet.bold('  Global Flags'));
+  console.log();
+  console.log(`    ${palette.dim('--dry-run     Show changes without writing files')}`);
+  console.log(`    ${palette.dim('--json        Output structured JSON (CI/CD)')}`);
+  console.log(`    ${palette.dim('-y, --yes     Auto-confirm all prompts')}`);
+  console.log(`    ${palette.dim('--quiet       Minimal output')}`);
   console.log();
   console.log(palette.dim('  Run orion <command> --help for more info on a command.'));
   console.log();

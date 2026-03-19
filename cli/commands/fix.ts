@@ -11,10 +11,17 @@ import {
   printDivider,
   printInfo,
   printSuccess,
+  printError,
+  printWarning,
   startSpinner,
   writeFileContent,
+  readFileContent,
   formatDiff,
   loadProjectContext,
+  detectTestCommand,
+  runShellCommand,
+  isGitRepo,
+  gitAutoCommit,
 } from '../utils.js';
 import { renderMarkdown } from '../markdown.js';
 import {
@@ -26,6 +33,7 @@ import {
 import { getPipelineOptions, jsonOutput } from '../pipeline.js';
 import { readStdin } from '../stdin.js';
 import { commandHeader, severityBadge, diffBlock, divider, palette } from '../ui.js';
+import { createBackup } from '../backup.js';
 
 const FIX_ANALYSIS_PROMPT = `You are Orion, an expert code fixer. Analyze the provided code for issues.
 
@@ -48,7 +56,13 @@ Focus on:
 - Performance problems
 - Best practice violations`;
 
-export async function fixCommand(filePath?: string): Promise<void> {
+export interface FixCommandOptions {
+  auto?: boolean;
+  maxIterations?: number;
+  noCommit?: boolean;
+}
+
+export async function fixCommand(filePath?: string, options?: FixCommandOptions): Promise<void> {
   // Check for piped stdin data
   const stdinData = await readStdin();
   const isStdinMode = !filePath && !!stdinData;
@@ -223,9 +237,133 @@ export async function fixCommand(filePath?: string): Promise<void> {
     }
 
     if (action === 'apply') {
-      writeFileContent(filePath!, fixedContent);
-      printSuccess(`Fixed file saved: ${fileLabel}`);
-      jsonOutput('fix_result', { success: true, file: fileLabel });
+      // Dry-run mode: show what would change without writing
+      if (pipelineOpts.dryRun) {
+        printInfo('Dry run: no files were modified.');
+        jsonOutput('fix_result', { success: true, file: fileLabel, dryRun: true });
+      } else {
+        // Create backup before modifying the file
+        try {
+          const backupPath = createBackup(filePath!);
+          printInfo(`Backup saved: ${palette.dim(backupPath)}`);
+        } catch (backupErr: any) {
+          printInfo(`Backup skipped: ${backupErr.message}`);
+        }
+
+        writeFileContent(filePath!, fixedContent);
+        printSuccess(`Fixed file saved: ${fileLabel}`);
+        jsonOutput('fix_result', { success: true, file: fileLabel });
+
+        // ─── Auto Edit-Lint-Test Loop (--auto) ──────────────────────────
+        if (options?.auto && filePath) {
+          const maxIter = options.maxIterations ?? 3;
+          const testCmd = detectTestCommand();
+
+          if (!testCmd) {
+            printWarning('No test command detected. Skipping auto-test loop.');
+            printInfo('Tip: Add a "test" script to package.json, or use pytest/cargo test/go test.');
+          } else {
+            printInfo(`Test runner detected: ${palette.bold(testCmd)}`);
+            console.log();
+
+            let testsPass = false;
+
+            for (let iteration = 1; iteration <= maxIter; iteration++) {
+              const iterLabel = `Iteration ${iteration}/${maxIter}`;
+              process.stdout.write(`  ${palette.violet(iterLabel)}: Testing... `);
+
+              const testResult = runShellCommand(testCmd);
+
+              if (testResult.exitCode === 0) {
+                console.log(palette.green('\u2713 All tests pass'));
+                testsPass = true;
+                break;
+              }
+
+              // Parse failure count from output (best effort)
+              const failMatch = (testResult.stdout + testResult.stderr).match(/(\d+)\s+fail/i);
+              const failCount = failMatch ? failMatch[1] : '?';
+              console.log(palette.red(`\u2717 ${failCount} failure(s)`));
+
+              if (iteration === maxIter) {
+                printWarning(`Max iterations (${maxIter}) reached. Tests still failing.`);
+                break;
+              }
+
+              // Send test errors back to AI for another fix attempt
+              process.stdout.write(`  ${palette.violet(iterLabel)}: Fixing... `);
+
+              const currentContent = readFileContent(filePath).content;
+              const retryMessage =
+                `The previous fix was applied but tests are still failing.\n\n` +
+                `Test command: ${testCmd}\n` +
+                `Test output:\n\`\`\`\n${(testResult.stdout + '\n' + testResult.stderr).trim()}\n\`\`\`\n\n` +
+                `Current file content:\n\`\`\`\n${currentContent}\n\`\`\`\n\n` +
+                `Fix the remaining issues so the tests pass. Output ONLY the complete fixed file content.`;
+
+              const retrySpinner = startSpinner('');
+              const { callbacks: retryCallbacks, getResponse: getRetryResponse } =
+                createSilentStreamHandler(retrySpinner, '');
+
+              await askAI(
+                'You are Orion, an expert code fixer. Output ONLY the complete fixed file content. No markdown, no code fences, no explanation.',
+                retryMessage,
+                retryCallbacks,
+              );
+
+              let retryContent = getRetryResponse().trim();
+
+              // Clean up potential code fences
+              if (retryContent.startsWith('```')) {
+                const rLines = retryContent.split('\n');
+                rLines.shift();
+                if (rLines[rLines.length - 1]?.trim() === '```') {
+                  rLines.pop();
+                }
+                retryContent = rLines.join('\n');
+              }
+
+              writeFileContent(filePath, retryContent);
+              console.log(palette.green('done'));
+            }
+
+            if (testsPass) {
+              printSuccess('Auto-fix loop complete: all tests passing.');
+            }
+          }
+        }
+
+        // ─── Git Auto-Commit ────────────────────────────────────────────
+        if (filePath && !options?.noCommit && !pipelineOpts.dryRun) {
+          if (isGitRepo()) {
+            let shouldCommit = false;
+
+            if (pipelineOpts.yes) {
+              shouldCommit = true;
+            } else {
+              const commitAnswer = await inquirer.prompt([
+                {
+                  type: 'confirm',
+                  name: 'commit',
+                  message: 'Changes applied. Auto-commit?',
+                  default: true,
+                },
+              ]);
+              shouldCommit = commitAnswer.commit;
+            }
+
+            if (shouldCommit) {
+              try {
+                const commitDesc = `fix issues in ${fileLabel}`;
+                gitAutoCommit(filePath, commitDesc);
+                printSuccess(`Committed: ai(orion): ${commitDesc}`);
+              } catch (commitErr: any) {
+                printWarning(`Auto-commit failed: ${commitErr.message}`);
+              }
+            }
+          }
+        }
+      }
     } else {
       printInfo('Fixes discarded. File unchanged.');
     }
