@@ -27,6 +27,10 @@ import { runCommand } from './commands/run.js';
 import { testCommand } from './commands/test.js';
 import { undoCommand } from './commands/undo.js';
 import { statusCommand } from './commands/status.js';
+import { refactorCommand } from './commands/refactor.js';
+import { doctorCommand } from './commands/doctor.js';
+import { planCommand } from './commands/plan.js';
+import { generateCommand } from './commands/generate.js';
 import { setPipelineOptions } from './pipeline.js';
 import { errorDisplay, palette } from './ui.js';
 
@@ -344,6 +348,65 @@ program
     }
   });
 
+// ─── Refactoring & Diagnostics ────────────────────────────────────────────
+
+program
+  .command('refactor <target>')
+  .description('AI-powered code refactoring (rename, extract, simplify, unused)')
+  .option('--rename <names...>', 'Rename a symbol across the codebase (oldName newName)')
+  .option('--extract <name>', 'Extract code into a new function')
+  .option('--simplify', 'Simplify complex code')
+  .option('--unused', 'Find unused exports and imports')
+  .action(async (target: string, options: { rename?: string[]; extract?: string; simplify?: boolean; unused?: boolean }) => {
+    try {
+      await refactorCommand(target, {
+        rename: options.rename,
+        extract: options.extract,
+        simplify: options.simplify,
+        unused: options.unused,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'refactor', 'Ensure the file/directory exists and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('doctor')
+  .description('Run a full health check of the Orion environment')
+  .action(async () => {
+    try {
+      await doctorCommand();
+    } catch (err: any) {
+      handleCommandError(err, 'doctor');
+    }
+  });
+
+// ─── Planning & Code Generation ──────────────────────────────────────────────
+
+program
+  .command('plan <task>')
+  .description('Generate a multi-step implementation plan from a task description')
+  .option('--execute', 'Execute the plan immediately after generating it')
+  .action(async (task: string, options: { execute?: boolean }) => {
+    try {
+      await planCommand(task, { execute: options.execute });
+    } catch (err: any) {
+      handleCommandError(err, 'plan', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('generate <type> <name>')
+  .description('Generate boilerplate code (component, api, model, hook, test, middleware, page, service)')
+  .option('--force', 'Overwrite existing files without prompting')
+  .action(async (type: string, name: string, options: { force?: boolean }) => {
+    try {
+      await generateCommand(type, name, { force: options.force });
+    } catch (err: any) {
+      handleCommandError(err, 'generate', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
 // ─── Default Action (no command) ─────────────────────────────────────────────
 
 program.action(() => {
@@ -361,8 +424,9 @@ program.action(() => {
   console.log(palette.violet.bold('  Commands'));
   console.log();
   console.log(category('Core', [cn('chat'), cn('ask'), cn('explain'), cn('review'), cn('fix'), cn('edit'), cn('commit')].join(sep)));
-  console.log(category('Code', [cn('search'), cn('diff'), cn('run'), cn('test'), cn('agent')].join(sep)));
-  console.log(category('Safety', [cn('undo'), cn('status')].join(sep)));
+  console.log(category('Code', [cn('search'), cn('diff'), cn('run'), cn('test'), cn('agent'), cn('refactor')].join(sep)));
+  console.log(category('Generate', [cn('plan'), cn('generate')].join(sep)));
+  console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor')].join(sep)));
   console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init')].join(sep)));
   console.log();
 
@@ -393,11 +457,27 @@ program.action(() => {
   console.log(cmd('orion test', '', 'Run tests, AI analyzes failures'));
   console.log(cmd('orion test', '--generate <f>', 'Generate tests for a file'));
   console.log(cmd('orion agent', '<tasks...>', 'Run AI tasks in parallel'));
+  console.log(cmd('orion refactor', '<target> --rename', 'Rename symbol across codebase'));
+  console.log(cmd('orion refactor', '<file> --extract', 'Extract code into a function'));
+  console.log(cmd('orion refactor', '<file> --simplify', 'Simplify complex code'));
+  console.log(cmd('orion refactor', '<dir> --unused', 'Find unused exports/imports'));
+  console.log();
+  console.log(palette.violet.bold('  Generate'));
+  console.log();
+  console.log(cmd('orion plan', '"task"', 'AI implementation plan from task'));
+  console.log(cmd('orion plan', '--execute "task"', 'Plan and execute immediately'));
+  console.log(cmd('orion generate', 'component Name', 'Generate UI component'));
+  console.log(cmd('orion generate', 'api /route', 'Generate API endpoint'));
+  console.log(cmd('orion generate', 'model Name', 'Generate data model'));
+  console.log(cmd('orion generate', 'hook useName', 'Generate custom hook'));
+  console.log(cmd('orion generate', 'test file.ts', 'Generate tests for a file'));
+  console.log(cmd('orion generate', 'service Name', 'Generate service class'));
   console.log();
   console.log(palette.violet.bold('  Safety'));
   console.log();
   console.log(cmd('orion undo', '', 'Undo last file change'));
   console.log(cmd('orion status', '', 'Show environment status'));
+  console.log(cmd('orion doctor', '', 'Full health check'));
   console.log();
   console.log(palette.violet.bold('  Session'));
   console.log();
