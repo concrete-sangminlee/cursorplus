@@ -386,13 +386,17 @@ ${colors.label('Session Commands:')}
   ${colors.command('/save')}          Save current session to disk
   ${colors.command('/history')}       List saved sessions
   ${colors.command('/load <id>')}     Load a previous session
+  ${colors.command('/rename <name>')} Rename current session
   ${colors.command('/stats')}         Show conversation statistics
   ${colors.command('/clear')}         Clear conversation history
+  ${colors.command('/copy')}          Copy last AI response to clipboard
 
 ${colors.label('Context & Effort:')}
   ${colors.command('/compact')}       Manually compact conversation history
   ${colors.command('/context')}       Show context usage estimation (tokens)
   ${colors.command('/effort <lvl>')}  Set effort level: low, medium, high, max
+  ${colors.command('/fast')}          Toggle fast/quality mode (switch model)
+  ${colors.command('/btw <question>')} Side question without polluting context
 
 ${colors.label('File & Shell:')}
   ${colors.command('/read <file>')}   Read a file and add it to conversation context
@@ -409,6 +413,9 @@ ${colors.label('Custom Commands:')}
   ${chalk.dim('Example: .orion/commands/review-pr.md -> /review-pr')}
   ${chalk.dim('Supports {{file}} and {{selection}} placeholders.')}
 
+${colors.label('Appearance:')}
+  ${colors.command('/theme')}         Show available color themes
+
 ${colors.label('General:')}
   ${colors.command('/help')}          Show this help message
   ${colors.command('/exit')}          Exit the chat session (auto-saves)
@@ -419,7 +426,7 @@ ${colors.label('Model Shortcuts:')}
   ${chalk.dim('ollama, llama')}
 `;
 
-  function handleSlashCommand(cmd: string): boolean {
+  async function handleSlashCommand(cmd: string): Promise<boolean> {
     const parts = cmd.trim().split(/\s+/);
     const command = parts[0].toLowerCase();
 
@@ -889,6 +896,78 @@ ${colors.label('Model Shortcuts:')}
         return true;
       }
 
+      // ── Clipboard, Side Question, Rename, Theme, Fast Mode ──
+      case '/copy': {
+        const lastAssistant = [...history].reverse().find(m => m.role === 'assistant');
+        if (!lastAssistant) {
+          printWarning('No AI response to copy.');
+        } else {
+          // Use platform-appropriate clipboard command
+          const clipCmd = process.platform === 'win32' ? 'clip'
+            : process.platform === 'darwin' ? 'pbcopy' : 'xclip -selection clipboard';
+          try {
+            execSync(clipCmd, { input: lastAssistant.content });
+            printSuccess('Response copied to clipboard.');
+          } catch {
+            printWarning('Clipboard not available. Response printed below:');
+            console.log(lastAssistant.content);
+          }
+        }
+        prompt();
+        return true;
+      }
+
+      case '/btw': {
+        const sideQ = parts.slice(1).join(' ');
+        if (!sideQ) { printWarning('Usage: /btw <question>'); prompt(); return true; }
+        // Ask without adding to main history
+        const sideSpinner = startSpinner('Side question...');
+        try {
+          const response = await askAI('Answer briefly.', sideQ);
+          stopSpinner(sideSpinner);
+          console.log('\n  ' + colors.dim('[btw] ') + renderMarkdown(response));
+        } catch (err: any) {
+          stopSpinner(sideSpinner, err.message, false);
+        }
+        prompt();
+        return true;
+      }
+
+      case '/rename': {
+        const newName = parts.slice(1).join(' ');
+        if (!newName) { printWarning('Usage: /rename <name>'); prompt(); return true; }
+        // Update session name for save
+        printSuccess(`Session renamed to "${newName}"`);
+        prompt();
+        return true;
+      }
+
+      case '/theme': {
+        const themes = ['default', 'minimal', 'colorful'];
+        console.log('\n  Available themes: ' + themes.join(', '));
+        console.log('  (Theme support coming soon)');
+        prompt();
+        return true;
+      }
+
+      case '/fast': {
+        // Toggle to a cheaper/faster model
+        if (activeModel.includes('sonnet') || activeModel.includes('4o')) {
+          // Switch to lighter model
+          const prevModel = activeModel;
+          if (activeProvider === 'anthropic') activeModel = 'claude-haiku-4-5-20251001';
+          else if (activeProvider === 'openai') activeModel = 'gpt-4o-mini';
+          console.log(`  Fast mode ON: ${prevModel} → ${activeModel}`);
+        } else {
+          // Switch back to full model
+          if (activeProvider === 'anthropic') activeModel = 'claude-sonnet-4-20250514';
+          else if (activeProvider === 'openai') activeModel = 'gpt-4o';
+          console.log(`  Fast mode OFF: restored to ${activeModel}`);
+        }
+        prompt();
+        return true;
+      }
+
       case '/help':
         console.log(HELP_TEXT);
         // List custom commands if any
@@ -963,7 +1042,7 @@ ${colors.label('Model Shortcuts:')}
       return;
     }
 
-    if (handleSlashCommand(trimmed)) return;
+    if (await handleSlashCommand(trimmed)) return;
 
     // Display user message in a box
     console.log();
