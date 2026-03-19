@@ -18,7 +18,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/license/concrete-sangminlee/orion?style=flat-square&color=22C55E" alt="License">
   <img src="https://img.shields.io/badge/version-2.0.0-7C5CFC?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/commands-20-38BDF8?style=flat-square" alt="Commands">
+  <img src="https://img.shields.io/badge/commands-38-38BDF8?style=flat-square" alt="Commands">
   <img src="https://img.shields.io/badge/platform-Win%20%7C%20Mac%20%7C%20Linux-F59E0B?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-9B59B6?style=flat-square" alt="AI">
   <img src="https://img.shields.io/github/stars/concrete-sangminlee/orion?style=flat-square" alt="Stars">
@@ -30,7 +30,7 @@
 
 Orion is an **open-source AI coding tool** with two modes:
 
-**CLI** — 20 commands for AI-assisted coding directly in your terminal. Chat with AI, review code, fix bugs, generate tests, search codebases — all from the command line. Switch between Claude, GPT, and local Ollama models mid-conversation.
+**CLI** — 38 commands for AI-assisted coding directly in your terminal. Chat with AI, review code, fix bugs, generate tests, search codebases — all from the command line. Switch between Claude, GPT, and local Ollama models mid-conversation.
 
 **Desktop IDE** — A full-featured code editor built on Electron with Monaco Editor, 18 themes, integrated terminal, Git workflow, and multi-agent AI orchestration.
 
@@ -105,14 +105,16 @@ orion status                  # Check setup
 
 ## CLI Commands
 
-### 30+ commands organized in 6 categories:
+### 38 commands organized in 7 categories:
 
 ```
 Core:       chat · ask · explain · review · fix · edit · commit
-Code:       search · diff · run · test · agent · plan · generate · refactor
-Workflow:   changelog · migrate · deps · todo · shell · fetch
+Code:       search · diff · pr · run · test · agent · refactor
+Generate:   plan · generate · docs
+Tools:      shell · todo · fetch · changelog · migrate · deps · snippet · compare
+Analysis:   debug · benchmark · security · typecheck
 Safety:     undo · status · doctor
-Session:    session · watch · config · init · gui
+Session:    session · watch · config · init · gui · completions
 Chat Tools: /read · /write · /run · /ls · /cat · /cd · /fetch · custom commands
 ```
 
@@ -135,29 +137,61 @@ orion commit                        # Generate AI commit message
 orion search "authentication"       # Search codebase + AI analysis
 orion diff                          # Review uncommitted changes with AI
 orion diff --staged                 # Review staged changes
+orion pr                            # Generate PR description from branch
+orion pr --review                   # AI reviews all branch changes
 orion run "npm test"                # Run command, AI diagnoses errors
 orion run "npm build" --fix         # Run, diagnose, and auto-fix
 orion test                          # Run tests, AI analyzes failures
 orion test --generate src/auth.ts   # Generate tests for a file
-orion plan "Add auth to the app"    # AI implementation plan + auto-execute
-orion generate component LoginForm  # Generate code (20+ frameworks)
-orion refactor src/app.ts --simplify  # AI refactoring
 orion agent "task1" "task2" "task3" # Run multiple AI tasks in parallel
+orion refactor src/app.ts --simplify  # AI refactoring
+orion compare file1.ts file2.ts     # Compare two files with AI
 ```
 
-### Workflow — Dev Automation
+### Generate — Code & Docs Generation
 
 ```bash
+orion plan "Add auth to the app"    # AI implementation plan + auto-execute
+orion plan --execute "task"         # Plan and execute immediately
+orion generate component LoginForm  # Generate code (20+ frameworks)
+orion docs src/app.ts               # Generate JSDoc/docstrings
+orion docs src/ --readme            # Generate README for directory
+orion docs src/app.ts --api         # Generate API documentation
+```
+
+### Tools — Dev Automation
+
+```bash
+orion shell                         # Natural language -> shell commands
+orion todo                          # Scan for TODO/FIXME/HACK comments
+orion todo --fix                    # AI suggests fixes for each TODO
+orion fetch https://docs.api.com    # Fetch URL content for AI context
 orion changelog                     # Generate changelog from git history
 orion changelog --days 7            # Last 7 days
-orion migrate src/app.js --to typescript  # JS→TS, py2→3, class→hooks
+orion migrate src/app.js --to typescript  # JS->TS, py2->3, class->hooks
 orion deps                          # Analyze dependencies
 orion deps --security               # Security audit
 orion deps --unused                 # Find unused packages
-orion todo                          # Scan for TODO/FIXME/HACK comments
-orion todo --fix                    # AI suggests fixes for each TODO
-orion shell                         # Natural language → shell commands
-orion fetch https://docs.api.com    # Fetch URL content for AI context
+orion snippet save "name" --file f  # Save code snippet from file
+orion snippet list                  # List all saved snippets
+orion snippet generate "desc"       # AI-generate a new snippet
+orion compare --approach "React vs Vue?" # Compare tech approaches
+```
+
+### Analysis — Debug & Security
+
+```bash
+orion debug src/app.ts              # Analyze file for potential bugs
+orion debug --error "msg"           # Diagnose a specific error
+orion debug --stacktrace            # Paste stack trace for analysis
+orion benchmark src/app.ts          # Analyze file for performance
+orion benchmark --memory src/app.ts # Memory usage analysis
+orion benchmark --complexity src/app.ts # Time complexity analysis
+orion security src/                 # Scan for security vulnerabilities
+orion security --owasp              # OWASP Top 10 audit
+orion typecheck src/app.ts          # Analyze types, suggest improvements
+orion typecheck src/app.ts --strict # Strict type safety audit
+orion typecheck src/app.js --convert # JS to TypeScript conversion
 ```
 
 ### Safety — Backup & Recovery
@@ -166,6 +200,7 @@ orion fetch https://docs.api.com    # Fetch URL content for AI context
 orion undo                          # Restore last file from backup
 orion undo --list                   # List all backups
 orion undo --file src/app.ts        # Undo specific file
+orion undo --checkpoint             # Restore a workspace checkpoint
 orion status                        # Environment dashboard
 orion doctor                        # Full health check (9 checks)
 ```
@@ -179,6 +214,7 @@ orion session export "project"      # Export as markdown
 orion watch "*.ts" --on-change review  # Auto-review on file change
 orion config                        # Set up API keys and models
 orion init                          # Create .orion/context.md project memory
+orion completions bash              # Generate shell completions
 ```
 
 ### Chat Tools (inside `orion chat`)
@@ -289,7 +325,7 @@ Ollama works out of the box with no API key. Run `orion config` for API key setu
 
 ```
 orion/
-├── cli/                        # CLI tool (20 commands)
+├── cli/                        # CLI tool (38 commands)
 │   ├── index.ts                # Entry point
 │   ├── ai-client.ts            # Multi-provider AI client
 │   ├── ui.ts                   # Premium UI components
@@ -298,7 +334,7 @@ orion/
 │   ├── shared.ts               # Shared patterns
 │   ├── pipeline.ts             # CI/CD pipeline mode
 │   ├── stdin.ts                # Unix pipe support
-│   └── commands/               # 20 command implementations
+│   └── commands/               # 38 command implementations
 │       ├── chat.ts             # Interactive chat with hot-switch
 │       ├── ask.ts              # Quick questions with @file refs
 │       ├── review.ts           # Code review with severity

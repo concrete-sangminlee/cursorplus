@@ -746,6 +746,64 @@ program
     }
   });
 
+// ─── Git Hooks & Aliases ─────────────────────────────────────────────────────
+
+program
+  .command('hooks <action>')
+  .description('Manage Orion git hooks (install, uninstall, list)')
+  .option('--hook <name>', 'Target a specific hook (pre-commit, commit-msg, pre-push)')
+  .option('--force', 'Overwrite existing non-Orion hooks')
+  .action(async (action: string, options: { hook?: string; force?: boolean }) => {
+    try {
+      const { hooksCommand } = await import('./commands/hooks.js');
+      await hooksCommand(action, {
+        hook: options.hook,
+        force: options.force,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'hooks', 'Ensure you are in a git repository.');
+    }
+  });
+
+program
+  .command('alias <action> [name] [expansion]')
+  .description('Manage command aliases (set, list, remove)')
+  .action(async (action: string, name?: string, expansion?: string) => {
+    try {
+      const { aliasCommand } = await import('./commands/alias.js');
+      await aliasCommand(action, name, expansion);
+    } catch (err: any) {
+      handleCommandError(err, 'alias', 'Run `orion alias --help` for usage.');
+    }
+  });
+
+// ─── Tutorial & Examples ─────────────────────────────────────────────────────
+
+program
+  .command('tutorial')
+  .description('Interactive getting-started tutorial')
+  .option('--skip', 'Show quick summary instead of full interactive walkthrough')
+  .action(async (options: { skip?: boolean }) => {
+    try {
+      const { tutorialCommand } = await import('./commands/tutorial.js');
+      await tutorialCommand({ skip: options.skip });
+    } catch (err: any) {
+      handleCommandError(err, 'tutorial');
+    }
+  });
+
+program
+  .command('examples [command]')
+  .description('Show usage examples for any command')
+  .action(async (command?: string) => {
+    try {
+      const { examplesCommand } = await import('./commands/examples.js');
+      await examplesCommand(command);
+    } catch (err: any) {
+      handleCommandError(err, 'examples');
+    }
+  });
+
 // ─── Default Action (no command) ─────────────────────────────────────────────
 
 program.action(() => {
@@ -768,7 +826,9 @@ program.action(() => {
   console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('migrate'), cn('deps'), cn('snippet'), cn('compare')].join(sep)));
   console.log(category('Analysis', [cn('debug'), cn('benchmark'), cn('security'), cn('typecheck')].join(sep)));
   console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor')].join(sep)));
+  console.log(category('Git', [cn('hooks'), cn('alias')].join(sep)));
   console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init'), cn('completions')].join(sep)));
+  console.log(category('Help', [cn('tutorial'), cn('examples')].join(sep)));
   console.log();
 
   // ─── Detailed Command List ──────────────────────────────────────────────
@@ -867,6 +927,16 @@ program.action(() => {
   console.log(cmd('orion status', '', 'Show environment status'));
   console.log(cmd('orion doctor', '', 'Full health check'));
   console.log();
+  console.log(palette.violet.bold('  Git'));
+  console.log();
+  console.log(cmd('orion hooks', 'install', 'Install Orion git hooks'));
+  console.log(cmd('orion hooks', 'uninstall', 'Remove Orion git hooks'));
+  console.log(cmd('orion hooks', 'list', 'Show installed hooks'));
+  console.log(cmd('orion hooks', 'install --hook X', 'Install a specific hook'));
+  console.log(cmd('orion alias', 'set r "review"', 'Create command alias'));
+  console.log(cmd('orion alias', 'list', 'List all aliases'));
+  console.log(cmd('orion alias', 'remove r', 'Remove an alias'));
+  console.log();
   console.log(palette.violet.bold('  Session'));
   console.log();
   console.log(cmd('orion session', '<action>', 'Manage named AI sessions'));
@@ -874,6 +944,13 @@ program.action(() => {
   console.log(cmd('orion config', '', 'Configure API keys'));
   console.log(cmd('orion init', '', 'Initialize Orion config'));
   console.log(cmd('orion completions', '<shell>', 'Generate shell completions'));
+  console.log();
+  console.log(palette.violet.bold('  Help'));
+  console.log();
+  console.log(cmd('orion tutorial', '', 'Interactive getting-started tutorial'));
+  console.log(cmd('orion tutorial', '--skip', 'Quick summary (non-interactive)'));
+  console.log(cmd('orion examples', '', 'Show all usage examples'));
+  console.log(cmd('orion examples', '<command>', 'Examples for a specific command'));
   console.log();
   console.log(palette.violet.bold('  Pipe Support'));
   console.log();
@@ -891,6 +968,41 @@ program.action(() => {
   console.log();
   console.log(palette.dim('  Run orion <command> --help for more info on a command.'));
   console.log();
+});
+
+// ─── Alias Resolution for Unknown Commands ──────────────────────────────────
+
+program.on('command:*', async (operands: string[]) => {
+  const unknownCmd = operands[0];
+  if (!unknownCmd) return;
+
+  try {
+    const { resolveAlias } = await import('./commands/alias.js');
+    const expansion = resolveAlias(unknownCmd);
+
+    if (expansion) {
+      // Rebuild argv: replace the alias with the expanded command tokens
+      const expandedTokens = expansion.split(/\s+/);
+      const remainingArgs = process.argv.slice(3); // args after the alias name
+      const newArgv = [process.argv[0], process.argv[1], ...expandedTokens, ...remainingArgs];
+
+      console.log(chalk.dim(`  Alias: ${unknownCmd} => ${expansion}`));
+      console.log();
+
+      await program.parseAsync(newArgv);
+      return;
+    }
+  } catch {
+    // Alias module not available, fall through
+  }
+
+  // No alias found - show error with suggestion
+  console.log();
+  printError(`Unknown command: ${colors.command(unknownCmd)}`);
+  printInfo(`Run ${colors.command('orion --help')} for a list of commands.`);
+  printInfo(`Or create an alias: ${colors.command(`orion alias set ${unknownCmd} "<command>"`)}`);
+  console.log();
+  process.exit(1);
 });
 
 // ─── Parse & Run ─────────────────────────────────────────────────────────────
