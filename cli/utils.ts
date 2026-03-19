@@ -166,7 +166,7 @@ export function printBanner(): void {
   console.log();
   console.log(`  ${star('\u2726')}  ${violet.bold('O R I O N')}`);
   console.log(`  ${dm('\u00B7')}  ${lavender('AI-Powered Coding Assistant')}`);
-  console.log(`  ${dm('\u00B7')}  ${dm('v2.0.0 \u00B7 ' + platform)}`);
+  console.log(`  ${dm('\u00B7')}  ${dm('v2.2.0 \u00B7 ' + platform)}`);
   console.log(`  ${dm('\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578\u2578')}`);
   console.log();
 }

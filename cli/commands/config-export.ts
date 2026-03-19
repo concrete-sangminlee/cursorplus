@@ -172,7 +172,7 @@ function exportConfig(outputFile: string): void {
   console.log();
 
   // Security notice
-  console.log(statusLine('check', 'API keys were NOT included (security).'));
+  console.log(statusLine('\u2713', 'API keys were NOT included (security).'));
   printSuccess(`Exported config to ${colors.file(outputPath)}`);
   console.log();
   printInfo('Share this file with your team to sync Orion settings.');
@@ -262,7 +262,7 @@ function importConfig(inputFile: string): void {
   ]));
   console.log();
 
-  console.log(statusLine('check', 'Existing API keys were preserved.'));
+  console.log(statusLine('\u2713', 'Existing API keys were preserved.'));
   printSuccess('Config imported successfully.');
   console.log();
   printInfo(`Run ${colors.command('orion config')} to verify settings.`);

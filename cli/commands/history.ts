@@ -144,9 +144,9 @@ function showHistory(entries: HistoryEntry[]): void {
     .join(palette.dim(' · '));
 
   console.log();
-  console.log(statusLine('check', `Success: ${palette.green(String(successCount))}  Failed: ${palette.red(String(failCount))}`));
+  console.log(statusLine('\u2713', `Success: ${palette.green(String(successCount))}  Failed: ${palette.red(String(failCount))}`));
   if (topCommands) {
-    console.log(statusLine('info', `Top commands: ${topCommands}`));
+    console.log(statusLine('i', `Top commands: ${topCommands}`));
   }
   console.log(divider());
   console.log();

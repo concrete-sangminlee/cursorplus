@@ -24,7 +24,7 @@ import { commandHeader, divider, statusLine, badge, keyValue, palette } from '..
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const PACKAGE_NAME = 'orion-ide';
-const CURRENT_VERSION = '2.0.0';
+const CURRENT_VERSION = '2.2.0';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -6,6 +6,8 @@
 
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import {
   colors,
   readConfig,
@@ -13,9 +15,14 @@ import {
 import { commandHeader, divider, keyValue, statusLine, palette } from '../ui.js';
 import { jsonOutput } from '../pipeline.js';
 
+// ─── ESM compatibility ──────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ORION_VERSION = '2.0.0';
+const ORION_VERSION = '2.2.0';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -54,13 +61,7 @@ function getArch(): string {
 }
 
 function getCliPath(): string {
-  try {
-    // Resolve the directory where the CLI entry point lives
-    const mainModule = require.main?.filename || __filename;
-    return mainModule;
-  } catch {
-    return __filename;
-  }
+  return __filename;
 }
 
 async function getOllamaModels(ollamaHost: string): Promise<string[]> {

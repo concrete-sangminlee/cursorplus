@@ -80,7 +80,7 @@ interface ImpactEntry {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function buildGitLogArgs(options: LogCommandOptions): string {
-  const parts = ['log', '--format=%h\t%an\t%ar\t%s', '--no-merges'];
+  const parts = ['log', '--format=%h%x09%an%x09%ar%x09%s', '--no-merges'];
 
   if (options.author) {
     parts.push(`--author="${options.author}"`);

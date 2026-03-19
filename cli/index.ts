@@ -13,9 +13,16 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { printBanner, colors, printError, printInfo } from './utils.js';
 import { setPipelineOptions } from './pipeline.js';
 import { errorDisplay, palette } from './ui.js';
+
+// ─── ESM compatibility ──────────────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ─── Version Check (non-blocking) ───────────────────────────────────────────
 
@@ -1195,6 +1202,34 @@ program
     }
   });
 
+// ─── Profile & Metrics Commands ──────────────────────────────────────────────
+// profile · metrics
+
+program
+  .command('profile <action> [name]')
+  .description('Manage configuration profiles (list, create, use, delete, export, import)')
+  .action(async (action: string, name?: string) => {
+    try {
+      const { profileCommand } = await import('./commands/profile.js');
+      await profileCommand(action, name);
+    } catch (err: any) {
+      handleCommandError(err, 'profile', 'Run `orion profile --help` for usage.');
+    }
+  });
+
+program
+  .command('metrics')
+  .description('Show usage metrics (commands run, tokens used, files touched)')
+  .option('--reset', 'Reset all metrics')
+  .action(async (options: { reset?: boolean }) => {
+    try {
+      const { metricsCommand } = await import('./commands/metrics.js');
+      await metricsCommand({ reset: options.reset });
+    } catch (err: any) {
+      handleCommandError(err, 'metrics', 'Metrics are stored in ~/.orion/metrics.json.');
+    }
+  });
+
 // ─── Help Commands ───────────────────────────────────────────────────────────
 // tutorial · examples · update · version
 
@@ -1225,32 +1260,12 @@ program
 
 program
   .command('update')
-  .description('Check for updates and show upgrade instructions')
-  .action(async () => {
+  .description('Check for updates and install latest version')
+  .option('--check', 'Check only, do not install')
+  .action(async (options: { check?: boolean }) => {
     try {
-      console.log();
-      console.log(colors.primary.bold(`  Orion CLI v${CURRENT_VERSION}`));
-      console.log();
-      const { execSync } = await import('child_process');
-      let latestVersion: string | null = null;
-      try {
-        latestVersion = execSync(`npm view ${PACKAGE_NAME} version`, {
-          timeout: 10000,
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
-      } catch {
-        latestVersion = null;
-      }
-      if (latestVersion && latestVersion !== CURRENT_VERSION) {
-        console.log(chalk.yellow(`  Update available: ${CURRENT_VERSION} \u2192 ${latestVersion}`));
-        console.log(chalk.dim(`  Run: npm i -g ${PACKAGE_NAME}`));
-      } else if (latestVersion) {
-        console.log(chalk.green('  You are on the latest version.'));
-      } else {
-        console.log(chalk.dim('  Could not check for updates (network error or npm unavailable).'));
-      }
-      console.log();
+      const { updateCommand } = await import('./commands/update.js');
+      await updateCommand({ check: options.check });
     } catch (err: any) {
       handleCommandError(err, 'update', 'Check your network connection.');
     }
