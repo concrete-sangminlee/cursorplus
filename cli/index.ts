@@ -938,6 +938,72 @@ program
     }
   });
 
+// ─── Extensibility Commands ──────────────────────────────────────────────────
+// plugin · api · regex · cron
+
+program
+  .command('plugin <action> [target]')
+  .description('Manage Orion plugins (list, install, remove, create)')
+  .action(async (action: string, target?: string) => {
+    try {
+      const { pluginCommand } = await import('./commands/plugin.js');
+      await pluginCommand(action, target);
+    } catch (err: any) {
+      handleCommandError(err, 'plugin', 'Run `orion plugin --help` for usage.');
+    }
+  });
+
+program
+  .command('api [query]')
+  .description('AI-powered API documentation lookup')
+  .argument('[words...]', 'Additional query words')
+  .action(async (query?: string, words?: string[]) => {
+    try {
+      const { apiLookupCommand } = await import('./commands/api-lookup.js');
+      await apiLookupCommand(query, words);
+    } catch (err: any) {
+      handleCommandError(err, 'api', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('regex [description]')
+  .description('AI regex helper (generate, explain, test)')
+  .option('--explain <pattern>', 'Explain a regex pattern')
+  .option('--test <pattern>', 'Test a regex pattern against a string')
+  .argument('[testString]', 'Test string for --test mode')
+  .action(async (description?: string, testString?: string, options?: { explain?: string; test?: string }) => {
+    try {
+      const { regexCommand } = await import('./commands/regex.js');
+      await regexCommand(description, {
+        explain: options?.explain,
+        test: options?.test,
+        testString,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'regex', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('cron [description]')
+  .description('Cron expression helper (generate, explain, next executions)')
+  .option('--explain <expression>', 'Explain a cron expression')
+  .option('--next <expression>', 'Show next execution times for a cron expression')
+  .argument('[count]', 'Number of executions to show (for --next mode)')
+  .action(async (description?: string, count?: string, options?: { explain?: string; next?: string }) => {
+    try {
+      const { cronHelperCommand } = await import('./commands/cron-helper.js');
+      await cronHelperCommand(description, {
+        explain: options?.explain,
+        next: options?.next,
+        count,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'cron', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
 // ─── Help Commands ───────────────────────────────────────────────────────────
 // tutorial · examples · update · version
 
@@ -1037,6 +1103,7 @@ program.action(() => {
   console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init'), cn('gui'), cn('completions')].join(sep)));
   console.log(category('Git', [cn('hooks'), cn('alias')].join(sep)));
   console.log(category('AI', [cn('learn'), cn('pair'), cn('context')].join(sep)));
+  console.log(category('Extend', [cn('plugin'), cn('api'), cn('regex'), cn('cron')].join(sep)));
   console.log(category('Help', [cn('tutorial'), cn('examples'), cn('update'), cn('info')].join(sep)));
   console.log();
 
@@ -1203,6 +1270,22 @@ program.action(() => {
   console.log(cmd('orion context', 'list', 'List all context files'));
   console.log(cmd('orion context', 'estimate', 'Estimate token count of context'));
   console.log();
+  console.log(palette.violet.bold('  Extensibility'));
+  console.log();
+  console.log(cmd('orion plugin', 'list', 'List installed plugins'));
+  console.log(cmd('orion plugin', 'install ./p.js', 'Install a local plugin'));
+  console.log(cmd('orion plugin', 'remove <name>', 'Remove an installed plugin'));
+  console.log(cmd('orion plugin', 'create <name>', 'Scaffold a new plugin'));
+  console.log(cmd('orion api', '<query>', 'Look up API documentation'));
+  console.log(cmd('orion api', '"react useState"', 'Look up React hook docs'));
+  console.log(cmd('orion api', 'node fs', 'Look up Node.js fs module'));
+  console.log(cmd('orion regex', '"match emails"', 'AI generates regex pattern'));
+  console.log(cmd('orion regex', '--explain "/pat/"', 'Explain a regex'));
+  console.log(cmd('orion regex', '--test "/p/" "str"', 'Test regex against string'));
+  console.log(cmd('orion cron', '"every mon 9am"', 'Generate cron expression'));
+  console.log(cmd('orion cron', '--explain "0 9 * * 1"', 'Explain cron expression'));
+  console.log(cmd('orion cron', '--next "0 9 * * 1" 5', 'Show next 5 executions'));
+  console.log();
   console.log(palette.violet.bold('  Pipe Support'));
   console.log();
   console.log(`    ${palette.dim('cat file.ts | orion ask "What\'s wrong?"')}`);
@@ -1248,7 +1331,19 @@ program.on('command:*', async (operands: string[]) => {
     // Alias module not available, fall through
   }
 
-  // No alias found - show error with suggestion
+  // Try plugin commands (format: plugin-name:command)
+  if (unknownCmd.includes(':')) {
+    try {
+      const { executePluginCommand } = await import('./commands/plugin.js');
+      const remainingArgs = process.argv.slice(3);
+      const handled = await executePluginCommand(unknownCmd, remainingArgs);
+      if (handled) return;
+    } catch {
+      // Plugin module not available, fall through
+    }
+  }
+
+  // No alias or plugin found - show error with suggestion
   console.log();
   printError(`Unknown command: ${colors.command(unknownCmd)}`);
   printInfo(`Run ${colors.command('orion --help')} for a list of commands.`);
