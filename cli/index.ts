@@ -471,6 +471,25 @@ program
     }
   });
 
+program
+  .command('boilerplate [template]')
+  .description('Generate boilerplate files from built-in templates (express-api, dockerfile, etc.)')
+  .option('--list', 'List all available boilerplate templates')
+  .option('--force', 'Overwrite existing files without prompting')
+  .option('--output <dir>', 'Output directory (defaults to current directory)')
+  .action(async (template?: string, options?: { list?: boolean; force?: boolean; output?: string }) => {
+    try {
+      const { boilerplateCommand } = await import('./commands/boilerplate.js');
+      await boilerplateCommand(template, {
+        list: options?.list,
+        force: options?.force,
+        output: options?.output,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'boilerplate', 'Run `orion boilerplate --list` to see available templates.');
+    }
+  });
+
 // ─── Tools Commands ──────────────────────────────────────────────────────────
 // shell · todo · fetch · changelog · log · summarize · migrate · deps · format · translate · env
 

@@ -11,7 +11,7 @@ import * as path from 'node:path';
 const ALL_COMMAND_NAMES = [
   'chat', 'ask', 'explain', 'review', 'fix', 'edit', 'commit',
   'search', 'diff', 'pr', 'run', 'test', 'agent', 'refactor', 'compare',
-  'plan', 'generate', 'docs', 'snippet', 'scaffold',
+  'plan', 'generate', 'docs', 'snippet', 'scaffold', 'boilerplate',
   'shell', 'todo', 'fetch', 'changelog', 'log', 'summarize', 'migrate',
   'deps', 'format', 'translate', 'env',
   'debug', 'benchmark', 'security', 'typecheck',
@@ -29,7 +29,7 @@ const ALL_COMMAND_NAMES = [
 const COMMAND_CATEGORIES: Record<string, string[]> = {
   Core: ['chat', 'ask', 'explain', 'review', 'fix', 'edit', 'commit'],
   Code: ['search', 'diff', 'pr', 'run', 'test', 'agent', 'refactor', 'compare'],
-  Generate: ['plan', 'generate', 'docs', 'snippet', 'scaffold'],
+  Generate: ['plan', 'generate', 'docs', 'snippet', 'scaffold', 'boilerplate'],
   Tools: ['shell', 'todo', 'fetch', 'changelog', 'log', 'summarize', 'migrate', 'deps', 'format', 'translate', 'env'],
   Analysis: ['debug', 'benchmark', 'security', 'typecheck'],
   Safety: ['undo', 'status', 'doctor', 'clean'],
@@ -65,6 +65,7 @@ const COMMAND_EXPORTS: Record<string, { file: string; fn: string }> = {
   docs: { file: 'docs.ts', fn: 'docsCommand' },
   snippet: { file: 'snippet.ts', fn: 'snippetCommand' },
   scaffold: { file: 'scaffold.ts', fn: 'scaffoldCommand' },
+  boilerplate: { file: 'boilerplate.ts', fn: 'boilerplateCommand' },
   shell: { file: 'shell.ts', fn: 'shellCommand' },
   todo: { file: 'todo.ts', fn: 'todoCommand' },
   fetch: { file: 'fetch.ts', fn: 'fetchCommand' },
