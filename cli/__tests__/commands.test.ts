@@ -124,8 +124,9 @@ describe('command registration in index.ts', () => {
 });
 
 describe('version configuration', () => {
-  it('index.ts contains CURRENT_VERSION set to 2.1.0', () => {
-    expect(indexSource).toContain("const CURRENT_VERSION = '2.1.0'");
+  it('index.ts contains CURRENT_VERSION matching package.json', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
+    expect(indexSource).toContain(`const CURRENT_VERSION = '${pkg.version}'`);
   });
 
   it('CURRENT_VERSION matches package.json version', () => {
