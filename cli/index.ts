@@ -1150,6 +1150,41 @@ program
     }
   });
 
+// ─── History & Config Export ─────────────────────────────────────────────────
+// history · config-export
+
+program
+  .command('history')
+  .description('Show global orion command history')
+  .option('--clear', 'Clear all command history')
+  .option('--search <keyword>', 'Search history by keyword')
+  .action(async (options: { clear?: boolean; search?: string }) => {
+    try {
+      const { historyCommand } = await import('./commands/history.js');
+      await historyCommand({
+        clear: options.clear,
+        search: options.search,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'history', 'History is stored in ~/.orion/command-history.json.');
+    }
+  });
+
+program
+  .command('config-export')
+  .description('Export full Orion config as portable bundle (no API keys)')
+  .option('--import <file>', 'Import config from a JSON file')
+  .action(async (options: { import?: string }) => {
+    try {
+      const { configExportCommand } = await import('./commands/config-export.js');
+      await configExportCommand({
+        import: options.import,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'config-export', 'Run `orion config-export --help` for usage.');
+    }
+  });
+
 // ─── Help Commands ───────────────────────────────────────────────────────────
 // tutorial · examples · update · version
 
@@ -1252,6 +1287,7 @@ program.action(() => {
   console.log(category('Extend', [cn('plugin'), cn('api'), cn('regex'), cn('cron')].join(sep)));
   console.log(category('Data', [cn('csv'), cn('http'), cn('diff-files'), cn('stats')].join(sep)));
   console.log(category('Insights', [cn('map'), cn('cost')].join(sep)));
+  console.log(category('Meta', [cn('history'), cn('config-export')].join(sep)));
   console.log(category('Help', [cn('tutorial'), cn('examples'), cn('update'), cn('info')].join(sep)));
   console.log();
 
@@ -1403,6 +1439,14 @@ program.action(() => {
   console.log(cmd('orion blame', '<file>', 'AI blame analysis & ownership'));
   console.log(cmd('orion blame', '<file> --line 42', 'Explain why line 42 changed'));
   console.log(cmd('orion blame', '<file> --hotspots', 'Find high-churn sections'));
+  console.log();
+  console.log(palette.violet.bold('  Meta'));
+  console.log();
+  console.log(cmd('orion history', '', 'Show recent command history'));
+  console.log(cmd('orion history', '--clear', 'Clear all command history'));
+  console.log(cmd('orion history', '--search "kw"', 'Search history by keyword'));
+  console.log(cmd('orion config-export', '', 'Export config to orion-config.json'));
+  console.log(cmd('orion config-export', '--import f.json', 'Import config from file'));
   console.log();
   console.log(palette.violet.bold('  Help'));
   console.log();
