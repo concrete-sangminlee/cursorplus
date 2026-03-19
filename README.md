@@ -17,8 +17,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/license/concrete-sangminlee/orion?style=flat-square&color=22C55E" alt="License">
-  <img src="https://img.shields.io/badge/version-2.0.0-7C5CFC?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/commands-47-38BDF8?style=flat-square" alt="Commands">
+  <img src="https://img.shields.io/badge/version-2.1.0-7C5CFC?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/commands-53-38BDF8?style=flat-square" alt="Commands">
   <img src="https://img.shields.io/badge/platform-Win%20%7C%20Mac%20%7C%20Linux-F59E0B?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-9B59B6?style=flat-square" alt="AI">
   <img src="https://img.shields.io/github/stars/concrete-sangminlee/orion?style=flat-square" alt="Stars">
@@ -30,7 +30,7 @@
 
 Orion is an **open-source AI coding tool** with two modes:
 
-**CLI** — 47+ commands for AI-assisted coding directly in your terminal. Chat with AI, review code, fix bugs, generate tests, search codebases — all from the command line. Switch between Claude, GPT, and local Ollama models mid-conversation.
+**CLI** — 53 commands for AI-assisted coding directly in your terminal. Chat with AI, review code, fix bugs, generate tests, search codebases — all from the command line. Switch between Claude, GPT, and local Ollama models mid-conversation.
 
 **Desktop IDE** — A full-featured code editor built on Electron with Monaco Editor, 18 themes, integrated terminal, Git workflow, and multi-agent AI orchestration.
 
@@ -105,7 +105,7 @@ orion status                  # Check setup
 
 ## CLI Commands
 
-### 47+ commands organized in 10 categories:
+### 53 commands organized in 10 categories:
 
 ```
 Core:       chat · ask · explain · review · fix · edit · commit
@@ -328,7 +328,7 @@ Ollama works out of the box with no API key. Run `orion config` for API key setu
 
 ```
 orion/
-├── cli/                        # CLI tool (38 commands)
+├── cli/                        # CLI tool (53 commands)
 │   ├── index.ts                # Entry point
 │   ├── ai-client.ts            # Multi-provider AI client
 │   ├── ui.ts                   # Premium UI components
