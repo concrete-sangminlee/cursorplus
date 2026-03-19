@@ -12,6 +12,7 @@ import { execSync } from 'child_process';
 import chalk from 'chalk';
 import {
   streamChat,
+  askAI,
   getAvailableProviders,
   getProviderDisplay,
   resolveModelShortcut,
@@ -69,6 +70,64 @@ Guidelines:
 
 Current workspace context:
 `;
+
+// ─── Conversation Compaction ──────────────────────────────────────────────────
+
+const COMPACTION_THRESHOLD = 20;
+const RECENT_MESSAGES_TO_KEEP = 6;
+
+/**
+ * Rough token estimation: ~4 characters per token for English text.
+ */
+function estimateTokens(messages: AIMessage[]): number {
+  return messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+}
+
+/**
+ * When conversation history gets too long (>20 messages or >8000 estimated
+ * tokens), compact older messages by summarizing them via AI.
+ * The most recent messages are kept as-is for context continuity.
+ */
+async function compactHistory(history: AIMessage[]): Promise<AIMessage[]> {
+  if (history.length < COMPACTION_THRESHOLD && estimateTokens(history) < 8000) {
+    return history;
+  }
+
+  // Keep last N messages as-is
+  const recent = history.slice(-RECENT_MESSAGES_TO_KEEP);
+  const older = history.slice(0, -RECENT_MESSAGES_TO_KEEP);
+
+  if (older.length === 0) return history;
+
+  // Build a text representation of the older messages for summarization
+  const olderText = older
+    .map(m => `${m.role}: ${m.content}`)
+    .join('\n\n');
+
+  try {
+    let summary = '';
+    await askAI(
+      'Summarize the following conversation concisely but thoroughly. Preserve key decisions, code changes, file paths, technical context, and any instructions the user gave. Output only the summary, no preamble.',
+      olderText,
+      {
+        onToken(token: string) {
+          summary += token;
+        },
+        onComplete(text: string) {
+          summary = text;
+        },
+      },
+    );
+
+    return [
+      { role: 'system' as const, content: `Previous conversation summary:\n${summary}` },
+      ...recent,
+    ];
+  } catch {
+    // If summarization fails, fall back to just keeping recent messages
+    return recent;
+  }
+}
 
 function generateSessionId(): string {
   const now = new Date();
@@ -800,6 +859,21 @@ ${colors.label('Model Shortcuts:')}
     console.log(userMessageBox(trimmed));
 
     history.push({ role: 'user', content: trimmed });
+
+    // Compact conversation history if it has grown too long
+    if (history.length >= COMPACTION_THRESHOLD || estimateTokens(history) >= 8000) {
+      const compactSpinner = startSpinner('Compacting conversation history...');
+      try {
+        const compacted = await compactHistory(history);
+        stopSpinner(compactSpinner, 'History compacted');
+        // Replace the history array contents in-place
+        history.length = 0;
+        history.push(...compacted);
+      } catch {
+        stopSpinner(compactSpinner);
+        // Compaction failed silently; continue with full history
+      }
+    }
 
     const spinner = startSpinner('Thinking...');
     let firstToken = true;

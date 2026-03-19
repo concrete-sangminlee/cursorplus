@@ -34,6 +34,7 @@ import {
   createStreamHandler,
 } from '../shared.js';
 import { getPipelineOptions, jsonOutput } from '../pipeline.js';
+import { createCheckpoint } from '../checkpoint.js';
 import {
   commandHeader,
   table as uiTable,
@@ -521,6 +522,20 @@ export async function planCommand(task: string, options?: { execute?: boolean })
       console.log();
       console.log(divider('Executing Plan'));
       console.log();
+
+      // Create a workspace checkpoint before multi-file execution
+      const allPlanFiles = [...new Set(plan.steps.flatMap(s => s.files))].filter(f => f.length > 0);
+      if (allPlanFiles.length > 0) {
+        try {
+          const cpId = createCheckpoint(`plan: ${task}`, allPlanFiles);
+          printInfo(`Checkpoint created: ${palette.dim(cpId)}`);
+          printInfo(`Restore with: ${colors.command('orion undo --checkpoint')}`);
+          console.log();
+        } catch {
+          printWarning('Could not create workspace checkpoint (files may not exist yet).');
+          console.log();
+        }
+      }
 
       let completedSteps = 0;
       let failedSteps = 0;

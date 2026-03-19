@@ -5,40 +5,99 @@
  *
  * A premium terminal tool for AI-assisted development.
  * Supports Anthropic Claude, OpenAI GPT, and local Ollama models.
+ *
+ * Startup optimizations:
+ * - Lazy imports: command modules loaded only when invoked
+ * - Non-blocking version check after command execution
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { printBanner, colors, printError, printInfo } from './utils.js';
-import { chatCommand } from './commands/chat.js';
-import { askCommand } from './commands/ask.js';
-import { reviewCommand } from './commands/review.js';
-import { commitCommand } from './commands/commit.js';
-import { editCommand } from './commands/edit.js';
-import { explainCommand } from './commands/explain.js';
-import { fixCommand } from './commands/fix.js';
-import { configCommand, initCommand } from './commands/config.js';
-import { agentCommand } from './commands/agent.js';
-import { sessionCommand } from './commands/session.js';
-import { watchCommand } from './commands/watch.js';
-import { searchCommand } from './commands/search.js';
-import { diffCommand } from './commands/diff.js';
-import { runCommand } from './commands/run.js';
-import { testCommand } from './commands/test.js';
-import { undoCommand } from './commands/undo.js';
-import { statusCommand } from './commands/status.js';
-import { refactorCommand } from './commands/refactor.js';
-import { doctorCommand } from './commands/doctor.js';
-import { planCommand } from './commands/plan.js';
-import { generateCommand } from './commands/generate.js';
-import { shellCommand } from './commands/shell.js';
-import { todoCommand } from './commands/todo.js';
-import { changelogCommand } from './commands/changelog.js';
-import { migrateCommand } from './commands/migrate.js';
-import { depsCommand } from './commands/deps.js';
-import { fetchCommand } from './commands/fetch.js';
 import { setPipelineOptions } from './pipeline.js';
 import { errorDisplay, palette } from './ui.js';
+
+// ─── Version Check (non-blocking) ───────────────────────────────────────────
+
+const CURRENT_VERSION = '2.0.0';
+const PACKAGE_NAME = 'orion-ide';
+const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+interface VersionCheckCache {
+  lastCheck: number;
+  latestVersion: string | null;
+}
+
+async function checkForUpdates(): Promise<void> {
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+
+    const cacheDir = path.join(os.homedir(), '.orion');
+    const cacheFile = path.join(cacheDir, 'version-check.json');
+
+    // Read cache
+    let cache: VersionCheckCache | null = null;
+    try {
+      if (fs.existsSync(cacheFile)) {
+        cache = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+      }
+    } catch {
+      // Ignore corrupted cache
+    }
+
+    // Skip if checked recently
+    if (cache && Date.now() - cache.lastCheck < VERSION_CHECK_INTERVAL_MS) {
+      if (cache.latestVersion && cache.latestVersion !== CURRENT_VERSION) {
+        printUpdateNotice(cache.latestVersion);
+      }
+      return;
+    }
+
+    // Fetch latest version from npm (with short timeout)
+    const { execSync } = await import('child_process');
+    let latestVersion: string | null = null;
+    try {
+      latestVersion = execSync(`npm view ${PACKAGE_NAME} version`, {
+        timeout: 5000,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch {
+      // Network error or npm not available - silently skip
+      latestVersion = null;
+    }
+
+    // Write cache
+    try {
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+      const newCache: VersionCheckCache = {
+        lastCheck: Date.now(),
+        latestVersion,
+      };
+      fs.writeFileSync(cacheFile, JSON.stringify(newCache, null, 2));
+    } catch {
+      // Ignore write errors
+    }
+
+    // Show notice if newer version is available
+    if (latestVersion && latestVersion !== CURRENT_VERSION) {
+      printUpdateNotice(latestVersion);
+    }
+  } catch {
+    // Never let version check break the CLI
+  }
+}
+
+function printUpdateNotice(latestVersion: string): void {
+  console.log();
+  console.log(
+    chalk.yellow(`  Update available: ${CURRENT_VERSION} \u2192 ${latestVersion}. Run: npm i -g ${PACKAGE_NAME}`)
+  );
+}
 
 // ─── Error Handler Factory ──────────────────────────────────────────────────
 
@@ -61,7 +120,7 @@ const program = new Command();
 
 program
   .name('orion')
-  .version('2.0.0', '-v, --version', 'Show Orion CLI version')
+  .version(CURRENT_VERSION, '-v, --version', 'Show Orion CLI version')
   .description('AI-powered coding assistant for the terminal')
   .option('--json', 'Output structured JSON to stdout (for CI/CD pipelines)')
   .option('-y, --yes', 'Auto-confirm all prompts (non-interactive mode)')
@@ -83,13 +142,14 @@ program
     });
   });
 
-// ─── Commands ────────────────────────────────────────────────────────────────
+// ─── Commands (lazy-loaded for fast startup) ─────────────────────────────────
 
 program
   .command('chat')
   .description('Start an interactive AI chat session')
   .action(async () => {
     try {
+      const { chatCommand } = await import('./commands/chat.js');
       await chatCommand();
     } catch (err: any) {
       handleCommandError(err, 'chat', 'Run `orion config` to set up API keys.');
@@ -102,6 +162,7 @@ program
   .argument('[refs...]', 'Optional @file references for multi-file context')
   .action(async (question: string, refs: string[]) => {
     try {
+      const { askCommand } = await import('./commands/ask.js');
       await askCommand(question, refs);
     } catch (err: any) {
       handleCommandError(err, 'ask', 'Ensure your AI provider is configured. Run `orion config`.');
@@ -114,6 +175,7 @@ program
   .option('--no-commit', 'Skip the auto-commit prompt after applying edits')
   .action(async (file: string, opts?: { commit?: boolean }) => {
     try {
+      const { editCommand } = await import('./commands/edit.js');
       await editCommand(file, {
         noCommit: opts?.commit === false,
       });
@@ -127,6 +189,7 @@ program
   .description('AI code review (file or current directory)')
   .action(async (file?: string) => {
     try {
+      const { reviewCommand } = await import('./commands/review.js');
       await reviewCommand(file);
     } catch (err: any) {
       handleCommandError(err, 'review', 'Ensure the file exists or run from a project directory.');
@@ -138,6 +201,7 @@ program
   .description('Generate AI commit message from staged changes')
   .action(async () => {
     try {
+      const { commitCommand } = await import('./commands/commit.js');
       await commitCommand();
     } catch (err: any) {
       handleCommandError(err, 'commit', 'Stage changes with `git add` first, then run `orion commit`.');
@@ -149,6 +213,7 @@ program
   .description('AI-powered code explanation (accepts piped input)')
   .action(async (file?: string) => {
     try {
+      const { explainCommand } = await import('./commands/explain.js');
       await explainCommand(file);
     } catch (err: any) {
       handleCommandError(err, 'explain', 'Check that the file exists and your AI provider is configured.');
@@ -163,6 +228,7 @@ program
   .option('--no-commit', 'Skip the auto-commit prompt after applying fixes')
   .action(async (file?: string, opts?: { auto?: boolean; maxIterations?: string; commit?: boolean }) => {
     try {
+      const { fixCommand } = await import('./commands/fix.js');
       await fixCommand(file, {
         auto: opts?.auto,
         maxIterations: opts?.maxIterations ? parseInt(opts.maxIterations, 10) : undefined,
@@ -179,6 +245,7 @@ program
   .option('--fix', 'Auto-apply AI-suggested fixes on failure')
   .action(async (command: string, options: { fix?: boolean }) => {
     try {
+      const { runCommand } = await import('./commands/run.js');
       await runCommand(command, { fix: options.fix });
     } catch (err: any) {
       handleCommandError(err, 'run', 'Ensure your AI provider is configured. Run `orion config`.');
@@ -191,6 +258,7 @@ program
   .option('--generate <file>', 'Generate tests for a source file')
   .action(async (options: { generate?: string }) => {
     try {
+      const { testCommand } = await import('./commands/test.js');
       await testCommand({ generate: options.generate });
     } catch (err: any) {
       handleCommandError(err, 'test', 'Ensure your AI provider is configured. Run `orion config`.');
@@ -199,12 +267,14 @@ program
 
 program
   .command('undo')
-  .description('Undo last file change (restore from backup)')
+  .description('Undo last file change (restore from backup or checkpoint)')
   .option('--list', 'List available backups')
   .option('--file <file>', 'Undo a specific file')
   .option('--clean', 'Remove old backups (older than 7 days)')
-  .action(async (options: { list?: boolean; file?: string; clean?: boolean }) => {
+  .option('--checkpoint', 'List and restore workspace checkpoints (multi-file undo)')
+  .action(async (options: { list?: boolean; file?: string; clean?: boolean; checkpoint?: boolean }) => {
     try {
+      const { undoCommand } = await import('./commands/undo.js');
       await undoCommand(options);
     } catch (err: any) {
       handleCommandError(err, 'undo', 'Check that backups exist in .orion/backups/.');
@@ -216,6 +286,7 @@ program
   .description('Show Orion environment status')
   .action(async () => {
     try {
+      const { statusCommand } = await import('./commands/status.js');
       await statusCommand();
     } catch (err: any) {
       handleCommandError(err, 'status');
@@ -227,6 +298,7 @@ program
   .description('Initialize Orion config in current project')
   .action(async () => {
     try {
+      const { initCommand } = await import('./commands/config.js');
       await initCommand();
     } catch (err: any) {
       handleCommandError(err, 'init', 'Make sure you have write permissions in the current directory.');
@@ -263,6 +335,7 @@ program
   .description('Configure API keys and preferences')
   .action(async () => {
     try {
+      const { configCommand } = await import('./commands/config.js');
       await configCommand();
     } catch (err: any) {
       handleCommandError(err, 'config', 'Check file permissions for ~/.orion/config.json.');
@@ -280,6 +353,7 @@ program
   .option('--no-save', 'Do not save results to .orion/agents/')
   .action(async (tasks: string[], options: { parallel?: string; provider?: string; save?: boolean }) => {
     try {
+      const { agentCommand } = await import('./commands/agent.js');
       await agentCommand(tasks, {
         parallel: parseInt(options.parallel || '3', 10),
         provider: options.provider,
@@ -297,6 +371,7 @@ program
   .argument('[name]', 'Session name (required for new, resume, export, delete)')
   .action(async (action: string, name?: string) => {
     try {
+      const { sessionCommand } = await import('./commands/session.js');
       await sessionCommand(action, name);
     } catch (err: any) {
       handleCommandError(err, 'session', 'Check file permissions for ~/.orion/sessions/.');
@@ -312,6 +387,7 @@ program
   .option('--ignore <patterns>', 'Comma-separated ignore patterns', 'node_modules,dist,build,.git,.orion')
   .action(async (pattern: string, options: { onChange?: string; debounce?: string; ignore?: string }) => {
     try {
+      const { watchCommand } = await import('./commands/watch.js');
       await watchCommand(pattern, {
         onChange: options.onChange,
         debounce: parseInt(options.debounce || '300', 10),
@@ -332,6 +408,7 @@ program
   .option('--no-ai', 'Skip AI analysis, just show search results')
   .action(async (pattern: string, options: { type?: string; max?: string; ai?: boolean }) => {
     try {
+      const { searchCommand } = await import('./commands/search.js');
       await searchCommand(pattern, {
         type: options.type,
         maxResults: parseInt(options.max || '100', 10),
@@ -348,6 +425,7 @@ program
   .option('--staged', 'Review only staged changes')
   .action(async (ref: string | undefined, options: { staged?: boolean }) => {
     try {
+      const { diffCommand } = await import('./commands/diff.js');
       await diffCommand(ref, { staged: options.staged });
     } catch (err: any) {
       handleCommandError(err, 'diff', 'Ensure you are in a git repository and your AI provider is configured.');
@@ -365,6 +443,7 @@ program
   .option('--unused', 'Find unused exports and imports')
   .action(async (target: string, options: { rename?: string[]; extract?: string; simplify?: boolean; unused?: boolean }) => {
     try {
+      const { refactorCommand } = await import('./commands/refactor.js');
       await refactorCommand(target, {
         rename: options.rename,
         extract: options.extract,
@@ -381,6 +460,7 @@ program
   .description('Run a full health check of the Orion environment')
   .action(async () => {
     try {
+      const { doctorCommand } = await import('./commands/doctor.js');
       await doctorCommand();
     } catch (err: any) {
       handleCommandError(err, 'doctor');
@@ -395,6 +475,7 @@ program
   .option('--execute', 'Execute the plan immediately after generating it')
   .action(async (task: string, options: { execute?: boolean }) => {
     try {
+      const { planCommand } = await import('./commands/plan.js');
       await planCommand(task, { execute: options.execute });
     } catch (err: any) {
       handleCommandError(err, 'plan', 'Ensure your AI provider is configured. Run `orion config`.');
@@ -407,6 +488,7 @@ program
   .option('--force', 'Overwrite existing files without prompting')
   .action(async (type: string, name: string, options: { force?: boolean }) => {
     try {
+      const { generateCommand } = await import('./commands/generate.js');
       await generateCommand(type, name, { force: options.force });
     } catch (err: any) {
       handleCommandError(err, 'generate', 'Ensure your AI provider is configured. Run `orion config`.');
@@ -420,6 +502,7 @@ program
   .description('Start an AI-enhanced interactive shell (natural language to commands)')
   .action(async () => {
     try {
+      const { shellCommand } = await import('./commands/shell.js');
       await shellCommand();
     } catch (err: any) {
       handleCommandError(err, 'shell', 'Ensure your AI provider is configured. Run `orion config`.');
@@ -433,6 +516,7 @@ program
   .option('--prioritize', 'AI prioritizes TODOs by importance')
   .action(async (options: { fix?: boolean; prioritize?: boolean }) => {
     try {
+      const { todoCommand } = await import('./commands/todo.js');
       await todoCommand({
         fix: options.fix,
         prioritize: options.prioritize,
@@ -450,6 +534,7 @@ program
   .option('--raw', 'Show raw content without HTML tag stripping')
   .action(async (url: string, options: { raw?: boolean }) => {
     try {
+      const { fetchCommand } = await import('./commands/fetch.js');
       await fetchCommand(url, { raw: options.raw });
     } catch (err: any) {
       handleCommandError(err, 'fetch', 'Check the URL and your network connection.');
@@ -466,6 +551,7 @@ program
   .option('--output <file>', 'Write changelog to a file')
   .action(async (options: { since?: string; days?: string; output?: string }) => {
     try {
+      const { changelogCommand } = await import('./commands/changelog.js');
       await changelogCommand({
         since: options.since,
         days: options.days ? parseInt(options.days, 10) : undefined,
@@ -482,6 +568,7 @@ program
   .requiredOption('--to <target>', 'Migration target: typescript, python3, hooks, async, esm, composition')
   .action(async (file: string, options: { to: string }) => {
     try {
+      const { migrateCommand } = await import('./commands/migrate.js');
       await migrateCommand(file, { to: options.to });
     } catch (err: any) {
       handleCommandError(err, 'migrate', 'Check that the file exists and your AI provider is configured.');
@@ -496,6 +583,7 @@ program
   .option('--unused', 'Detect unused dependencies in the project')
   .action(async (options: { security?: boolean; outdated?: boolean; unused?: boolean }) => {
     try {
+      const { depsCommand } = await import('./commands/deps.js');
       await depsCommand({
         security: options.security,
         outdated: options.outdated,
@@ -503,6 +591,20 @@ program
       });
     } catch (err: any) {
       handleCommandError(err, 'deps', 'Ensure a dependency manifest (package.json, etc.) exists and your AI provider is configured.');
+    }
+  });
+
+// ─── Shell Completions ───────────────────────────────────────────────────────
+
+program
+  .command('completions <shell>')
+  .description('Generate shell completion scripts (bash, zsh, fish, powershell)')
+  .action(async (shell: string) => {
+    try {
+      const { completionsCommand } = await import('./commands/completions.js');
+      await completionsCommand(shell);
+    } catch (err: any) {
+      handleCommandError(err, 'completions', 'Supported shells: bash, zsh, fish, powershell');
     }
   });
 
@@ -527,7 +629,7 @@ program.action(() => {
   console.log(category('Generate', [cn('plan'), cn('generate')].join(sep)));
   console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('migrate'), cn('deps')].join(sep)));
   console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor')].join(sep)));
-  console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init')].join(sep)));
+  console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init'), cn('completions')].join(sep)));
   console.log();
 
   // ─── Detailed Command List ──────────────────────────────────────────────
@@ -595,6 +697,7 @@ program.action(() => {
   console.log(palette.violet.bold('  Safety'));
   console.log();
   console.log(cmd('orion undo', '', 'Undo last file change'));
+  console.log(cmd('orion undo', '--checkpoint', 'Restore a workspace checkpoint'));
   console.log(cmd('orion status', '', 'Show environment status'));
   console.log(cmd('orion doctor', '', 'Full health check'));
   console.log();
@@ -604,6 +707,7 @@ program.action(() => {
   console.log(cmd('orion watch', '<pattern>', 'Watch files & auto-run AI'));
   console.log(cmd('orion config', '', 'Configure API keys'));
   console.log(cmd('orion init', '', 'Initialize Orion config'));
+  console.log(cmd('orion completions', '<shell>', 'Generate shell completions'));
   console.log();
   console.log(palette.violet.bold('  Pipe Support'));
   console.log();
@@ -625,4 +729,9 @@ program.action(() => {
 
 // ─── Parse & Run ─────────────────────────────────────────────────────────────
 
-program.parse(process.argv);
+program.parseAsync(process.argv).then(() => {
+  // Non-blocking version check after command execution
+  checkForUpdates().catch(() => {
+    // Silently ignore version check failures
+  });
+});
