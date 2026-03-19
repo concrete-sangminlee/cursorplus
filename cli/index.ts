@@ -457,7 +457,7 @@ program
   });
 
 // ─── Tools Commands ──────────────────────────────────────────────────────────
-// shell · todo · fetch · changelog · migrate · deps · format · translate · env
+// shell · todo · fetch · changelog · log · summarize · migrate · deps · format · translate · env
 
 program
   .command('shell')
@@ -517,6 +517,46 @@ program
       });
     } catch (err: any) {
       handleCommandError(err, 'changelog', 'Ensure you are in a git repository and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('log')
+  .description('AI-enhanced git log with summaries and impact analysis')
+  .option('--author <name>', 'Filter commits by author name')
+  .option('--since <time>', 'Filter commits by time (e.g., "1 week ago", "2024-01-01")')
+  .option('--count <n>', 'Number of commits to show (default: 20)')
+  .option('--impact', 'AI analyzes the impact level of each commit')
+  .action(async (options: { author?: string; since?: string; count?: string; impact?: boolean }) => {
+    try {
+      const { logCommand } = await import('./commands/log.js');
+      await logCommand({
+        author: options.author,
+        since: options.since,
+        count: options.count ? parseInt(options.count, 10) : undefined,
+        impact: options.impact,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'log', 'Ensure you are in a git repository and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('summarize [target]')
+  .description('AI-powered content summarizer (files, directories, piped input)')
+  .option('--meeting', 'Summarize as meeting notes (decisions, action items, follow-ups)')
+  .option('--bullet', 'Output summary as bullet points')
+  .option('--length <size>', 'Summary length: short, medium, or long (default: medium)')
+  .action(async (target?: string, options?: { meeting?: boolean; bullet?: boolean; length?: string }) => {
+    try {
+      const { summarizeCommand } = await import('./commands/summarize.js');
+      await summarizeCommand(target, {
+        meeting: options?.meeting,
+        bullet: options?.bullet,
+        length: (options?.length as 'short' | 'medium' | 'long') || undefined,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'summarize', 'Ensure your AI provider is configured. Run `orion config`.');
     }
   });
 
@@ -666,7 +706,7 @@ program
   });
 
 // ─── Safety Commands ─────────────────────────────────────────────────────────
-// undo · status · doctor
+// undo · status · doctor · clean
 
 program
   .command('undo')
@@ -705,6 +745,29 @@ program
       await doctorCommand();
     } catch (err: any) {
       handleCommandError(err, 'doctor');
+    }
+  });
+
+program
+  .command('clean')
+  .description('Clean up Orion data (backups, history, checkpoints)')
+  .option('--backups', 'Remove all backups')
+  .option('--history', 'Remove chat history')
+  .option('--checkpoints', 'Remove checkpoints')
+  .option('--all', 'Remove everything')
+  .option('--dry-run', 'Show what would be removed without deleting')
+  .action(async (options: { backups?: boolean; history?: boolean; checkpoints?: boolean; all?: boolean; dryRun?: boolean }) => {
+    try {
+      const { cleanCommand } = await import('./commands/clean.js');
+      await cleanCommand({
+        backups: options.backups,
+        history: options.history,
+        checkpoints: options.checkpoints,
+        all: options.all,
+        dryRun: options.dryRun,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'clean');
     }
   });
 
@@ -836,7 +899,7 @@ program
   });
 
 // ─── Help Commands ───────────────────────────────────────────────────────────
-// tutorial · examples · update
+// tutorial · examples · update · version
 
 program
   .command('tutorial')
@@ -896,6 +959,19 @@ program
     }
   });
 
+program
+  .command('info')
+  .description('Show detailed version and environment info')
+  .option('--json', 'Output as JSON')
+  .action(async (options: { json?: boolean }) => {
+    try {
+      const { versionCommand } = await import('./commands/version.js');
+      await versionCommand({ json: options.json });
+    } catch (err: any) {
+      handleCommandError(err, 'info');
+    }
+  });
+
 // ─── Default Action (no command) ─────────────────────────────────────────────
 
 program.action(() => {
@@ -915,12 +991,12 @@ program.action(() => {
   console.log(category('Core', [cn('chat'), cn('ask'), cn('explain'), cn('review'), cn('fix'), cn('edit'), cn('commit')].join(sep)));
   console.log(category('Code', [cn('search'), cn('diff'), cn('pr'), cn('run'), cn('test'), cn('agent'), cn('refactor'), cn('compare')].join(sep)));
   console.log(category('Generate', [cn('plan'), cn('generate'), cn('docs'), cn('snippet'), cn('scaffold')].join(sep)));
-  console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('migrate'), cn('deps'), cn('format'), cn('translate'), cn('env')].join(sep)));
+  console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('log'), cn('summarize'), cn('migrate'), cn('deps'), cn('format'), cn('translate'), cn('env')].join(sep)));
   console.log(category('Analysis', [cn('debug'), cn('benchmark'), cn('security'), cn('typecheck')].join(sep)));
-  console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor')].join(sep)));
+  console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor'), cn('clean')].join(sep)));
   console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init'), cn('gui'), cn('completions')].join(sep)));
   console.log(category('Git', [cn('hooks'), cn('alias')].join(sep)));
-  console.log(category('Help', [cn('tutorial'), cn('examples'), cn('update')].join(sep)));
+  console.log(category('Help', [cn('tutorial'), cn('examples'), cn('update'), cn('info')].join(sep)));
   console.log();
 
   // ─── Detailed Command List ──────────────────────────────────────────────
@@ -996,6 +1072,14 @@ program.action(() => {
   console.log(cmd('orion changelog', '', 'Generate changelog from git commits'));
   console.log(cmd('orion changelog', '--since v1.0', 'Changelog since a tag'));
   console.log(cmd('orion changelog', '--days 7', 'Changelog for last 7 days'));
+  console.log(cmd('orion log', '', 'AI-enhanced git log with summary'));
+  console.log(cmd('orion log', '--author "name"', 'Filter log by author'));
+  console.log(cmd('orion log', '--since "1 week ago"', 'Filter log by time'));
+  console.log(cmd('orion log', '--impact', 'AI rates each commit\'s impact'));
+  console.log(cmd('orion summarize', '<file>', 'AI-powered file summary'));
+  console.log(cmd('orion summarize', '<dir>', 'Summarize a directory/project'));
+  console.log(cmd('orion summarize', '--meeting notes.md', 'Summarize meeting notes'));
+  console.log(cmd('orion summarize', '--bullet --length short', 'Bullet points, short length'));
   console.log(cmd('orion migrate', '<file> --to ts', 'Migrate JS to TypeScript'));
   console.log(cmd('orion migrate', '<file> --to hooks', 'Class components to hooks'));
   console.log(cmd('orion migrate', '<file> --to async', 'Callbacks to async/await'));
@@ -1034,6 +1118,9 @@ program.action(() => {
   console.log(cmd('orion undo', '--checkpoint', 'Restore a workspace checkpoint'));
   console.log(cmd('orion status', '', 'Show environment status'));
   console.log(cmd('orion doctor', '', 'Full health check'));
+  console.log(cmd('orion clean', '', 'Interactive cleanup'));
+  console.log(cmd('orion clean', '--all', 'Remove all Orion data'));
+  console.log(cmd('orion clean', '--dry-run', 'Show what would be removed'));
   console.log();
   console.log(palette.violet.bold('  Session'));
   console.log();
@@ -1061,12 +1148,15 @@ program.action(() => {
   console.log(cmd('orion examples', '', 'Show all usage examples'));
   console.log(cmd('orion examples', '<command>', 'Examples for a specific command'));
   console.log(cmd('orion update', '', 'Check for latest version'));
+  console.log(cmd('orion info', '', 'Detailed version & environment'));
+  console.log(cmd('orion info', '--json', 'Version info as JSON'));
   console.log();
   console.log(palette.violet.bold('  Pipe Support'));
   console.log();
   console.log(`    ${palette.dim('cat file.ts | orion ask "What\'s wrong?"')}`);
   console.log(`    ${palette.dim('git diff | orion review')}`);
   console.log(`    ${palette.dim('orion run "npm test"')}`);
+  console.log(`    ${palette.dim('cat long-doc.md | orion summarize')}`);
   console.log(`    ${palette.dim('orion fetch https://docs.example.com/api | orion ask "How do I use this?"')}`);
   console.log();
   console.log(palette.violet.bold('  Global Flags'));
