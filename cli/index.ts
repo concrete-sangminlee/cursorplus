@@ -457,7 +457,7 @@ program
   });
 
 // ─── Tools Commands ──────────────────────────────────────────────────────────
-// shell · todo · fetch · changelog · migrate · deps · format
+// shell · todo · fetch · changelog · migrate · deps · format · translate · env
 
 program
   .command('shell')
@@ -566,6 +566,35 @@ program
       });
     } catch (err: any) {
       handleCommandError(err, 'format', 'Ensure the file/directory exists and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('translate <input>')
+  .description('Translate code comments/strings or text to another language')
+  .requiredOption('--to <language>', 'Target language: english, korean, japanese, chinese, spanish, french, german')
+  .option('--apply', 'Apply translation directly to the file')
+  .action(async (input: string, options: { to: string; apply?: boolean }) => {
+    try {
+      const { translateCommand } = await import('./commands/translate.js');
+      await translateCommand(input, {
+        to: options.to,
+        apply: options.apply,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'translate', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('env <action>')
+  .description('Environment variable management (check, suggest, template, validate)')
+  .action(async (action: string) => {
+    try {
+      const { envCommand } = await import('./commands/env.js');
+      await envCommand(action);
+    } catch (err: any) {
+      handleCommandError(err, 'env', 'Run `orion env --help` for usage.');
     }
   });
 
@@ -886,7 +915,7 @@ program.action(() => {
   console.log(category('Core', [cn('chat'), cn('ask'), cn('explain'), cn('review'), cn('fix'), cn('edit'), cn('commit')].join(sep)));
   console.log(category('Code', [cn('search'), cn('diff'), cn('pr'), cn('run'), cn('test'), cn('agent'), cn('refactor'), cn('compare')].join(sep)));
   console.log(category('Generate', [cn('plan'), cn('generate'), cn('docs'), cn('snippet'), cn('scaffold')].join(sep)));
-  console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('migrate'), cn('deps'), cn('format')].join(sep)));
+  console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('migrate'), cn('deps'), cn('format'), cn('translate'), cn('env')].join(sep)));
   console.log(category('Analysis', [cn('debug'), cn('benchmark'), cn('security'), cn('typecheck')].join(sep)));
   console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor')].join(sep)));
   console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init'), cn('gui'), cn('completions')].join(sep)));
@@ -977,6 +1006,13 @@ program.action(() => {
   console.log(cmd('orion format', '<file>', 'Auto-format a file'));
   console.log(cmd('orion format', '<dir> --check', 'Check formatting without changes'));
   console.log(cmd('orion format', '<dir> --style airbnb', 'Format with specific style guide'));
+  console.log(cmd('orion translate', '<file> --to korean', 'Translate comments to Korean'));
+  console.log(cmd('orion translate', '<file> --to english', 'Translate comments to English'));
+  console.log(cmd('orion translate', '"text" --to korean', 'Translate text to Korean'));
+  console.log(cmd('orion env', 'check', 'Check env vars used in codebase'));
+  console.log(cmd('orion env', 'suggest', 'AI suggests needed env vars'));
+  console.log(cmd('orion env', 'template', 'Generate .env.example from .env'));
+  console.log(cmd('orion env', 'validate', 'Validate .env against .env.example'));
   console.log();
   console.log(palette.violet.bold('  Analysis'));
   console.log();

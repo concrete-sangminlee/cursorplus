@@ -1149,7 +1149,6 @@ export async function scaffoldCommand(
       name: 'template',
       message: 'Select a project template:',
       choices: templateChoices,
-      pageSize: 12,
     }]);
 
     const { projectName: chosenName } = await inquirer.prompt([{
