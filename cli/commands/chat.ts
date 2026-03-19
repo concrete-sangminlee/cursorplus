@@ -6,6 +6,9 @@
  */
 
 import * as readline from 'readline';
+import * as fs from 'fs';
+import * as path from 'path';
+import { execSync } from 'child_process';
 import chalk from 'chalk';
 import {
   streamChat,
@@ -24,12 +27,16 @@ import {
   printInfo,
   printSuccess,
   printWarning,
+  printError,
   startSpinner,
   stopSpinner,
   getCurrentDirectoryContext,
   loadProjectContext,
   readConfig,
   writeConfig,
+  readFileContent,
+  writeFileContent,
+  fileExists,
   saveChatSession,
   loadChatSession,
   listChatSessions,
@@ -47,6 +54,7 @@ import {
   providerBadge,
   palette,
 } from '../ui.js';
+import { fetchUrl, stripHtmlTags } from './fetch.js';
 
 const SYSTEM_PROMPT = `You are Orion, an expert AI coding assistant running in a terminal CLI.
 You help developers with coding questions, debugging, architecture, and best practices.
@@ -122,6 +130,23 @@ export async function chatCommand(): Promise<void> {
   printInfo(`${colors.command('/save')} Save session  ${colors.command('/history')} List sessions  ${colors.command('/load <id>')} Load session`);
   printInfo(`${colors.command('/help')} All commands`);
   console.log();
+
+  // ── Scan .orion/commands/ for custom slash commands ────────
+  const customCommands = new Map<string, string>();
+  const commandsDir = path.join(process.cwd(), '.orion', 'commands');
+  if (fs.existsSync(commandsDir)) {
+    try {
+      const files = fs.readdirSync(commandsDir).filter(f => f.endsWith('.md'));
+      for (const file of files) {
+        const cmdName = path.basename(file, '.md');
+        const cmdContent = fs.readFileSync(path.join(commandsDir, file), 'utf-8');
+        customCommands.set(cmdName, cmdContent);
+      }
+      if (customCommands.size > 0) {
+        printInfo(`Loaded ${customCommands.size} custom command${customCommands.size > 1 ? 's' : ''} from ${colors.file('.orion/commands/')}`);
+      }
+    } catch { /* ignore read errors */ }
+  }
 
   const history: AIMessage[] = [];
   const context = getCurrentDirectoryContext();
@@ -292,6 +317,21 @@ ${colors.label('Session Commands:')}
   ${colors.command('/stats')}         Show conversation statistics
   ${colors.command('/clear')}         Clear conversation history
 
+${colors.label('File & Shell:')}
+  ${colors.command('/read <file>')}   Read a file and add it to conversation context
+  ${colors.command('/write <file>')}  Write AI's last code block to a file
+  ${colors.command('/run <command>')} Run a shell command and show output
+  ${colors.command('/fetch <url>')}   Fetch a URL and add content to context
+  ${colors.command('/ls [dir]')}      List directory contents
+  ${colors.command('/cat <file>')}    Show file contents with line numbers
+  ${colors.command('/pwd')}           Show current working directory
+  ${colors.command('/cd <dir>')}      Change working directory
+
+${colors.label('Custom Commands:')}
+  ${chalk.dim('Place .md files in .orion/commands/ to create custom slash commands.')}
+  ${chalk.dim('Example: .orion/commands/review-pr.md -> /review-pr')}
+  ${chalk.dim('Supports {{file}} and {{selection}} placeholders.')}
+
 ${colors.label('General:')}
   ${colors.command('/help')}          Show this help message
   ${colors.command('/exit')}          Exit the chat session (auto-saves)
@@ -444,13 +484,269 @@ ${colors.label('Model Shortcuts:')}
         prompt();
         return true;
 
+      // ── File & Shell tool-use commands ────────────────────────
+      case '/read': {
+        const filePath = parts.slice(1).join(' ');
+        if (!filePath) {
+          printWarning('Usage: /read <file>');
+          prompt();
+          return true;
+        }
+        try {
+          const resolved = path.resolve(filePath);
+          const { content, language } = readFileContent(resolved);
+          const lineCount = content.split('\n').length;
+          const contextMsg = `File content of ${resolved}:\n\`\`\`${language}\n${content}\n\`\`\``;
+          history.push({ role: 'user', content: contextMsg });
+          printSuccess(`Added ${chalk.bold(filePath)} to context (${lineCount} lines)`);
+        } catch (err: any) {
+          printError(err.message);
+        }
+        prompt();
+        return true;
+      }
+
+      case '/write': {
+        const writeTarget = parts.slice(1).join(' ');
+        if (!writeTarget) {
+          printWarning('Usage: /write <file>');
+          printInfo('Writes the last code block from the AI response to a file.');
+          prompt();
+          return true;
+        }
+        // Find the last assistant message
+        const lastAssistant = [...history].reverse().find(m => m.role === 'assistant');
+        if (!lastAssistant) {
+          printWarning('No AI response to extract code from.');
+          prompt();
+          return true;
+        }
+        // Extract the last code block (``` ... ```)
+        const codeBlockRegex = /```[\w]*\n([\s\S]*?)```/g;
+        const matches = [...lastAssistant.content.matchAll(codeBlockRegex)];
+        if (matches.length === 0) {
+          printWarning('No code block found in the last AI response.');
+          prompt();
+          return true;
+        }
+        const codeContent = matches[matches.length - 1][1];
+        const resolvedWrite = path.resolve(writeTarget);
+        try {
+          // Create backup if file exists
+          if (fileExists(resolvedWrite)) {
+            const backupPath = resolvedWrite + '.bak';
+            fs.copyFileSync(resolvedWrite, backupPath);
+            printInfo(`Backup created: ${chalk.dim(backupPath)}`);
+          }
+          writeFileContent(resolvedWrite, codeContent);
+          const writeLineCount = codeContent.split('\n').length;
+          printSuccess(`Wrote ${writeLineCount} lines to ${chalk.bold(writeTarget)}`);
+        } catch (err: any) {
+          printError(err.message);
+        }
+        prompt();
+        return true;
+      }
+
+      case '/run': {
+        const shellCmd = parts.slice(1).join(' ');
+        if (!shellCmd) {
+          printWarning('Usage: /run <command>');
+          prompt();
+          return true;
+        }
+        try {
+          const result = execSync(shellCmd, {
+            encoding: 'utf-8',
+            maxBuffer: 10 * 1024 * 1024,
+            cwd: process.cwd(),
+            timeout: 30000,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          const output = result.trim();
+          if (output) {
+            console.log(`\n${chalk.dim('  $')} ${chalk.white(shellCmd)}`);
+            console.log(chalk.dim('  ' + output.split('\n').join('\n  ')));
+          } else {
+            console.log(`\n${chalk.dim('  $')} ${chalk.white(shellCmd)}`);
+            printInfo('(no output)');
+          }
+          // Add output to conversation context so AI knows the result
+          const contextMsg = `Shell command: ${shellCmd}\nOutput:\n\`\`\`\n${output}\n\`\`\``;
+          history.push({ role: 'user', content: contextMsg });
+        } catch (err: any) {
+          const stderr = (err.stderr || '').toString().trim();
+          const stdout = (err.stdout || '').toString().trim();
+          console.log(`\n${chalk.dim('  $')} ${chalk.white(shellCmd)}`);
+          if (stdout) console.log(chalk.dim('  ' + stdout.split('\n').join('\n  ')));
+          if (stderr) console.log(chalk.red('  ' + stderr.split('\n').join('\n  ')));
+          if (err.killed) printWarning('Command timed out (30s limit).');
+          // Still add to context even on failure
+          const contextMsg = `Shell command: ${shellCmd}\nExit code: ${err.status ?? 1}\n${stderr ? 'Stderr:\n```\n' + stderr + '\n```' : ''}${stdout ? '\nStdout:\n```\n' + stdout + '\n```' : ''}`;
+          history.push({ role: 'user', content: contextMsg });
+        }
+        prompt();
+        return true;
+      }
+
+      case '/ls': {
+        const lsDir = parts[1] ? path.resolve(parts.slice(1).join(' ')) : process.cwd();
+        try {
+          if (!fs.existsSync(lsDir)) {
+            printError(`Directory not found: ${lsDir}`);
+            prompt();
+            return true;
+          }
+          const entries = fs.readdirSync(lsDir, { withFileTypes: true });
+          console.log(`\n  ${chalk.bold(lsDir)}`);
+          console.log();
+          for (const entry of entries) {
+            const fullPath = path.join(lsDir, entry.name);
+            try {
+              const stat = fs.statSync(fullPath);
+              if (entry.isDirectory()) {
+                console.log(`  ${chalk.blue(entry.name + '/')}${chalk.dim(''.padStart(Math.max(1, 40 - entry.name.length)))}${chalk.dim('<dir>')}`);
+              } else {
+                const size = stat.size;
+                const sizeStr = size < 1024 ? `${size}B`
+                  : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)}K`
+                  : `${(size / 1024 / 1024).toFixed(1)}M`;
+                console.log(`  ${chalk.white(entry.name)}${chalk.dim(''.padStart(Math.max(1, 40 - entry.name.length)))}${chalk.dim(sizeStr)}`);
+              }
+            } catch {
+              console.log(`  ${chalk.dim(entry.name)}`);
+            }
+          }
+          console.log(chalk.dim(`\n  ${entries.length} items`));
+        } catch (err: any) {
+          printError(err.message);
+        }
+        prompt();
+        return true;
+      }
+
+      case '/cat': {
+        const catFile = parts.slice(1).join(' ');
+        if (!catFile) {
+          printWarning('Usage: /cat <file>');
+          prompt();
+          return true;
+        }
+        try {
+          const resolved = path.resolve(catFile);
+          const { content, language } = readFileContent(resolved);
+          const lines = content.split('\n');
+          const lineNumWidth = String(lines.length).length;
+          console.log(`\n  ${chalk.bold(resolved)} ${chalk.dim(`(${lines.length} lines, ${language})`)}`);
+          console.log();
+          lines.forEach((line, i) => {
+            const lineNum = String(i + 1).padStart(lineNumWidth, ' ');
+            console.log(`  ${chalk.dim(lineNum + ' |')} ${line}`);
+          });
+          console.log();
+        } catch (err: any) {
+          printError(err.message);
+        }
+        prompt();
+        return true;
+      }
+
+      case '/pwd':
+        console.log(`\n  ${chalk.bold(process.cwd())}\n`);
+        prompt();
+        return true;
+
+      case '/cd': {
+        const cdDir = parts.slice(1).join(' ');
+        if (!cdDir) {
+          printWarning('Usage: /cd <dir>');
+          prompt();
+          return true;
+        }
+        try {
+          const resolved = path.resolve(cdDir);
+          if (!fs.existsSync(resolved)) {
+            printError(`Directory not found: ${resolved}`);
+            prompt();
+            return true;
+          }
+          if (!fs.statSync(resolved).isDirectory()) {
+            printError(`Not a directory: ${resolved}`);
+            prompt();
+            return true;
+          }
+          process.chdir(resolved);
+          printSuccess(`Changed directory to ${chalk.bold(resolved)}`);
+        } catch (err: any) {
+          printError(err.message);
+        }
+        prompt();
+        return true;
+      }
+
+      case '/fetch': {
+        const fetchUrlArg = parts.slice(1).join(' ');
+        if (!fetchUrlArg) {
+          printWarning('Usage: /fetch <url>');
+          printInfo('Fetches a URL and adds the text content to conversation context.');
+          prompt();
+          return true;
+        }
+        const spinner = startSpinner(`Fetching ${fetchUrlArg}...`);
+        fetchUrl(fetchUrlArg).then(result => {
+          stopSpinner(spinner);
+          if (result.error) {
+            printError(`Failed to fetch: ${result.error}`);
+          } else {
+            const content = result.content || '';
+            const truncated = content.length > 50 * 1024
+              ? content.substring(0, 50 * 1024) + '\n\n[Content truncated at 50KB]'
+              : content;
+            const contextMsg = `Fetched content from ${fetchUrlArg} (${result.contentType || 'unknown'}):\n\`\`\`\n${truncated}\n\`\`\``;
+            history.push({ role: 'user', content: contextMsg });
+            const lines = truncated.split('\n').length;
+            printSuccess(`Added ${lines} lines from ${colors.file(fetchUrlArg)} to context`);
+            if (content.length > 50 * 1024) {
+              printWarning('Content was truncated to 50KB.');
+            }
+          }
+          prompt();
+        }).catch((err: any) => {
+          stopSpinner(spinner, err.message, false);
+          printError(`Fetch failed: ${err.message}`);
+          prompt();
+        });
+        return true;
+      }
+
       case '/help':
         console.log(HELP_TEXT);
+        // List custom commands if any
+        if (customCommands.size > 0) {
+          console.log(`${colors.label('Custom Commands (from .orion/commands/):')}`);
+          for (const [name] of customCommands) {
+            console.log(`  ${colors.command('/' + name)}`);
+          }
+          console.log();
+        }
         prompt();
         return true;
 
       default:
         if (command.startsWith('/')) {
+          // Check custom commands from .orion/commands/
+          const customCmdName = command.slice(1); // remove leading /
+          if (customCommands.has(customCmdName)) {
+            let template = customCommands.get(customCmdName)!;
+            // Support {{file}} placeholder - use current working directory context
+            template = template.replace(/\{\{file\}\}/g, process.cwd());
+            // Support {{selection}} placeholder - empty in interactive mode
+            template = template.replace(/\{\{selection\}\}/g, '');
+            printInfo(`Running custom command: ${colors.command('/' + customCmdName)}`);
+            processInput(template);
+            return true;
+          }
+
           const shortcut = resolveModelShortcut(command.slice(1));
           if (shortcut) {
             switchToProvider(shortcut.provider, shortcut.model);

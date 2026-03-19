@@ -61,8 +61,18 @@ Orion is an **open-source AI coding tool** with two modes:
 | **Local models** | Ollama (free) | No | No | Yes |
 | **Provider switching** | Hot-switch mid-chat | No | No | Yes |
 | **Auto fix loop** | fix → test → iterate | Manual | Manual | Yes |
+| **File ops in chat** | /read /write /run /ls /cat | Yes | Yes | No |
+| **Custom commands** | .orion/commands/*.md | .claude/commands/ | /commands/ | No |
+| **Plan mode** | AI implementation plans | Yes | No | No |
+| **Code generation** | 20+ frameworks | No | No | No |
 | **File backup/undo** | Automatic | No | No | No |
 | **Unix pipes** | Full support | Partial | No | No |
+| **Web fetch** | /fetch URL in chat | Yes | Yes | No |
+| **Natural language shell** | orion shell | No | No | No |
+| **TODO scanner** | orion todo --fix | No | No | No |
+| **Dependency analysis** | orion deps | No | No | No |
+| **Migration** | JS→TS, py2→3, class→hooks | No | No | No |
+| **Health check** | orion doctor | No | No | No |
 | **Desktop IDE** | Included | No | No | No |
 | **Price** | Free & open source | Subscription | Subscription | Free |
 
@@ -95,19 +105,21 @@ orion status                  # Check setup
 
 ## CLI Commands
 
-### 20 commands organized in 4 categories:
+### 30+ commands organized in 6 categories:
 
 ```
-Core:     chat · ask · explain · review · fix · edit · commit
-Code:     search · diff · run · test · agent
-Safety:   undo · status
-Session:  session · watch · config · init · gui
+Core:       chat · ask · explain · review · fix · edit · commit
+Code:       search · diff · run · test · agent · plan · generate · refactor
+Workflow:   changelog · migrate · deps · todo · shell · fetch
+Safety:     undo · status · doctor
+Session:    session · watch · config · init · gui
+Chat Tools: /read · /write · /run · /ls · /cat · /cd · /fetch · custom commands
 ```
 
 ### Core — AI Coding
 
 ```bash
-orion chat                          # Interactive AI chat
+orion chat                          # Interactive AI chat (with file/shell tools)
 orion ask "question" @file1 @file2  # Quick question with file context
 orion explain src/app.ts            # Explain what code does
 orion review src/app.ts             # AI code review with severity levels
@@ -127,7 +139,25 @@ orion run "npm test"                # Run command, AI diagnoses errors
 orion run "npm build" --fix         # Run, diagnose, and auto-fix
 orion test                          # Run tests, AI analyzes failures
 orion test --generate src/auth.ts   # Generate tests for a file
+orion plan "Add auth to the app"    # AI implementation plan + auto-execute
+orion generate component LoginForm  # Generate code (20+ frameworks)
+orion refactor src/app.ts --simplify  # AI refactoring
 orion agent "task1" "task2" "task3" # Run multiple AI tasks in parallel
+```
+
+### Workflow — Dev Automation
+
+```bash
+orion changelog                     # Generate changelog from git history
+orion changelog --days 7            # Last 7 days
+orion migrate src/app.js --to typescript  # JS→TS, py2→3, class→hooks
+orion deps                          # Analyze dependencies
+orion deps --security               # Security audit
+orion deps --unused                 # Find unused packages
+orion todo                          # Scan for TODO/FIXME/HACK comments
+orion todo --fix                    # AI suggests fixes for each TODO
+orion shell                         # Natural language → shell commands
+orion fetch https://docs.api.com    # Fetch URL content for AI context
 ```
 
 ### Safety — Backup & Recovery
@@ -137,6 +167,7 @@ orion undo                          # Restore last file from backup
 orion undo --list                   # List all backups
 orion undo --file src/app.ts        # Undo specific file
 orion status                        # Environment dashboard
+orion doctor                        # Full health check (9 checks)
 ```
 
 ### Session & Automation
@@ -148,6 +179,19 @@ orion session export "project"      # Export as markdown
 orion watch "*.ts" --on-change review  # Auto-review on file change
 orion config                        # Set up API keys and models
 orion init                          # Create .orion/context.md project memory
+```
+
+### Chat Tools (inside `orion chat`)
+
+```bash
+/read src/app.ts                    # Add file to conversation context
+/write output.ts                    # Write AI's code block to file
+/run npm test                       # Run command, add output to context
+/ls                                 # List directory
+/cat src/app.ts                     # View file with line numbers
+/cd src                             # Change directory
+/fetch https://docs.api.com         # Fetch URL into context
+/my-custom-command                  # Custom commands from .orion/commands/
 ```
 
 ### Unix Pipes

@@ -310,6 +310,7 @@ export async function initCommand(): Promise<void> {
   printSuccess('Orion initialized successfully!');
   printInfo(`Config saved to: ${colors.file(getConfigPath())}`);
   printInfo(`Project context: ${colors.file('.orion/context.md')}`);
+  printInfo(`Custom commands: ${colors.file('.orion/commands/')}`);
   console.log();
   printInfo('Quick start:');
   console.log(`    ${colors.command('orion chat')}        Start an interactive AI chat`);
@@ -318,5 +319,6 @@ export async function initCommand(): Promise<void> {
   console.log(`    ${colors.command('orion commit')}      Generate AI commit message`);
   console.log();
   printInfo('Edit .orion/context.md to add project-specific AI context.');
+  printInfo('Add .md files to .orion/commands/ to create custom slash commands.');
   console.log();
 }

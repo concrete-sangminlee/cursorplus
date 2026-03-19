@@ -29,6 +29,15 @@ const CONTEXT_TEMPLATE = `# Project Context
 <!-- Any other context for the AI -->
 `;
 
+const REVIEW_PR_TEMPLATE = `Review the current git diff for this PR. Focus on:
+- Code quality and best practices
+- Potential bugs or edge cases
+- Performance implications
+- Security concerns
+
+Provide actionable feedback.
+`;
+
 /**
  * Creates the .orion/ directory and context.md file in the current project.
  * Called during `orion init`.
@@ -51,5 +60,22 @@ export function initProjectContext(): void {
     printSuccess(`Created ${colors.file('.orion/context.md')} with default template`);
   } else {
     printWarning(`${colors.file('.orion/context.md')} already exists, skipping`);
+  }
+
+  // Create .orion/commands/ directory with sample command
+  const commandsDir = path.join(orionDir, 'commands');
+  if (!fs.existsSync(commandsDir)) {
+    fs.mkdirSync(commandsDir, { recursive: true });
+    printSuccess(`Created ${colors.file('.orion/commands/')} directory`);
+  } else {
+    printInfo(`${colors.file('.orion/commands/')} directory already exists`);
+  }
+
+  const reviewPrFile = path.join(commandsDir, 'review-pr.md');
+  if (!fs.existsSync(reviewPrFile)) {
+    fs.writeFileSync(reviewPrFile, REVIEW_PR_TEMPLATE, 'utf-8');
+    printSuccess(`Created ${colors.file('.orion/commands/review-pr.md')} sample command`);
+  } else {
+    printWarning(`${colors.file('.orion/commands/review-pr.md')} already exists, skipping`);
   }
 }

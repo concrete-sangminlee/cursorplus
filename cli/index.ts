@@ -31,6 +31,12 @@ import { refactorCommand } from './commands/refactor.js';
 import { doctorCommand } from './commands/doctor.js';
 import { planCommand } from './commands/plan.js';
 import { generateCommand } from './commands/generate.js';
+import { shellCommand } from './commands/shell.js';
+import { todoCommand } from './commands/todo.js';
+import { changelogCommand } from './commands/changelog.js';
+import { migrateCommand } from './commands/migrate.js';
+import { depsCommand } from './commands/deps.js';
+import { fetchCommand } from './commands/fetch.js';
 import { setPipelineOptions } from './pipeline.js';
 import { errorDisplay, palette } from './ui.js';
 
@@ -407,6 +413,99 @@ program
     }
   });
 
+// ─── Interactive & Analysis Tools ─────────────────────────────────────────────
+
+program
+  .command('shell')
+  .description('Start an AI-enhanced interactive shell (natural language to commands)')
+  .action(async () => {
+    try {
+      await shellCommand();
+    } catch (err: any) {
+      handleCommandError(err, 'shell', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+program
+  .command('todo')
+  .description('Scan codebase for TODO/FIXME/HACK comments')
+  .option('--fix', 'AI suggests fixes for each TODO')
+  .option('--prioritize', 'AI prioritizes TODOs by importance')
+  .action(async (options: { fix?: boolean; prioritize?: boolean }) => {
+    try {
+      await todoCommand({
+        fix: options.fix,
+        prioritize: options.prioritize,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'todo', 'Ensure your AI provider is configured. Run `orion config`.');
+    }
+  });
+
+// ─── Web Fetch ───────────────────────────────────────────────────────────────
+
+program
+  .command('fetch <url>')
+  .description('Fetch a URL and display text content (pipe to orion ask for AI analysis)')
+  .option('--raw', 'Show raw content without HTML tag stripping')
+  .action(async (url: string, options: { raw?: boolean }) => {
+    try {
+      await fetchCommand(url, { raw: options.raw });
+    } catch (err: any) {
+      handleCommandError(err, 'fetch', 'Check the URL and your network connection.');
+    }
+  });
+
+// ─── Changelog, Migration & Dependency Analysis ──────────────────────────────
+
+program
+  .command('changelog')
+  .description('Generate a categorized changelog from git commit history')
+  .option('--since <ref>', 'Generate changelog since a tag or commit ref')
+  .option('--days <n>', 'Generate changelog for the last N days')
+  .option('--output <file>', 'Write changelog to a file')
+  .action(async (options: { since?: string; days?: string; output?: string }) => {
+    try {
+      await changelogCommand({
+        since: options.since,
+        days: options.days ? parseInt(options.days, 10) : undefined,
+        output: options.output,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'changelog', 'Ensure you are in a git repository and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('migrate <file>')
+  .description('AI-powered code migration (JS->TS, Python2->3, class->hooks, callbacks->async)')
+  .requiredOption('--to <target>', 'Migration target: typescript, python3, hooks, async, esm, composition')
+  .action(async (file: string, options: { to: string }) => {
+    try {
+      await migrateCommand(file, { to: options.to });
+    } catch (err: any) {
+      handleCommandError(err, 'migrate', 'Check that the file exists and your AI provider is configured.');
+    }
+  });
+
+program
+  .command('deps')
+  .description('AI-powered dependency analysis (security, outdated, unused)')
+  .option('--security', 'Audit dependencies for security vulnerabilities')
+  .option('--outdated', 'Find outdated packages with upgrade recommendations')
+  .option('--unused', 'Detect unused dependencies in the project')
+  .action(async (options: { security?: boolean; outdated?: boolean; unused?: boolean }) => {
+    try {
+      await depsCommand({
+        security: options.security,
+        outdated: options.outdated,
+        unused: options.unused,
+      });
+    } catch (err: any) {
+      handleCommandError(err, 'deps', 'Ensure a dependency manifest (package.json, etc.) exists and your AI provider is configured.');
+    }
+  });
+
 // ─── Default Action (no command) ─────────────────────────────────────────────
 
 program.action(() => {
@@ -426,6 +525,7 @@ program.action(() => {
   console.log(category('Core', [cn('chat'), cn('ask'), cn('explain'), cn('review'), cn('fix'), cn('edit'), cn('commit')].join(sep)));
   console.log(category('Code', [cn('search'), cn('diff'), cn('run'), cn('test'), cn('agent'), cn('refactor')].join(sep)));
   console.log(category('Generate', [cn('plan'), cn('generate')].join(sep)));
+  console.log(category('Tools', [cn('shell'), cn('todo'), cn('fetch'), cn('changelog'), cn('migrate'), cn('deps')].join(sep)));
   console.log(category('Safety', [cn('undo'), cn('status'), cn('doctor')].join(sep)));
   console.log(category('Session', [cn('session'), cn('watch'), cn('config'), cn('init')].join(sep)));
   console.log();
@@ -473,6 +573,25 @@ program.action(() => {
   console.log(cmd('orion generate', 'test file.ts', 'Generate tests for a file'));
   console.log(cmd('orion generate', 'service Name', 'Generate service class'));
   console.log();
+  console.log(palette.violet.bold('  Tools'));
+  console.log();
+  console.log(cmd('orion shell', '', 'AI-enhanced interactive shell'));
+  console.log(cmd('orion todo', '', 'Scan for TODO/FIXME/HACK comments'));
+  console.log(cmd('orion todo', '--fix', 'AI suggests fixes for TODOs'));
+  console.log(cmd('orion todo', '--prioritize', 'AI ranks TODOs by importance'));
+  console.log(cmd('orion fetch', '<url>', 'Fetch URL content for context'));
+  console.log(cmd('orion fetch', '<url> --raw', 'Fetch raw content (no HTML strip)'));
+  console.log(cmd('orion changelog', '', 'Generate changelog from git commits'));
+  console.log(cmd('orion changelog', '--since v1.0', 'Changelog since a tag'));
+  console.log(cmd('orion changelog', '--days 7', 'Changelog for last 7 days'));
+  console.log(cmd('orion migrate', '<file> --to ts', 'Migrate JS to TypeScript'));
+  console.log(cmd('orion migrate', '<file> --to hooks', 'Class components to hooks'));
+  console.log(cmd('orion migrate', '<file> --to async', 'Callbacks to async/await'));
+  console.log(cmd('orion deps', '', 'Analyze project dependencies'));
+  console.log(cmd('orion deps', '--security', 'Security vulnerability audit'));
+  console.log(cmd('orion deps', '--outdated', 'Find outdated packages'));
+  console.log(cmd('orion deps', '--unused', 'Find unused dependencies'));
+  console.log();
   console.log(palette.violet.bold('  Safety'));
   console.log();
   console.log(cmd('orion undo', '', 'Undo last file change'));
@@ -491,6 +610,7 @@ program.action(() => {
   console.log(`    ${palette.dim('cat file.ts | orion ask "What\'s wrong?"')}`);
   console.log(`    ${palette.dim('git diff | orion review')}`);
   console.log(`    ${palette.dim('orion run "npm test"')}`);
+  console.log(`    ${palette.dim('orion fetch https://docs.example.com/api | orion ask "How do I use this?"')}`);
   console.log();
   console.log(palette.violet.bold('  Global Flags'));
   console.log();
