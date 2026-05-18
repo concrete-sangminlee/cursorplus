@@ -67,7 +67,7 @@
     "test:cli": "vitest run cli/__tests__/"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@anthropic-ai/sdk": "^0.96.0",
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -82,7 +82,7 @@
     "lucide-react": "^0.577.0",
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
-    "monaco-editor": "^0.52.0",
+    "monaco-editor": "^0.55.1",
     "openai": "^6.27.0",
     "ora": "^9.3.0",
     "react": "^19.0.0",
@@ -107,7 +107,7 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
-    "vite-plugin-electron": "^0.28.0",
+    "vite-plugin-electron": "^0.29.1",
     "vite-plugin-electron-renderer": "^0.14.0",
     "vitest": "^3.0.0"
   }
