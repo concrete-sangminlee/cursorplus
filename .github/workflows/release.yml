@@ -8,9 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -18,9 +20,14 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm test -- --run
       - run: npm run build
-      - run: npm publish
+      - name: Publish npm package
+        if: env.NPM_TOKEN != ''
+        run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+      - name: Skip npm publish
+        if: env.NPM_TOKEN == ''
+        run: echo "NPM_TOKEN is not configured; skipping npm publish."
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
