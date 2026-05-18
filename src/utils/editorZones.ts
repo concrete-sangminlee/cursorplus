@@ -329,14 +329,18 @@ export function createAISuggestionZone(config: AISuggestionConfig): InlineWidget
     position: relative;
   `
 
-  // AI badge
+  // AI badge — built with textContent so the model name can't inject HTML.
   const badge = document.createElement('div')
   badge.style.cssText = `
     position: absolute; top: 4px; right: 8px;
     font-size: 10px; color: #a371f7; font-family: system-ui;
     display: flex; align-items: center; gap: 4px;
   `
-  badge.innerHTML = `<span style="font-size: 12px">✦</span> ${config.model || 'AI'}`
+  const badgeIcon = document.createElement('span')
+  badgeIcon.style.fontSize = '12px'
+  badgeIcon.textContent = '✦'
+  const badgeLabel = document.createTextNode(` ${config.model || 'AI'}`)
+  badge.append(badgeIcon, badgeLabel)
 
   // Code content
   const code = document.createElement('pre')
