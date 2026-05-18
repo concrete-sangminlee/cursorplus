@@ -34,8 +34,15 @@ export function createBackup(filePath: string): string {
   const backupsDir = getBackupsDir();
   const fileName = path.basename(resolvedPath);
   const timestamp = Date.now();
-  const backupName = `${fileName}.${timestamp}.bak`;
-  const backupPath = path.join(backupsDir, backupName);
+  let backupName = `${fileName}.${timestamp}.bak`;
+  let backupPath = path.join(backupsDir, backupName);
+  let counter = 1;
+
+  while (fs.existsSync(backupPath) || fs.existsSync(backupPath + '.meta')) {
+    backupName = `${fileName}.${timestamp}.${counter}.bak`;
+    backupPath = path.join(backupsDir, backupName);
+    counter++;
+  }
 
   // Store a metadata sidecar so we can map backup -> original path
   const metaPath = backupPath + '.meta';

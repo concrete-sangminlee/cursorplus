@@ -367,7 +367,9 @@ describe('getCurrentDirectoryContext', () => {
 
   it('includes project name from directory basename', () => {
     const context = getCurrentDirectoryContext();
-    expect(context).toContain('project_cursor_clone');
+    const parts = process.cwd().replace(/\\/g, '/').split('/');
+    const projectName = parts[parts.length - 1] || '';
+    expect(context).toContain(`Project: ${projectName}`);
   });
 
   it('returns a multi-line string', () => {

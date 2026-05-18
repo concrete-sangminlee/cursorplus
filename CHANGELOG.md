@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed electron-builder 26 Linux desktop configuration schema usage.
 - Fixed Windows packaging failures caused by missing icon assets and local winCodeSign symlink constraints.
 - Fixed CLI integration tests and generated workflow templates for the Node.js 22.12+ support baseline.
+- Fixed backup filename collisions and path-dependent tests surfaced by GitHub Actions.
 
 ## [2.1.0] - 2026-03-19
 
