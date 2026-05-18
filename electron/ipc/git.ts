@@ -1,15 +1,18 @@
 import { ipcMain } from 'electron'
-import { exec, execFile } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
 
-const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
 
 /**
  * Run git using execFile with an array of arguments.
  * Throws on non-zero exit so callers can report errors.
+ *
+ * NEVER goes through a shell — argv entries are passed directly to git, so
+ * renderer-supplied values (file paths, branch names, commit messages, refs)
+ * cannot inject commands via shell metacharacters.
  */
 async function runGitExec(
   cwd: string,
@@ -24,28 +27,31 @@ async function runGitExec(
   return stdout.trim()
 }
 
-async function runGit(cwd: string, args: string, options?: { timeout?: number; maxBuffer?: number }): Promise<string> {
+/**
+ * Same as runGitExec but returns '' instead of throwing on failure.
+ * Use for handlers that should degrade gracefully (status checks, optional
+ * upstream queries) rather than propagating errors to the renderer.
+ */
+async function runGitOrEmpty(
+  cwd: string,
+  args: string[],
+  options?: { timeout?: number; maxBuffer?: number }
+): Promise<string> {
   try {
-    const { stdout } = await execAsync(`git ${args}`, {
-      cwd,
-      timeout: options?.timeout ?? 10000,
-      maxBuffer: options?.maxBuffer ?? 1024 * 1024 * 5, // 5MB default
-    })
-    return stdout.trim()
-  } catch (err: any) {
-    if (err.stderr) return ''
+    return await runGitExec(cwd, args, options)
+  } catch {
     return ''
   }
 }
 
 export function registerGitHandlers() {
   ipcMain.handle('git:status', async (_, cwd: string) => {
-    const branch = await runGit(cwd, 'branch --show-current')
-    const statusRaw = await runGit(cwd, 'status --porcelain')
+    const branch = await runGitOrEmpty(cwd, ['branch', '--show-current'])
+    const statusRaw = await runGitOrEmpty(cwd, ['status', '--porcelain'])
     const isRepo = branch !== '' || statusRaw !== ''
 
     if (!isRepo) {
-      const check = await runGit(cwd, 'rev-parse --is-inside-work-tree')
+      const check = await runGitOrEmpty(cwd, ['rev-parse', '--is-inside-work-tree'])
       if (check !== 'true') return { isRepo: false, branch: '', files: [], staged: [], unstaged: [], ahead: 0, behind: 0 }
     }
 
@@ -90,7 +96,7 @@ export function registerGitHandlers() {
     // Get ahead/behind counts
     let ahead = 0, behind = 0
     try {
-      const ab = await runGit(cwd, 'rev-list --left-right --count HEAD...@{upstream}')
+      const ab = await runGitOrEmpty(cwd, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'])
       if (ab) {
         const [a, b] = ab.split('\t').map(Number)
         ahead = a || 0
@@ -102,8 +108,8 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:diff', async (_, cwd: string, filePath?: string) => {
-    const args = filePath ? `diff -- "${filePath}"` : 'diff'
-    return await runGit(cwd, args)
+    const args = filePath ? ['diff', '--', filePath] : ['diff']
+    return await runGitOrEmpty(cwd, args)
   })
 
   ipcMain.handle('git:log', async (_, cwd: string, count: number = 50) => {
@@ -111,7 +117,8 @@ export function registerGitHandlers() {
     const SEP = '\x1f' // unit separator
     const REC = '\x1e' // record separator
     const format = `%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%ai${SEP}%s${REC}`
-    const raw = await runGit(cwd, `log --pretty=format:"${format}" -${count}`)
+    const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 50
+    const raw = await runGitOrEmpty(cwd, ['log', `--pretty=format:${format}`, `-${safeCount}`])
     if (!raw) return []
     return raw.split(REC).filter(s => s.trim()).map((record) => {
       const parts = record.trim().split(SEP)
@@ -127,7 +134,7 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:blame', async (_, cwd: string, filePath: string) => {
-    const raw = await runGit(cwd, `blame --porcelain "${filePath}"`, { timeout: 30000, maxBuffer: 1024 * 1024 * 10 })
+    const raw = await runGitOrEmpty(cwd, ['blame', '--porcelain', filePath], { timeout: 30000, maxBuffer: 1024 * 1024 * 10 })
     if (!raw) return []
 
     const lines = raw.split('\n')
@@ -176,8 +183,8 @@ export function registerGitHandlers() {
 
     const SEP = '\x1f'
     const format = `%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%ai${SEP}%s`
-    const headerRaw = await runGit(cwd, `show ${safeHash} --quiet --pretty=format:"${format}"`)
-    const statRaw = await runGit(cwd, `show ${safeHash} --stat --format=""`)
+    const headerRaw = await runGitOrEmpty(cwd, ['show', safeHash, '--quiet', `--pretty=format:${format}`])
+    const statRaw = await runGitOrEmpty(cwd, ['show', safeHash, '--stat', '--format='])
 
     if (!headerRaw) return null
 
@@ -213,33 +220,34 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:stage', async (_, cwd: string, filePath: string) => {
-    await runGit(cwd, `add "${filePath}"`)
+    await runGitOrEmpty(cwd, ['add', filePath])
     return true
   })
 
   ipcMain.handle('git:unstage', async (_, cwd: string, filePath: string) => {
-    await runGit(cwd, `reset HEAD "${filePath}"`)
+    await runGitOrEmpty(cwd, ['reset', 'HEAD', filePath])
     return true
   })
 
   ipcMain.handle('git:commit', async (_, cwd: string, message: string) => {
-    const result = await runGit(cwd, `commit -m "${message.replace(/"/g, '\\"')}"`)
+    // Pass the message via stdin as the argument value — no shell quoting needed.
+    const result = await runGitOrEmpty(cwd, ['commit', '-m', message])
     return result !== ''
   })
 
   ipcMain.handle('git:checkout', async (_, cwd: string, branch: string) => {
-    return await runGit(cwd, `checkout "${branch}"`)
+    return await runGitOrEmpty(cwd, ['checkout', branch])
   })
 
   ipcMain.handle('git:discard', async (_, cwd: string, filePath: string) => {
-    await runGit(cwd, `checkout -- "${filePath}"`)
+    await runGitOrEmpty(cwd, ['checkout', '--', filePath])
     // Also handle untracked files
-    await runGit(cwd, `clean -f -- "${filePath}"`)
+    await runGitOrEmpty(cwd, ['clean', '-f', '--', filePath])
     return true
   })
 
   ipcMain.handle('git:branches', async (_, cwd: string) => {
-    const raw = await runGit(cwd, 'branch -a --format="%(refname:short)|%(HEAD)"')
+    const raw = await runGitOrEmpty(cwd, ['branch', '-a', '--format=%(refname:short)|%(HEAD)'])
     if (!raw) return []
     return raw.split('\n').filter(Boolean).map((line) => {
       const [name, head] = line.split('|')
@@ -249,7 +257,7 @@ export function registerGitHandlers() {
 
   // Return parsed diff hunks for a specific file (used for git gutter decorations)
   ipcMain.handle('git:file-diff', async (_, cwd: string, filePath: string) => {
-    const raw = await runGit(cwd, `diff -U0 -- "${filePath}"`)
+    const raw = await runGitOrEmpty(cwd, ['diff', '-U0', '--', filePath])
     if (!raw) return []
 
     const hunks: { type: 'added' | 'modified' | 'deleted'; startLine: number; count: number }[] = []
@@ -281,9 +289,9 @@ export function registerGitHandlers() {
   // Return combined unified diff (staged + unstaged) for a specific file
   ipcMain.handle('git:diff-file', async (_, cwd: string, filePath: string) => {
     // Get unstaged changes
-    const unstaged = await runGit(cwd, `diff -U0 -- "${filePath}"`)
+    const unstaged = await runGitOrEmpty(cwd, ['diff', '-U0', '--', filePath])
     // Get staged (cached) changes
-    const staged = await runGit(cwd, `diff --cached -U0 -- "${filePath}"`)
+    const staged = await runGitOrEmpty(cwd, ['diff', '--cached', '-U0', '--', filePath])
 
     // Combine both diffs and parse hunks
     const combined = [unstaged, staged].filter(Boolean).join('\n')
@@ -319,48 +327,42 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:push', async (_, cwd: string) => {
-    const result = await runGit(cwd, 'push')
-    return result
+    return await runGitOrEmpty(cwd, ['push'])
   })
 
   ipcMain.handle('git:pull', async (_, cwd: string) => {
-    const result = await runGit(cwd, 'pull')
-    return result
+    return await runGitOrEmpty(cwd, ['pull'])
   })
 
   ipcMain.handle('git:fetch', async (_, cwd: string) => {
-    const result = await runGit(cwd, 'fetch --all')
-    return result
+    return await runGitOrEmpty(cwd, ['fetch', '--all'])
   })
 
   ipcMain.handle('git:stash', async (_, cwd: string) => {
-    const result = await runGit(cwd, 'stash')
-    return result
+    return await runGitOrEmpty(cwd, ['stash'])
   })
 
   ipcMain.handle('git:stash-pop', async (_, cwd: string) => {
-    const result = await runGit(cwd, 'stash pop')
-    return result
+    return await runGitOrEmpty(cwd, ['stash', 'pop'])
   })
 
   ipcMain.handle('git:create-branch', async (_, cwd: string, branchName: string) => {
-    const result = await runGit(cwd, `checkout -b "${branchName}"`)
-    return result
+    return await runGitOrEmpty(cwd, ['checkout', '-b', branchName])
   })
 
   ipcMain.handle('git:stage-all', async (_, cwd: string) => {
-    await runGit(cwd, 'add -A')
+    await runGitOrEmpty(cwd, ['add', '-A'])
     return true
   })
 
   ipcMain.handle('git:unstage-all', async (_, cwd: string) => {
-    await runGit(cwd, 'reset HEAD')
+    await runGitOrEmpty(cwd, ['reset', 'HEAD'])
     return true
   })
 
   ipcMain.handle('git:stash-list', async (_, cwd: string) => {
     const SEP = '\x1f'
-    const raw = await runGit(cwd, `stash list --pretty=format:"%H${SEP}%s"`)
+    const raw = await runGitOrEmpty(cwd, ['stash', 'list', `--pretty=format:%H${SEP}%s`])
     if (!raw) return []
     return raw.split('\n').filter(Boolean).map((line, index) => {
       const parts = line.split(SEP)
@@ -373,25 +375,23 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:stash-drop', async (_, cwd: string, index: number) => {
-    const result = await runGit(cwd, `stash drop stash@{${index}}`)
-    return result
+    const safeIndex = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0
+    return await runGitOrEmpty(cwd, ['stash', 'drop', `stash@{${safeIndex}}`])
   })
 
   ipcMain.handle('git:stash-apply', async (_, cwd: string, index: number) => {
-    const result = await runGit(cwd, `stash apply stash@{${index}}`)
-    return result
+    const safeIndex = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0
+    return await runGitOrEmpty(cwd, ['stash', 'apply', `stash@{${safeIndex}}`])
   })
 
   ipcMain.handle('git:stash-save', async (_, cwd: string, message: string) => {
-    const safeMsg = message.replace(/"/g, '\\"')
-    const result = await runGit(cwd, `stash push -m "${safeMsg}"`)
-    return result
+    return await runGitOrEmpty(cwd, ['stash', 'push', '-m', message])
   })
 
   ipcMain.handle('git:merge-status', async (_, cwd: string) => {
     try {
       // Check for .git/MERGE_HEAD to detect active merge
-      const gitDir = await runGit(cwd, 'rev-parse --git-dir')
+      const gitDir = await runGitOrEmpty(cwd, ['rev-parse', '--git-dir'])
       if (!gitDir) return { merging: false }
       const mergeHeadPath = path.resolve(cwd, gitDir, 'MERGE_HEAD')
       const exists = fs.existsSync(mergeHeadPath)
@@ -402,14 +402,13 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:conflict-files', async (_, cwd: string) => {
-    const raw = await runGit(cwd, 'diff --name-only --diff-filter=U')
+    const raw = await runGitOrEmpty(cwd, ['diff', '--name-only', '--diff-filter=U'])
     if (!raw) return []
     return raw.split('\n').filter(Boolean)
   })
 
   ipcMain.handle('git:merge-abort', async (_, cwd: string) => {
-    const result = await runGit(cwd, 'merge --abort')
-    return result
+    return await runGitOrEmpty(cwd, ['merge', '--abort'])
   })
 
   // ── Cherry-pick ──────────────────────────────────────────────────────
