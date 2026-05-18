@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/github/license/concrete-sangminlee/orion?style=flat-square&color=22C55E" alt="License">
   <img src="https://img.shields.io/badge/version-2.2.0-7C5CFC?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/commands-71-38BDF8?style=flat-square" alt="Commands">
-  <img src="https://img.shields.io/badge/tests-704-22C55E?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-711-22C55E?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/platform-Win%20%7C%20Mac%20%7C%20Linux-F59E0B?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-9B59B6?style=flat-square" alt="AI">
   <img src="https://img.shields.io/github/stars/concrete-sangminlee/orion?style=flat-square" alt="Stars">
