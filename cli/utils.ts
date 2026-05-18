@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execSync, exec } from 'child_process';
+import { execSync, execFileSync, exec } from 'child_process';
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
 
@@ -173,12 +173,19 @@ export function printBanner(): void {
 
 // ─── Git Command Runner ──────────────────────────────────────────────────────
 
-export function runGitCommand(args: string): string {
+/**
+ * Runs `git` with the given args. Each arg is passed as a separate argv entry —
+ * the args are NOT interpreted by a shell, so values containing spaces, quotes,
+ * or shell metacharacters (`;`, `|`, `&`, backticks, `$()`) are treated literally
+ * and cannot inject commands.
+ */
+export function runGitCommand(...args: string[]): string {
   try {
-    return execSync(`git ${args}`, {
+    return execFileSync('git', args, {
       encoding: 'utf-8',
       maxBuffer: 10 * 1024 * 1024,
       cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
   } catch (err: any) {
     if (err.stderr) {
@@ -190,7 +197,7 @@ export function runGitCommand(args: string): string {
 
 export function isGitRepo(): boolean {
   try {
-    runGitCommand('rev-parse --is-inside-work-tree');
+    runGitCommand('rev-parse', '--is-inside-work-tree');
     return true;
   } catch {
     return false;
@@ -198,11 +205,11 @@ export function isGitRepo(): boolean {
 }
 
 export function getStagedDiff(): string {
-  return runGitCommand('diff --cached');
+  return runGitCommand('diff', '--cached');
 }
 
 export function getStagedFiles(): string[] {
-  const output = runGitCommand('diff --cached --name-only');
+  const output = runGitCommand('diff', '--cached', '--name-only');
   return output ? output.split(/\r?\n/).filter(Boolean) : [];
 }
 
@@ -210,7 +217,7 @@ export function commitWithMessage(message: string): string {
   const tmpFile = path.join(os.tmpdir(), `orion-commit-${Date.now()}.txt`);
   fs.writeFileSync(tmpFile, message, 'utf-8');
   try {
-    return runGitCommand(`commit -F "${tmpFile}"`);
+    return runGitCommand('commit', '-F', tmpFile);
   } finally {
     try { fs.unlinkSync(tmpFile); } catch {}
   }
@@ -411,7 +418,7 @@ export function detectTestCommand(): string | null {
  */
 export function gitAutoCommit(filePath: string, description: string): string {
   const resolvedPath = path.resolve(filePath);
-  runGitCommand(`add "${resolvedPath}"`);
+  runGitCommand('add', resolvedPath);
   const message = `ai(orion): ${description}`;
   return commitWithMessage(message);
 }

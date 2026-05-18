@@ -59,7 +59,7 @@ export interface DiffOptions {
 
 function getDiff(options: DiffOptions): { diff: string; description: string } {
   if (options.staged) {
-    const diff = runGitCommand('diff --cached');
+    const diff = runGitCommand('diff', '--cached');
     return { diff, description: 'staged changes' };
   }
 
@@ -68,24 +68,24 @@ function getDiff(options: DiffOptions): { diff: string; description: string } {
 
     // Handle HEAD~N pattern
     if (/^HEAD~\d+$/.test(ref)) {
-      const diff = runGitCommand(`diff ${ref}..HEAD`);
+      const diff = runGitCommand('diff', `${ref}..HEAD`);
       const n = ref.replace('HEAD~', '');
       return { diff, description: `last ${n} commit${parseInt(n) > 1 ? 's' : ''}` };
     }
 
     // Handle branch..branch or commit..commit
     if (ref.includes('..')) {
-      const diff = runGitCommand(`diff ${ref}`);
+      const diff = runGitCommand('diff', ref);
       return { diff, description: `diff ${ref}` };
     }
 
     // Handle single commit ref
-    const diff = runGitCommand(`diff ${ref}..HEAD`);
+    const diff = runGitCommand('diff', `${ref}..HEAD`);
     return { diff, description: `changes since ${ref}` };
   }
 
   // Default: uncommitted changes (both staged + unstaged)
-  const diff = runGitCommand('diff HEAD');
+  const diff = runGitCommand('diff', 'HEAD');
   return { diff, description: 'uncommitted changes' };
 }
 

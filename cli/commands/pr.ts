@@ -95,16 +95,16 @@ export interface PrCommandOptions {
 function detectBaseBranch(): string {
   // Try main first, then master
   try {
-    runGitCommand('rev-parse --verify main');
+    runGitCommand('rev-parse', '--verify', 'main');
     return 'main';
   } catch {
     try {
-      runGitCommand('rev-parse --verify master');
+      runGitCommand('rev-parse', '--verify', 'master');
       return 'master';
     } catch {
       // Fallback: try to find the default branch from remote
       try {
-        const remoteBranch = runGitCommand('symbolic-ref refs/remotes/origin/HEAD');
+        const remoteBranch = runGitCommand('symbolic-ref', 'refs/remotes/origin/HEAD');
         return remoteBranch.replace('refs/remotes/origin/', '');
       } catch {
         return 'main'; // ultimate fallback
@@ -114,12 +114,12 @@ function detectBaseBranch(): string {
 }
 
 function getCurrentBranch(): string {
-  return runGitCommand('rev-parse --abbrev-ref HEAD');
+  return runGitCommand('rev-parse', '--abbrev-ref', 'HEAD');
 }
 
 function getBranchLog(baseBranch: string): string {
   try {
-    return runGitCommand(`log ${baseBranch}..HEAD --oneline`);
+    return runGitCommand('log', `${baseBranch}..HEAD`, '--oneline');
   } catch {
     return '';
   }
@@ -127,7 +127,7 @@ function getBranchLog(baseBranch: string): string {
 
 function getBranchDiff(baseBranch: string): string {
   try {
-    return runGitCommand(`diff ${baseBranch}..HEAD`);
+    return runGitCommand('diff', `${baseBranch}..HEAD`);
   } catch {
     return '';
   }
@@ -135,7 +135,7 @@ function getBranchDiff(baseBranch: string): string {
 
 function getBranchDiffStat(baseBranch: string): string {
   try {
-    return runGitCommand(`diff ${baseBranch}..HEAD --stat`);
+    return runGitCommand('diff', `${baseBranch}..HEAD`, '--stat');
   } catch {
     return '';
   }

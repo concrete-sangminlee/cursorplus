@@ -474,7 +474,7 @@ export async function blameCommand(filePath: string, options: BlameOptions = {})
   let blameRaw: string;
 
   try {
-    blameRaw = runGitCommand(`blame --porcelain "${relativePath}"`);
+    blameRaw = runGitCommand('blame', '--porcelain', relativePath);
   } catch (err: any) {
     stopSpinner(spinner, 'Failed to run git blame', false);
     console.log();

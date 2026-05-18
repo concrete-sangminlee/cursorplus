@@ -53,18 +53,18 @@ Rules:
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getGitLog(since?: string, days?: number): string {
-  let logArgs = 'log --oneline --no-merges';
+  const args: string[] = ['log', '--oneline', '--no-merges'];
 
   if (since) {
-    logArgs += ` ${since}..HEAD`;
+    args.push(`${since}..HEAD`);
   } else if (days) {
-    logArgs += ` --since="${days} days ago"`;
+    args.push(`--since=${days} days ago`);
   } else {
     // Default: last 50 commits
-    logArgs += ' -50';
+    args.push('-50');
   }
 
-  return runGitCommand(logArgs);
+  return runGitCommand(...args);
 }
 
 function getDateRange(since?: string, days?: number): string {

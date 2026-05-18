@@ -79,21 +79,21 @@ interface ImpactEntry {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function buildGitLogArgs(options: LogCommandOptions): string {
+function buildGitLogArgs(options: LogCommandOptions): string[] {
   const parts = ['log', '--format=%h%x09%an%x09%ar%x09%s', '--no-merges'];
 
   if (options.author) {
-    parts.push(`--author="${options.author}"`);
+    parts.push(`--author=${options.author}`);
   }
 
   if (options.since) {
-    parts.push(`--since="${options.since}"`);
+    parts.push(`--since=${options.since}`);
   }
 
   const count = options.count || 20;
   parts.push(`-${count}`);
 
-  return parts.join(' ');
+  return parts;
 }
 
 function parseGitLog(raw: string): CommitEntry[] {
@@ -152,7 +152,7 @@ export async function logCommand(options: LogCommandOptions): Promise<void> {
   let rawLog: string;
   try {
     const args = buildGitLogArgs(options);
-    rawLog = runGitCommand(args);
+    rawLog = runGitCommand(...args);
   } catch (err: any) {
     spinner.stop();
     console.log();
