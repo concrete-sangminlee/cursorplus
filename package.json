@@ -80,7 +80,7 @@
     "electron-store": "^10.0.0",
     "inquirer": "^13.3.2",
     "lucide-react": "^0.577.0",
-    "marked": "^15.0.12",
+    "marked": "^18.0.3",
     "marked-terminal": "^7.3.0",
     "monaco-editor": "^0.52.0",
     "openai": "^6.27.0",
