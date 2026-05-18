@@ -73,6 +73,23 @@ interface RunResult {
 interface FileFix {
   filepath: string;
   content: string;
+  /** True if the resolved path escapes the project root (path traversal). */
+  outsideProject: boolean;
+}
+
+/**
+ * Returns true if `filepath` (relative or absolute), once resolved against
+ * `projectRoot`, stays inside the project root. Used to guard against AI
+ * responses that try to write `../../../etc/passwd` or absolute paths.
+ */
+export function isWithinProjectRoot(filepath: string, projectRoot: string): boolean {
+  const resolvedRoot = path.resolve(projectRoot);
+  const resolvedTarget = path.resolve(projectRoot, filepath);
+  const rel = path.relative(resolvedRoot, resolvedTarget);
+  // Empty rel means the target IS the root; ../ prefix means it escapes; an
+  // absolute path on Windows survives `path.relative` (drive change).
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return true;
 }
 
 interface CommandFix {
@@ -134,7 +151,7 @@ function executeCommand(command: string): Promise<RunResult> {
 
 // ─── Parse AI Fix Response ──────────────────────────────────────────────────
 
-function parseFixResponse(response: string): { explanation: string; files: FileFix[]; commands: CommandFix[] } {
+export function parseFixResponse(response: string, projectRoot: string = process.cwd()): { explanation: string; files: FileFix[]; commands: CommandFix[] } {
   const files: FileFix[] = [];
   const commands: CommandFix[] = [];
   const explanationParts: string[] = [];
@@ -155,7 +172,11 @@ function parseFixResponse(response: string): { explanation: string; files: FileF
         contentLines.push(lines[i]);
         i++;
       }
-      files.push({ filepath, content: contentLines.join('\n') });
+      files.push({
+        filepath,
+        content: contentLines.join('\n'),
+        outsideProject: !isWithinProjectRoot(filepath, projectRoot),
+      });
       i++;
       continue;
     }
@@ -268,23 +289,42 @@ export async function runCommand(command: string, options: { fix?: boolean } = {
         console.log(divider('File Fixes'));
         console.log();
 
+        // Refuse to write anywhere outside the project root. AI output (or a
+        // prompt-injected error stream piped into `orion run`) could otherwise
+        // ask us to overwrite arbitrary paths like ../../../etc/passwd.
+        const unsafe = files.filter(f => f.outsideProject);
+        const safeFiles = files.filter(f => !f.outsideProject);
+
+        for (const u of unsafe) {
+          printError(`Refusing to write outside project root: ${u.filepath}`);
+        }
+
+        // Show each path the user is about to approve so they can spot anything
+        // unexpected before saying yes.
+        for (const f of safeFiles) {
+          console.log(`  ${palette.dim('•')} ${colors.file(f.filepath)}`);
+        }
+        console.log();
+
         const pipelineOpts = getPipelineOptions();
         let applyAll: boolean;
 
-        if (pipelineOpts.yes) {
+        if (safeFiles.length === 0) {
+          applyAll = false;
+        } else if (pipelineOpts.yes) {
           applyAll = true;
         } else {
           const answer = await inquirer.prompt([{
             type: 'confirm',
             name: 'apply',
-            message: `Apply ${files.length} file fix(es)?`,
+            message: `Apply ${safeFiles.length} file fix(es) listed above?`,
             default: false,
           }]);
           applyAll = answer.apply;
         }
 
         if (applyAll) {
-          for (const fix of files) {
+          for (const fix of safeFiles) {
             try {
               writeFileContent(fix.filepath, fix.content);
               printSuccess(`Fixed: ${colors.file(fix.filepath)}`);
@@ -292,7 +332,7 @@ export async function runCommand(command: string, options: { fix?: boolean } = {
               printError(`Could not write ${fix.filepath}: ${err.message}`);
             }
           }
-        } else {
+        } else if (safeFiles.length > 0) {
           printInfo('Fixes not applied. Review the suggestions above.');
         }
         console.log();

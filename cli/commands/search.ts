@@ -153,7 +153,9 @@ function searchFiles(
   options: SearchOptions
 ): SearchMatch[] {
   const matches: SearchMatch[] = [];
-  const regex = new RegExp(escapeRegExp(pattern), 'gi');
+  // Drop the `g` flag: `.test()` doesn't need it, and the leaked `lastIndex`
+  // between calls was forcing manual resets that broke on the first iteration.
+  const regex = new RegExp(escapeRegExp(pattern), 'i');
   const typeFilter = options.type || 'all';
 
   for (const file of files) {
@@ -173,11 +175,7 @@ function searchFiles(
       if (matches.length >= (options.maxResults || MAX_MATCHES)) break;
 
       const line = lines[i];
-      if (!regex.test(line)) {
-        regex.lastIndex = 0;
-        continue;
-      }
-      regex.lastIndex = 0;
+      if (!regex.test(line)) continue;
 
       // Apply type filter
       if (typeFilter === 'comment' && !isCommentLine(line, ext)) continue;
