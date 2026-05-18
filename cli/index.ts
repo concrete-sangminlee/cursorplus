@@ -1628,4 +1628,11 @@ program.parseAsync(process.argv).then(() => {
   checkForUpdates().catch(() => {
     // Silently ignore version check failures
   });
+}).catch((err: unknown) => {
+  // Commander handles known errors and exits itself; anything reaching here is
+  // an unhandled rejection from a command handler. Print a friendly message
+  // instead of dumping a raw stack and an "unhandled rejection" warning.
+  const msg = err instanceof Error ? err.message : String(err);
+  printError(`Unexpected error: ${msg}`);
+  process.exit(1);
 });
