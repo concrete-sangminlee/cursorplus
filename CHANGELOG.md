@@ -5,6 +5,22 @@ All notable changes to Orion IDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Replaced `execSync(`git ${args}`)` with `execFileSync('git', [...args])` in the CLI's git runner. User-controlled CLI options (`--ref`, `--since`, `--author`, `--base`, blame paths) no longer flow through a shell, so values containing `;`, `|`, `&`, backticks, or `$()` can't inject commands. Added 7 regression tests covering the no-shell contract.
+- Fixed an XSS opening in `editorZones.ts` where the AI suggestion badge interpolated the model name into `innerHTML`; the label is now built with `textContent`.
+
+### Fixed
+- Top-level `program.parseAsync(...)` now has a `.catch()` handler, so unhandled rejections from command handlers print a friendly error and exit 1 instead of dumping an unhandled-rejection warning.
+- `FS_SEARCH` IPC handler: hoisted the regex out of the per-file loop (was rebuilding it for every file), dropped the unused `g` flag together with its fragile `lastIndex` reset, and now lets an invalid user regex reject the renderer promise instead of silently skipping every file.
+
+### Added
+- Dependabot configuration for weekly npm and GitHub Actions updates, with minor/patch updates grouped into a single PR per ecosystem.
+- `npm run typecheck` script (`tsc --noEmit`), wired into CI.
+- CI workflows now declare `timeout-minutes`, least-privilege `permissions`, `concurrency` with cancel-in-progress, and npm caching in `actions/setup-node@v6`.
+- `CHANGELOG.md` and `SECURITY.md` are now shipped in the published npm tarball via the `files` manifest.
+
 ## [2.2.0] - 2026-05-18
 
 ### Added
