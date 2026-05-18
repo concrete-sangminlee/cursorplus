@@ -9,11 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Replaced `execSync(`git ${args}`)` with `execFileSync('git', [...args])` in the CLI's git runner. User-controlled CLI options (`--ref`, `--since`, `--author`, `--base`, blame paths) no longer flow through a shell, so values containing `;`, `|`, `&`, backticks, or `$()` can't inject commands. Added 7 regression tests covering the no-shell contract.
+- Migrated every remaining `electron/ipc/git.ts` IPC handler from `exec("git " + args)` to `execFile("git", [...args])`. Renderer-supplied branch names, file paths, commit messages, stash indices, and log counts can no longer inject shell commands via the git IPC bridge. The unsafe `runGit()` helper has been deleted; new `runGitOrEmpty()` mirrors the old graceful-degradation semantics for handlers that need them.
+- `orion run --fix` now refuses to write to paths that escape the project root. Previously the parsed `---FILE: <path> ---` blocks from AI output were written without validation, so a compromised provider or prompt-injected error stream piped into `orion run` could overwrite arbitrary files (e.g. `../../../etc/passwd`). The confirmation prompt now lists each target path so the user can spot anything unexpected. Added 10 regression tests.
 - Fixed an XSS opening in `editorZones.ts` where the AI suggestion badge interpolated the model name into `innerHTML`; the label is now built with `textContent`.
 
 ### Fixed
 - Top-level `program.parseAsync(...)` now has a `.catch()` handler, so unhandled rejections from command handlers print a friendly error and exit 1 instead of dumping an unhandled-rejection warning.
 - `FS_SEARCH` IPC handler: hoisted the regex out of the per-file loop (was rebuilding it for every file), dropped the unused `g` flag together with its fragile `lastIndex` reset, and now lets an invalid user regex reject the renderer promise instead of silently skipping every file.
+- `orion search`: same regex hot-loop fix — dropped the `g` flag and removed the per-iteration `lastIndex` resets that were papering over its stateful semantics.
 
 ### Added
 - Dependabot configuration for weekly npm and GitHub Actions updates, with minor/patch updates grouped into a single PR per ecosystem.
