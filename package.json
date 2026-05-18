@@ -33,7 +33,9 @@
   "files": [
     "dist-cli/index.mjs",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md"
   ],
   "publishConfig": {
     "access": "public"
@@ -46,6 +48,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "electron:dev": "vite build && electron .",
     "icons": "electron-icon-builder --input=public/icon.png --output=build --flatten",
