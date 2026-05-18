@@ -336,7 +336,7 @@ function simulateResponse(method: HttpMethod, url: string): ApiResponse {
       { id: 2, name: 'Bob', email: 'bob@example.com', role: 'user' },
       { id: 3, name: 'Carol', email: 'carol@example.com', role: 'user' },
     ],
-    '/health': { status: 'ok', uptime: '72h 14m', version: '2.1.0' },
+    '/health': { status: 'ok', uptime: '72h 14m', version: '2.2.0' },
     '/posts/1': { id: 1, title: 'Hello World', body: 'First post content', authorId: 1 },
   }
 

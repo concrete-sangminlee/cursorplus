@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { Terminal } from 'xterm'
-import { FitAddon } from 'xterm-addon-fit'
-import { SearchAddon } from 'xterm-addon-search'
-import { WebLinksAddon } from 'xterm-addon-web-links'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import { useTerminalStore } from '@/store/terminal'
-import 'xterm/css/xterm.css'
+import '@xterm/xterm/css/xterm.css'
 import {
   Play, Copy, Pencil, RefreshCw, X, Sparkles, Clock,
   ChevronDown, Loader2, Plus, Columns2, Trash2, Ban,

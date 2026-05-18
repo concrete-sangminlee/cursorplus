@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Orion! This guide will help you g
 
 ### Prerequisites
 
-- **Node.js** >= 18.0.0 (we recommend using [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm))
+- **Node.js** >= 22.12.0 (we recommend using [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm))
 - **npm** >= 9.0.0
 - **Git**
 
@@ -118,7 +118,7 @@ describe('my-command', () => {
 
 ```bash
 npm run cli:build
-node dist-cli/index.js my-command --help
+node dist-cli/index.mjs my-command --help
 npm run test:cli
 ```
 
@@ -128,7 +128,7 @@ npm run test:cli
 
 - **TypeScript** is required for all source files.
 - Use **ES modules** (`import`/`export`), not CommonJS (`require`).
-- Target **Node.js 18+** -- avoid APIs unavailable in Node 18.
+- Target **Node.js 22.12+** -- avoid APIs unavailable in the supported runtime.
 - Prefer `async`/`await` over raw promises or callbacks.
 - Use meaningful variable and function names.
 - Keep functions focused: each function should do one thing well.
@@ -178,7 +178,7 @@ npx vitest run tests/cli/my-command.test.ts
 - Use `describe` blocks to group related tests.
 - Use clear `it` descriptions that explain the expected behavior.
 - Mock external services (AI providers, network calls).
-- Tests must pass on all supported platforms (Linux, macOS, Windows) and Node.js versions (18, 20, 22).
+- Tests must pass on all supported platforms (Linux, macOS, Windows) and Node.js 22.12+.
 
 ## Pull Request Process
 

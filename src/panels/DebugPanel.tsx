@@ -110,7 +110,7 @@ const SIMULATED_SCOPES: ScopeData[] = [
       { name: 'this', value: 'AppComponent', type: 'object', children: [
         { name: 'props', value: '{...}', type: 'object', children: [
           { name: 'title', value: '"Orion IDE"', type: 'string' },
-          { name: 'version', value: '"2.1.0"', type: 'string' },
+          { name: 'version', value: '"2.2.0"', type: 'string' },
           { name: 'isDebug', value: 'true', type: 'boolean' },
         ]},
         { name: 'state', value: '{...}', type: 'object', children: [

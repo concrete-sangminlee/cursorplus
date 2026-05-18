@@ -13,13 +13,13 @@
   "homepage": "https://github.com/concrete-sangminlee/orion#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/concrete-sangminlee/orion.git"
+    "url": "git+https://github.com/concrete-sangminlee/orion.git"
   },
   "bugs": {
     "url": "https://github.com/concrete-sangminlee/orion/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "keywords": [
     "ide",
@@ -31,8 +31,7 @@
     "developer-tools"
   ],
   "files": [
-    "dist-cli/",
-    "cli/",
+    "dist-cli/index.mjs",
     "LICENSE",
     "README.md"
   ],
@@ -41,7 +40,7 @@
   },
   "main": "dist-electron/main.js",
   "bin": {
-    "orion": "./dist-cli/index.mjs"
+    "orion": "dist-cli/index.mjs"
   },
   "scripts": {
     "dev": "vite",
@@ -56,14 +55,21 @@
     "package:mac": "vite build && electron-builder --config electron-builder.yml --mac",
     "package:linux": "vite build && electron-builder --config electron-builder.yml --linux",
     "package:all": "vite build && electron-builder --config electron-builder.yml -mwl",
+    "pretest": "npm run cli:build",
+    "pretest:cli": "npm run cli:build",
     "prepublishOnly": "npm run cli:build",
-    "cli:build": "npx esbuild cli/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist-cli/index.mjs --external:@anthropic-ai/sdk --external:openai --external:commander --external:chalk --external:ora --external:inquirer --external:marked --external:marked-terminal --external:cli-highlight",
+    "cli:clean": "node -e \"require('node:fs').rmSync('dist-cli',{recursive:true,force:true})\"",
+    "cli:build": "npm run cli:clean && npx esbuild cli/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist-cli/index.mjs --external:@anthropic-ai/sdk --external:openai --external:commander --external:chalk --external:ora --external:inquirer --external:marked --external:marked-terminal --external:cli-highlight",
     "cli:dev": "npx tsx cli/index.ts",
     "test:cli": "vitest run cli/__tests__/"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@monaco-editor/react": "^4.7.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
     "chalk": "^5.6.2",
     "chokidar": "^4.0.0",
     "cli-highlight": "^2.1.11",
@@ -80,10 +86,6 @@
     "react-dom": "^19.0.0",
     "react-syntax-highlighter": "^16.1.1",
     "uuid": "^11.0.0",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0",
-    "xterm-addon-search": "^0.13.0",
-    "xterm-addon-web-links": "^0.9.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -94,9 +96,9 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0",
-    "jsdom": "^25.0.0",
+    "electron": "^42.1.0",
+    "electron-builder": "^26.8.1",
+    "jsdom": "^29.1.1",
     "node-pty": "^1.0.0",
     "postcss": "^8.0.0",
     "tailwindcss": "^4.0.0",

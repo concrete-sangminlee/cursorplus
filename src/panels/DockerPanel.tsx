@@ -183,7 +183,7 @@ const DEMO_IMAGES: ImageInfo[] = [
   { id: 'sha256:ccc333', repository: 'postgres', tag: '15', size: '379 MB', created: '2026-02-20' },
   { id: 'sha256:ddd444', repository: 'redis', tag: '7-alpine', size: '30 MB', created: '2026-03-05' },
   { id: 'sha256:eee555', repository: 'nginx', tag: 'latest', size: '142 MB', created: '2026-03-07' },
-  { id: 'sha256:fff666', repository: 'myapp/frontend', tag: 'v2.1.0', size: '245 MB', created: '2026-03-10' },
+  { id: 'sha256:fff666', repository: 'myapp/frontend', tag: 'v2.2.0', size: '245 MB', created: '2026-03-10' },
   { id: 'sha256:ggg777', repository: 'myapp/api', tag: 'v1.8.3', size: '198 MB', created: '2026-03-10' },
   { id: 'sha256:hhh888', repository: 'alpine', tag: '3.18', size: '7.3 MB', created: '2026-01-15' },
 ];
@@ -194,7 +194,7 @@ const DEMO_COMPOSE: ComposeProject[] = [
     file: './docker-compose.yml',
     status: 'running',
     services: [
-      { name: 'frontend', image: 'myapp/frontend:v2.1.0', status: 'running', ports: [{ host: 3000, container: 3000, protocol: 'tcp' }], replicas: 1 },
+      { name: 'frontend', image: 'myapp/frontend:v2.2.0', status: 'running', ports: [{ host: 3000, container: 3000, protocol: 'tcp' }], replicas: 1 },
       { name: 'api', image: 'myapp/api:v1.8.3', status: 'running', ports: [{ host: 8000, container: 8000, protocol: 'tcp' }], replicas: 2 },
       { name: 'db', image: 'postgres:15', status: 'running', ports: [{ host: 5432, container: 5432, protocol: 'tcp' }], replicas: 1 },
       { name: 'cache', image: 'redis:7-alpine', status: 'running', ports: [{ host: 6379, container: 6379, protocol: 'tcp' }], replicas: 1 },

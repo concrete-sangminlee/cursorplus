@@ -50,11 +50,11 @@ export default defineConfig({
           // Icons
           'lucide': ['lucide-react'],
 
-          // Heavy editor dependency - isolate for caching
-          'monaco-editor': ['monaco-editor'],
+          // Editor shell - keep React bindings cacheable without forcing an empty Monaco chunk
+          'monaco-react': ['@monaco-editor/react'],
 
           // Terminal emulator + addons
-          'xterm': ['xterm', 'xterm-addon-fit', 'xterm-addon-web-links', 'xterm-addon-search'],
+          'xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links', '@xterm/addon-search'],
 
           // AI SDKs
           'ai-sdk': ['react-syntax-highlighter'],
@@ -73,10 +73,10 @@ export default defineConfig({
       'zustand',
       'lucide-react',
       'monaco-editor',
-      'xterm',
-      'xterm-addon-fit',
-      'xterm-addon-web-links',
-      'xterm-addon-search',
+      '@xterm/xterm',
+      '@xterm/addon-fit',
+      '@xterm/addon-web-links',
+      '@xterm/addon-search',
       'react-syntax-highlighter',
     ],
   },

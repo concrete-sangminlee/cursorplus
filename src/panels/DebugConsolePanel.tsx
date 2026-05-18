@@ -1,5 +1,5 @@
 /**
- * Debug Console Panel — REPL-style debug output with expression evaluation.
+ * Debug Console Panel - REPL-style debug output with expression evaluation.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -34,6 +34,33 @@ const DEMO_ENTRIES: DebugLogEntry[] = [
   { id: `d-${nextId++}`, level: 'output', message: '"development"', timestamp: Date.now() - 3000 },
   { id: `d-${nextId++}`, level: 'log', message: 'Request: GET /api/users - 200 (45ms)', timestamp: Date.now() - 2000 },
 ]
+
+export function evaluateSimpleArithmetic(expr: string): string | null {
+  const match = expr.match(/^\s*(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)\s*$/)
+  if (!match) return null
+
+  const left = Number(match[1])
+  const operator = match[2]
+  const right = Number(match[3])
+
+  switch (operator) {
+    case '+': return String(left + right)
+    case '-': return String(left - right)
+    case '*': return String(left * right)
+    case '/': return String(left / right)
+    default: return null
+  }
+}
+
+export function evaluateDebugConsoleExpression(expr: string, now: () => number = Date.now): string {
+  if (expr === 'process.env.NODE_ENV') return '"development"'
+
+  const arithmeticResult = evaluateSimpleArithmetic(expr)
+  if (arithmeticResult !== null) return arithmeticResult
+  if (expr === 'Date.now()') return String(now())
+  if (expr === 'Math.PI') return String(Math.PI)
+  return 'undefined'
+}
 
 export default function DebugConsolePanel() {
   const [entries, setEntries] = useState<DebugLogEntry[]>(DEMO_ENTRIES)
@@ -74,11 +101,7 @@ export default function DebugConsolePanel() {
     let result: string
     try {
       // In real implementation, send to debug adapter
-      if (expr === 'process.env.NODE_ENV') result = '"development"'
-      else if (expr.match(/^\d+[\+\-\*\/]\d+$/)) result = String(eval(expr))
-      else if (expr === 'Date.now()') result = String(Date.now())
-      else if (expr === 'Math.PI') result = String(Math.PI)
-      else result = `undefined`
+      result = evaluateDebugConsoleExpression(expr)
     } catch (e: any) {
       result = `Error: ${e.message}`
     }

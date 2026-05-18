@@ -70,9 +70,9 @@ describe('package.json configuration', () => {
     expect(pkg.bin).toBeDefined();
   });
 
-  it('bin field maps "orion" to dist-cli/index.js', () => {
+  it('bin field maps "orion" to dist-cli/index.mjs', () => {
     const pkg = readPackageJson();
-    expect(pkg.bin.orion).toBe('./dist-cli/index.mjs');
+    expect(pkg.bin.orion).toBe('dist-cli/index.mjs');
   });
 
   it('has a name field set to "orion-ide"', () => {
@@ -111,9 +111,9 @@ describe('package.json configuration', () => {
     expect(pkg.type).toBe('module');
   });
 
-  it('requires Node.js >= 18', () => {
+  it('requires Node.js >= 22.12', () => {
     const pkg = readPackageJson();
-    expect(pkg.engines.node).toContain('18');
+    expect(pkg.engines.node).toContain('22.12');
   });
 });
 
@@ -259,31 +259,11 @@ describe('no circular dependencies in imports', () => {
 });
 
 describe('dist-cli build artifacts', () => {
-  it('dist-cli/utils.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'utils.js'))).toBe(true);
-  });
+  it('contains only the bundled CLI entry', () => {
+    const files = fs.readdirSync(DIST_CLI_DIR)
+      .filter(file => fs.statSync(path.join(DIST_CLI_DIR, file)).isFile())
+      .sort();
 
-  it('dist-cli/shared.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'shared.js'))).toBe(true);
-  });
-
-  it('dist-cli/ai-client.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'ai-client.js'))).toBe(true);
-  });
-
-  it('dist-cli/pipeline.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'pipeline.js'))).toBe(true);
-  });
-
-  it('dist-cli/ui.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'ui.js'))).toBe(true);
-  });
-
-  it('dist-cli/markdown.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'markdown.js'))).toBe(true);
-  });
-
-  it('dist-cli/stdin.js exists', () => {
-    expect(fs.existsSync(path.join(DIST_CLI_DIR, 'stdin.js'))).toBe(true);
+    expect(files).toEqual(['index.mjs']);
   });
 });

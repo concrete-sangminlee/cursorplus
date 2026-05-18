@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/github/license/concrete-sangminlee/orion?style=flat-square&color=22C55E" alt="License">
   <img src="https://img.shields.io/badge/version-2.2.0-7C5CFC?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/commands-71-38BDF8?style=flat-square" alt="Commands">
-  <img src="https://img.shields.io/badge/tests-707-22C55E?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-704-22C55E?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/platform-Win%20%7C%20Mac%20%7C%20Linux-F59E0B?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-9B59B6?style=flat-square" alt="AI">
   <img src="https://img.shields.io/github/stars/concrete-sangminlee/orion?style=flat-square" alt="Stars">
@@ -40,7 +40,7 @@ Orion is an **open-source AI coding tool** with two modes:
                    ┌──────────────────────────────────┐
                    │  ✦ O R I O N                     │
                    │  AI-Powered Coding Assistant      │
-                   │  v2.1.0 · Win/Mac/Linux           │
+                   │  v2.2.0 · Win/Mac/Linux           │
                    └──────────────────────────────────┘
 
   $ orion ask "How do I optimize this React component?" @src/App.tsx
@@ -108,7 +108,7 @@ orion status                  # Check setup
 
 | Requirement | How to install |
 |------------|----------------|
-| **Node.js 18+** | [nodejs.org](https://nodejs.org) |
+| **Node.js 22.12+** | [nodejs.org](https://nodejs.org) |
 | **C++ Build Tools** | Windows: `npm i -g windows-build-tools` · macOS: `xcode-select --install` · Linux: `apt install build-essential` |
 | **Ollama** (optional) | [ollama.com](https://ollama.com) — `ollama pull llama3.2` |
 
@@ -289,7 +289,7 @@ Launch with `npm run dev` or `orion gui`.
 - **Monaco Editor** — Syntax highlighting, minimap, bracket colorization, inline AI editing
 - **18 Built-in Themes** — Orion Dark, GitHub Light, Tokyo Night, Catppuccin, Dracula, Nord, and more
 - **AI Chat Panel** — Multi-provider streaming chat with markdown rendering
-- **Integrated Terminal** — xterm.js + node-pty with multiple sessions
+- **Integrated Terminal** — @xterm/xterm + node-pty with multiple sessions
 - **Git Integration** — Source control, blame, stash, timeline, merge conflict resolver
 - **30+ Panels** — Debug, test, profiler, problems, database, API client, Docker, CI/CD
 - **Command Palette** — Ctrl+Shift+P with fuzzy search
@@ -326,14 +326,14 @@ Ollama works out of the box with no API key. Run `orion config` for API key setu
 | Layer | Technology |
 |-------|-----------|
 | CLI | Node.js · Commander · Chalk · Ora · Marked |
-| Desktop | Electron 33 · React 19 · TypeScript 5.7 |
+| Desktop | Electron 42 · React 19 · TypeScript 5.9 |
 | Editor | Monaco Editor 0.52 |
-| Terminal | xterm.js 5 · node-pty |
+| Terminal | @xterm/xterm 6 · node-pty |
 | State | Zustand 5 (33 stores) |
 | Styling | TailwindCSS v4 |
 | Build | Vite 6 · esbuild |
 | AI | Anthropic SDK · OpenAI SDK · Ollama API |
-| Packaging | electron-builder 25 |
+| Packaging | electron-builder 26 |
 
 ---
 

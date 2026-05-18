@@ -292,7 +292,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [22]
 
     steps:
       - name: Checkout code
@@ -330,7 +330,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install and build
@@ -367,7 +367,7 @@ jobs:
 
 ## Prerequisites
 
-- Node.js >= 18
+- Node.js >= 22.12
 - npm >= 9
 
 ## Installation

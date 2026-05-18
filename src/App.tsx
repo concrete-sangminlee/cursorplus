@@ -18,7 +18,6 @@ import StatusBar from './components/StatusBar'
 import CommandPalette from '@/components/CommandPalette'
 import ToastContainer from '@/components/Toast'
 import FileExplorer from './panels/FileExplorer'
-import EditorPanel from './panels/EditorPanel'
 import BottomPanel from './panels/BottomPanel'
 import {
   DEFAULT_SIDE_PANEL_WIDTH,
@@ -42,59 +41,21 @@ const SearchPanel = React.lazy(() => import('@/panels/SearchPanel'))
 const SourceControlPanel = React.lazy(() => import('@/panels/SourceControlPanel'))
 const ExtensionsPanel = React.lazy(() => import('./panels/ExtensionsPanel'))
 const OutlinePanel = React.lazy(() => import('@/panels/OutlinePanel'))
+const EditorPanel = React.lazy(() => import('./panels/EditorPanel'))
 const AgentPanel = React.lazy(() => import('./panels/AgentPanel'))
 const DebugPanel = React.lazy(() => import('./panels/DebugPanel'))
 const TestingPanel = React.lazy(() => import('./panels/TestingPanel'))
 const ComposerPanel = React.lazy(() => import('./panels/ComposerPanel'))
-const GitBlamePanel = React.lazy(() => import('./panels/GitBlamePanel'))
-const ProfilerPanel = React.lazy(() => import('./panels/ProfilerPanel'))
-const DatabasePanel = React.lazy(() => import('./panels/DatabasePanel'))
-const ApiClientPanel = React.lazy(() => import('./panels/ApiClientPanel'))
-const DockerPanel = React.lazy(() => import('./panels/DockerPanel'))
-const NotebookPanel = React.lazy(() => import('./panels/NotebookPanel'))
-const CICDPanel = React.lazy(() => import('./panels/CICDPanel'))
-const RemoteExplorerPanel = React.lazy(() => import('./panels/RemoteExplorerPanel'))
-const GitStashPanel = React.lazy(() => import('./panels/GitStashPanel'))
-const GitTimelinePanel = React.lazy(() => import('./panels/GitTimelinePanel'))
 
 // Lazy-loaded editor-area components
 const Breadcrumbs = React.lazy(() => import('./components/Breadcrumbs'))
 const DiffEditor = React.lazy(() => import('./components/DiffEditor'))
-const DiffViewer = React.lazy(() => import('./components/DiffViewer'))
-const HexEditor = React.lazy(() => import('./components/HexEditor'))
-const SplitView = React.lazy(() => import('./components/SplitView'))
-const MarkdownPreview = React.lazy(() => import('./components/MarkdownPreview'))
-const ImageEditor = React.lazy(() => import('./components/ImageEditor'))
 
 // Lazy-loaded modal/dialog components (only shown on demand)
 const SettingsModal = React.lazy(() => import('./components/SettingsModal'))
 const KeyboardShortcuts = React.lazy(() => import('./components/KeyboardShortcuts'))
 const AboutDialog = React.lazy(() => import('./components/AboutDialog'))
 const SnippetManager = React.lazy(() => import('@/components/SnippetManager'))
-const NewProjectWizard = React.lazy(() => import('./components/NewProjectWizard'))
-const ThemeEditor = React.lazy(() => import('./components/ThemeEditor'))
-const OnboardingWalkthrough = React.lazy(() => import('./components/OnboardingWalkthrough'))
-const SearchReplaceDialog = React.lazy(() => import('./components/SearchReplaceDialog'))
-const WorkspaceTrust = React.lazy(() => import('./components/WorkspaceTrust'))
-const SettingsEditor = React.lazy(() => import('./components/SettingsEditor'))
-const KeybindingEditor = React.lazy(() => import('./components/KeybindingEditor'))
-const AIChatWidget = React.lazy(() => import('./components/AIChatWidget'))
-const DebugToolbar = React.lazy(() => import('./components/DebugToolbar'))
-const ProcessExplorer = React.lazy(() => import('./components/ProcessExplorer'))
-const PeekDefinition = React.lazy(() => import('./components/PeekDefinition'))
-const NotificationToast = React.lazy(() => import('./components/NotificationToast'))
-const WelcomePage = React.lazy(() => import('./components/WelcomePage'))
-const ContextMenu = React.lazy(() => import('./components/ContextMenu'))
-const EditorTabContextMenu = React.lazy(() => import('./components/EditorTabContextMenu'))
-const EditorMinimap = React.lazy(() => import('./components/EditorMinimap'))
-const AIInlineActions = React.lazy(() => import('./components/AIInlineActions'))
-const BreadcrumbDropdown = React.lazy(() => import('./components/BreadcrumbDropdown'))
-const StatusBarWidgets = React.lazy(() => import('./components/StatusBarWidgets'))
-const TerminalTabs = React.lazy(() => import('./components/TerminalTabs'))
-const AnalyticsDashboard = React.lazy(() => import('./components/AnalyticsDashboard'))
-const ReleaseNotes = React.lazy(() => import('./components/ReleaseNotes'))
-const QuickOpen = React.lazy(() => import('./components/QuickOpen'))
-const MergeConflictResolver = React.lazy(() => import('./components/MergeConflictResolver'))
 const TerminalProfileManager = React.lazy(() => import('./components/TerminalProfileManager'))
 
 /** Workspace trust key prefix in localStorage */
@@ -1146,7 +1107,9 @@ export default function App() {
                 </Suspense>
               </ErrorBoundary>
             ) : (
-              <EditorPanel />
+              <Suspense fallback={<PanelFallback />}>
+                <EditorPanel />
+              </Suspense>
             )}
           </div>
           {bottomVisible && !zenMode && (

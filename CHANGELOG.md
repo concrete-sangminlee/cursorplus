@@ -5,6 +5,26 @@ All notable changes to Orion IDE will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-18
+
+### Added
+- Debug console regression tests for safe expression evaluation.
+- Packaging icon assets for Windows, macOS, Linux, and DMG builds.
+- Repository-wide LF normalization policy via `.gitattributes`.
+
+### Changed
+- Upgraded Electron to 42.1.0 and electron-builder to 26.8.1.
+- Migrated deprecated xterm packages to the maintained `@xterm/*` packages.
+- Updated CI and release workflows to run audit, full tests, and production builds on Node.js 22.
+- Lazy-loaded the main editor panel and adjusted Monaco chunking for cleaner production bundles.
+- Cleaned npm publish artifacts down to the bundled CLI entry and required package metadata.
+
+### Fixed
+- Removed unsafe `eval()` usage from the debug console.
+- Fixed electron-builder 26 Linux desktop configuration schema usage.
+- Fixed Windows packaging failures caused by missing icon assets and local winCodeSign symlink constraints.
+- Fixed CLI integration tests and generated workflow templates for the Node.js 22.12+ support baseline.
+
 ## [2.1.0] - 2026-03-19
 
 ### Added

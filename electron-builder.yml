@@ -18,6 +18,9 @@ npmRebuild: true
 asar: true
 compression: maximum
 
+toolsets:
+  winCodeSign: 1.1.0
+
 # ---------------------------
 # Auto-update via GitHub
 # ---------------------------
@@ -151,6 +154,8 @@ win:
         - x64
   icon: build/icon.ico
   artifactName: ${name}-${version}-win-${arch}.${ext}
+  # Keep unsigned local Windows packaging working without winCodeSign symlink privileges.
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
@@ -232,10 +237,8 @@ linux:
     Orion IDE is an AI-powered code editor built with modern web technologies.
     Features intelligent code completion, integrated terminal, and AI chat assistance.
   desktop:
-    StartupWMClass: orion-ide
-    MimeType: >-
-      text/typescript;text/javascript;application/json;text/markdown;
-      text/x-python;text/html;text/css;text/plain;application/xml
+    entry:
+      StartupWMClass: orion-ide
 
 deb:
   depends:

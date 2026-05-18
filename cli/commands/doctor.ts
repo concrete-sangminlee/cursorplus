@@ -81,12 +81,12 @@ function checkNodeVersion(): CheckResult {
       label: 'node',
       status: 'fail',
       detail: `Node.js: ${palette.red('not found')}`,
-      fix: 'Install Node.js from https://nodejs.org (v18+ recommended)',
+      fix: 'Install Node.js from https://nodejs.org (v22.12+ recommended)',
     };
   }
 
   const version = parseVersion(output);
-  if (versionAtLeast(version, [18, 0, 0])) {
+  if (versionAtLeast(version, [22, 12, 0])) {
     return {
       label: 'node',
       status: 'pass',
@@ -97,8 +97,8 @@ function checkNodeVersion(): CheckResult {
   return {
     label: 'node',
     status: 'warn',
-    detail: `Node.js: ${palette.yellow(output)} (v18+ recommended)`,
-    fix: 'Upgrade Node.js to v18 or later for best compatibility.',
+    detail: `Node.js: ${palette.yellow(output)} (v22.12+ recommended)`,
+    fix: 'Upgrade Node.js to v22.12 or later for best compatibility.',
   };
 }
 
