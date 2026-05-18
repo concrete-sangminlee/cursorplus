@@ -3,11 +3,17 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 20
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
@@ -16,6 +22,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+          cache: npm
       - run: npm ci
       - run: npm audit --audit-level=moderate
       - run: npm test -- --run
