@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseMarkdown, safeHref } from '@/utils/aiChatMarkdown'
+import { hasCodeBlock, parseMarkdown, safeHref } from '@/utils/aiChatMarkdown'
 
 describe('AI chat markdown parsing', () => {
   it('escapes raw html before rendering', () => {
@@ -42,6 +42,21 @@ describe('AI chat markdown parsing', () => {
     expect(html).not.toContain('~~~')
     expect(codeBlocks[0]?.code).toBe('const value = 1')
     expect(codeBlocks[1]?.code).toBe('const other = 2')
+  })
+
+  it('detects code blocks with leading spaces after fence and language info', () => {
+    const content = '``` ts\nconst spaced = true\n```'
+    const { html, codeBlocks } = parseMarkdown(content)
+    expect(codeBlocks).toHaveLength(1)
+    expect(codeBlocks[0]?.language).toBe('ts')
+    expect(codeBlocks[0]?.code).toBe('const spaced = true')
+    expect(html).not.toContain('```')
+  })
+
+  it('hasCodeBlock mirrors parser detection rules', () => {
+    expect(hasCodeBlock('```js\nconst a = 1\n```')).toBe(true)
+    expect(hasCodeBlock('~~~bash\nls\n~~~')).toBe(true)
+    expect(hasCodeBlock('no code block here')).toBe(false)
   })
 
   it('keeps link text and blockquotes safe after escaping', () => {

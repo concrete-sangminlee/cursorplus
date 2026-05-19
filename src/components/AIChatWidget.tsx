@@ -50,7 +50,7 @@ import {
   type Conversation,
 } from '@/store/aiConversation'
 import { useEditorStore } from '@/store/editor'
-import { escapeHtml, type ParsedCodeBlock, parseMarkdown, CODE_BLOCK_SENTINEL } from '@/utils/aiChatMarkdown'
+import { escapeHtml, hasCodeBlock, type ParsedCodeBlock, parseMarkdown, CODE_BLOCK_SENTINEL } from '@/utils/aiChatMarkdown'
 // Injected Styles
 
 const CHAT_STYLE_ID = 'orion-ai-chat-styles'
@@ -1030,7 +1030,7 @@ export default function AIChatWidget({
   }, [sidebarSearchQuery, recentConversations, searchConversations])
 
   const hasCodeBlocks = useMemo(() => {
-    return messages.some(m => m.role === 'assistant' && /(```|~~~)([\s\S]*?)\1/.test(m.content))
+    return messages.some(m => m.role === 'assistant' && hasCodeBlock(m.content))
   }, [messages])
   // Effects
   useEffect(() => { injectStyles() }, [])

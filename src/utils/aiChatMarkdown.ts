@@ -5,6 +5,8 @@ export interface ParsedCodeBlock {
   filePath?: string
 }
 
+const CODE_BLOCK_REGEX = /(```|~~~)([ \t]*([^\n`~]*))\n([\s\S]*?)\1/g
+
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -16,6 +18,10 @@ export function escapeHtml(text: string): string {
 
 export const CODE_BLOCK_SENTINEL = '\x00'
 const ALLOWED_SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
+
+export function hasCodeBlock(content: string): boolean {
+  return new RegExp(CODE_BLOCK_REGEX.source, CODE_BLOCK_REGEX.flags).test(content)
+}
 
 export function safeHref(url: string): string {
   const trimmed = url.trim()
@@ -54,7 +60,7 @@ export function parseMarkdown(content: string): { html: string; codeBlocks: Pars
   const codeBlocks: ParsedCodeBlock[] = []
   let blockIndex = 0
 
-  let processed = content.replace(/(```|~~~)([ \t]*([^\n`~]*))\n([\s\S]*?)\1/g, (_match, _fence: string, _langSpec: string, lang: string, code: string) => {
+  let processed = content.replace(CODE_BLOCK_REGEX, (_match, _fence: string, _langSpec: string, lang: string, code: string) => {
     const id = `code-block-${blockIndex++}`
     const language = (lang || '').trim().split(/\s+/)[0] || 'text'
     codeBlocks.push({ id, language, code: code.trimEnd(), filePath: undefined })
