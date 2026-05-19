@@ -50,8 +50,8 @@ import {
   type Conversation,
 } from '@/store/aiConversation'
 import { useEditorStore } from '@/store/editor'
-
-// ── Injected Styles ──────────────────────────────────────────────────────────
+import { escapeHtml, type ParsedCodeBlock, parseMarkdown, CODE_BLOCK_SENTINEL } from '@/utils/aiChatMarkdown'
+// Injected Styles
 
 const CHAT_STYLE_ID = 'orion-ai-chat-styles'
 
@@ -122,8 +122,7 @@ function injectStyles() {
   style.textContent = CHAT_STYLES
   document.head.appendChild(style)
 }
-
-// ── Constants ────────────────────────────────────────────────────────────────
+// Constants
 
 interface ModelOption {
   id: string
@@ -152,12 +151,7 @@ const CONTEXT_TYPES = [
   { id: 'docs', label: '@docs', icon: BookOpen, description: 'Search documentation' },
   { id: 'terminal', label: '@terminal', icon: Terminal, description: 'Terminal output' },
 ] as const
-
-// ── Utility Helpers ──────────────────────────────────────────────────────────
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
+// Utility Helpers
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts)
@@ -218,67 +212,7 @@ function highlightSyntax(code: string, lang: string): string {
 
   return result
 }
-
-/** Parse markdown content into rendered HTML with code block extraction */
-function parseMarkdown(content: string): { html: string; codeBlocks: ParsedCodeBlock[] } {
-  const codeBlocks: ParsedCodeBlock[] = []
-  let blockIndex = 0
-
-  // Extract fenced code blocks
-  let processed = content.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang: string, code: string) => {
-    const id = `code-block-${blockIndex++}`
-    const language = lang || 'text'
-    codeBlocks.push({ id, language, code: code.trimEnd(), filePath: undefined })
-    return `<CODE_BLOCK_${id}>`
-  })
-
-  // Inline code
-  processed = processed.replace(/`([^`]+)`/g, '<code style="background:var(--orion-chat-code-bg,rgba(255,255,255,0.08));padding:1px 5px;border-radius:3px;font-size:0.88em;font-family:var(--orion-chat-mono,\'Cascadia Code\',\'Fira Code\',monospace)">$1</code>')
-
-  // Bold
-  processed = processed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  // Italic
-  processed = processed.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  // Strikethrough
-  processed = processed.replace(/~~(.+?)~~/g, '<del>$1</del>')
-
-  // Headers
-  processed = processed.replace(/^### (.+)$/gm, '<h4 style="margin:12px 0 4px;font-size:0.95em;font-weight:600">$1</h4>')
-  processed = processed.replace(/^## (.+)$/gm, '<h3 style="margin:12px 0 4px;font-size:1.05em;font-weight:600">$1</h3>')
-  processed = processed.replace(/^# (.+)$/gm, '<h2 style="margin:12px 0 6px;font-size:1.15em;font-weight:600">$1</h2>')
-
-  // Unordered lists
-  processed = processed.replace(/^[-*] (.+)$/gm, '<li style="margin-left:16px;list-style:disc;margin-bottom:2px">$1</li>')
-  // Ordered lists
-  processed = processed.replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;list-style:decimal;margin-bottom:2px">$1</li>')
-
-  // Blockquotes
-  processed = processed.replace(/^> (.+)$/gm, '<blockquote style="border-left:3px solid var(--orion-chat-accent,#8b5cf6);padding-left:10px;margin:6px 0;opacity:0.85">$1</blockquote>')
-
-  // Horizontal rules
-  processed = processed.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--orion-chat-border,rgba(255,255,255,0.1));margin:10px 0">')
-
-  // Links
-  processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:var(--orion-chat-link,#58a6ff);text-decoration:none" target="_blank" rel="noopener">$1</a>')
-
-  // Line breaks: convert double newlines to paragraphs, single to <br>
-  processed = processed.replace(/\n\n/g, '</p><p style="margin:6px 0">')
-  processed = processed.replace(/\n/g, '<br>')
-
-  const html = `<p style="margin:6px 0">${processed}</p>`
-
-  return { html, codeBlocks }
-}
-
-interface ParsedCodeBlock {
-  id: string
-  language: string
-  code: string
-  filePath?: string
-}
-
-// ── Subcomponents ────────────────────────────────────────────────────────────
-
+// Subcomponents
 /** Typing indicator with animated dots */
 function TypingIndicator() {
   const dotStyle = (delay: number): CSSProperties => ({
@@ -577,6 +511,7 @@ function ChatMessageBubble({
   const isSystem = message.role === 'system'
   const displayContent = message.isStreaming ? streamContent : (message.editedContent || message.content)
   const { html, codeBlocks } = useMemo(() => parseMarkdown(displayContent), [displayContent])
+  const codeBlockMap = useMemo(() => new Map(codeBlocks.map((block) => [block.id, block])), [codeBlocks])
 
   const tokens = useMemo(() => estimateTokens(displayContent), [displayContent])
 
@@ -684,8 +619,8 @@ function ChatMessageBubble({
         {/* Rendered markdown content, replacing code block placeholders */}
         {codeBlocks.length > 0 ? (
           <div>
-            {html.split(/<CODE_BLOCK_(code-block-\d+)>/g).map((segment, idx) => {
-              const block = codeBlocks.find(b => b.id === segment)
+            {html.split(/\x00CODE_BLOCK_(code-block-\d+)\x00/g).map((segment, idx) => {
+              const block = codeBlockMap.get(segment)
               if (block) {
                 return (
                   <CodeBlockRenderer
@@ -1011,8 +946,7 @@ function ErrorRetryIndicator({ attempt, maxAttempts, onRetryNow, onCancel }: {
     </div>
   )
 }
-
-// ── Main Component ───────────────────────────────────────────────────────────
+// Main Component
 
 export interface AIChatWidgetProps {
   visible: boolean
@@ -1029,7 +963,7 @@ export default function AIChatWidget({
   defaultWidth = 420,
   defaultHeight = 600,
 }: AIChatWidgetProps) {
-  // ── Store bindings ──
+  // Store bindings
   const {
     conversations,
     activeConversationId,
@@ -1059,8 +993,7 @@ export default function AIChatWidget({
     setDefaultModel,
     clearAll,
   } = useAIConversationStore()
-
-  // ── Local state ──
+  // Local state
   const [inputValue, setInputValue] = useState('')
   const [panelWidth, setPanelWidth] = useState(defaultWidth)
   const [panelHeight, setPanelHeight] = useState(defaultHeight)
@@ -1080,14 +1013,12 @@ export default function AIChatWidget({
   })
   const [showApplyAll, setShowApplyAll] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
-
-  // ── Refs ──
+  // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const resizeStartRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
-
-  // ── Derived ──
+  // Derived
   const activeConversation = useMemo(() => getActiveConversation(), [conversations, activeConversationId])
   const messages = activeConversation?.messages || []
   const recentConversations = useMemo(() => getRecentConversations(50), [conversations])
@@ -1099,10 +1030,9 @@ export default function AIChatWidget({
   }, [sidebarSearchQuery, recentConversations, searchConversations])
 
   const hasCodeBlocks = useMemo(() => {
-    return messages.some(m => m.role === 'assistant' && /```\w*\n[\s\S]*?```/.test(m.content))
+    return messages.some(m => m.role === 'assistant' && /(```|~~~)([\s\S]*?)\1/.test(m.content))
   }, [messages])
-
-  // ── Effects ──
+  // Effects
   useEffect(() => { injectStyles() }, [])
 
   // Auto-scroll to bottom on new messages
@@ -1162,8 +1092,7 @@ export default function AIChatWidget({
       // store may not be initialized
     }
   }, [visible])
-
-  // ── Resize handlers ──
+  // Resize handlers
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsResizing(true)
@@ -1187,8 +1116,7 @@ export default function AIChatWidget({
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
   }, [panelWidth, panelHeight])
-
-  // ── Message submission ──
+  // Message submission
   const simulateStreaming = useCallback((conversationId: string, userContent: string) => {
     // Simulated assistant streaming response for demo purposes
     const responses = [
@@ -1408,7 +1336,7 @@ export default function AIChatWidget({
     setRetryState({ active: false, attempt: 0, messageId: null })
   }, [])
 
-  // ── Render ──
+  // Render
 
   if (!visible) return null
 
@@ -1495,8 +1423,7 @@ export default function AIChatWidget({
           onMouseLeave={(e) => { if (!isResizing) e.currentTarget.style.background = 'transparent' }}
         />
       )}
-
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -1603,8 +1530,7 @@ export default function AIChatWidget({
           </button>
         </div>
       </div>
-
-      {/* ── Body (sidebar + messages) ── */}
+      {/* Body (sidebar + messages) */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
 
         {/* Conversation History Sidebar */}
@@ -1722,8 +1648,7 @@ export default function AIChatWidget({
             </div>
           </div>
         )}
-
-        {/* ── Messages Area ── */}
+        {/* Messages Area */}
         <div
           className="orion-chat-scrollbar"
           style={{
@@ -1973,8 +1898,7 @@ export default function AIChatWidget({
           </div>
         </div>
       </div>
-
-      {/* ── Input Area ── */}
+      {/* Input Area */}
       <div
         className="orion-chat-input-area"
         style={{
