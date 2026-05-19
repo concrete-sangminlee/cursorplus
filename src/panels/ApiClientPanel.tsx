@@ -165,6 +165,24 @@ const newRequest = (name = 'New Request', method: HttpMethod = 'GET', url = ''):
   auth: emptyAuth(),
 })
 
+export function HtmlResponsePreview({ html }: { html: string }) {
+  return (
+    <iframe
+      title="HTML response preview"
+      sandbox=""
+      referrerPolicy="no-referrer"
+      srcDoc={html}
+      style={{
+        width: '100%',
+        minHeight: 360,
+        border: '1px solid var(--vscode-panel-border)',
+        borderRadius: 4,
+        background: '#fff',
+      }}
+    />
+  )
+}
+
 const DEMO_COLLECTIONS: ApiCollection[] = [
   {
     id: 'sample-api',
@@ -792,7 +810,7 @@ export default function ApiClientPanel() {
         })()}
         {bodyPreview === 'pretty' && !isJson && <pre style={s.codeBlock}>{response.body}</pre>}
         {bodyPreview === 'raw' && <pre style={s.codeBlock}>{response.body}</pre>}
-        {bodyPreview === 'preview' && isHtml && <div dangerouslySetInnerHTML={{ __html: response.body }} />}
+        {bodyPreview === 'preview' && isHtml && <HtmlResponsePreview html={response.body} />}
         {bodyPreview === 'preview' && !isHtml && <pre style={s.codeBlock}>{response.body}</pre>}
       </div>
     )
