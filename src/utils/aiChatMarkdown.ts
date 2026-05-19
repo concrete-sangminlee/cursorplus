@@ -18,6 +18,7 @@ export function escapeHtml(text: string): string {
 
 export const CODE_BLOCK_SENTINEL = '\x00'
 const ALLOWED_SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
+const DISALLOWED_HREF_CHARS = /[\x00-\x1F\x7F<>"'`\\]/
 
 export function hasCodeBlock(content: string): boolean {
   return new RegExp(CODE_BLOCK_REGEX.source, CODE_BLOCK_REGEX.flags).test(content)
@@ -26,6 +27,8 @@ export function hasCodeBlock(content: string): boolean {
 export function safeHref(url: string): string {
   const trimmed = url.trim()
   if (!trimmed) return '#'
+
+  if (DISALLOWED_HREF_CHARS.test(trimmed) || /\s/.test(trimmed)) return '#'
 
   const normalized = trimmed.toLowerCase()
   if (normalized.startsWith('#') || normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../') || normalized.startsWith('?')) {

@@ -23,6 +23,13 @@ describe('AI chat markdown parsing', () => {
     expect(safeHref('./relative/path')).toBe('./relative/path')
   })
 
+  it('rejects links with unsafe characters', () => {
+    expect(safeHref('javascript:alert(1)" onload="alert(1)')).toBe('#')
+    expect(safeHref('https://example.com/?q=hello"bad')).toBe('#')
+    expect(safeHref('https://example.com/line\\nbreak')).toBe('#')
+    expect(safeHref('https://example.com/has space')).toBe('#')
+  })
+
   it('supports fenced code blocks with backticks and tildes', () => {
     const content = [
       '```ts',
