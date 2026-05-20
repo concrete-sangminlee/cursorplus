@@ -24,7 +24,45 @@ type ViewMode = 'preview' | 'source' | 'split'
 // ─── Utility: HTML escaping ──────────────────────────────────────────────────
 
 function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+const DISALLOWED_MARKDOWN_URL_CHARS = /[\x00-\x1F\x7F<>"'`\\]/
+const ALLOWED_MARKDOWN_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
+const ALLOWED_MARKDOWN_IMAGE_PROTOCOLS = new Set(['http:', 'https:'])
+const SAFE_DATA_IMAGE_URL = /^data:image\/(?:png|gif|jpe?g|webp);base64,[a-z0-9+/=]+$/i
+
+function decodeEscapedAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+function safeMarkdownUrl(url: string, allowedProtocols: Set<string>, allowDataImage = false): string {
+  const decoded = decodeEscapedAttribute(url).trim()
+  if (!decoded) return '#'
+  if (DISALLOWED_MARKDOWN_URL_CHARS.test(decoded) || /\s/.test(decoded)) return '#'
+  if (allowDataImage && SAFE_DATA_IMAGE_URL.test(decoded)) return decoded
+
+  const normalized = decoded.toLowerCase()
+  if (normalized.startsWith('//')) return '#'
+  if (normalized.startsWith('#') || normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../') || normalized.startsWith('?')) {
+    return decoded
+  }
+
+  const scheme = normalized.match(/^[a-z][a-z0-9+.-]*:/)?.[0]
+  if (!scheme) return decoded
+  if (!allowedProtocols.has(scheme)) return '#'
+
+  return decoded
 }
 
 // ─── Utility: customCSS sanitization ─────────────────────────────────────────
@@ -310,28 +348,37 @@ function renderPieSvg(code: string): string {
 
 // ─── Markdown Parser ─────────────────────────────────────────────────────────
 
-function parseMarkdown(content: string): string {
-  let html = content
+export function parseMarkdown(content: string): string {
+  const protectedHtml: string[] = []
+  const protectHtml = (value: string) => {
+    const marker = `__MD_PROTECTED_HTML_${protectedHtml.length}__`
+    protectedHtml.push(value)
+    return marker
+  }
 
-  // Collect footnote definitions
-  const footnotes: Record<string, string> = {}
-  html = html.replace(/^\[\^(\w+)\]:\s+(.+)$/gm, (_, id, text) => {
-    footnotes[id] = text
-    return `__FOOTNOTE_DEF_${id}__`
-  })
+  let html = content
 
   // Fenced code blocks (with mermaid handling)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const trimmedCode = code.replace(/\n$/, '')
     if (lang.toLowerCase() === 'mermaid') {
-      return renderMermaidSvg(trimmedCode)
+      return protectHtml(renderMermaidSvg(trimmedCode))
     }
     const highlighted = highlightCode(trimmedCode, lang || 'text')
     const lines = highlighted.split('\n')
     const numberedLines = lines.map((line, i) =>
       `<span class="md-code-line"><span class="md-code-ln">${i + 1}</span>${line || ' '}</span>`
     ).join('\n')
-    return `<div class="md-code-wrapper"><div class="md-code-header"><span class="md-code-lang">${escapeHtml(lang || 'text')}</span><button class="md-code-copy" type="button"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg><span class="md-copy-text">Copy</span></button></div><pre class="md-code-block"><code>${numberedLines}</code></pre></div>`
+    return protectHtml(`<div class="md-code-wrapper"><div class="md-code-header"><span class="md-code-lang">${escapeHtml(lang || 'text')}</span><button class="md-code-copy" type="button"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg><span class="md-copy-text">Copy</span></button></div><pre class="md-code-block"><code>${numberedLines}</code></pre></div>`)
+  })
+
+  html = escapeHtml(html)
+
+  // Collect footnote definitions
+  const footnotes: Record<string, string> = {}
+  html = html.replace(/^\[\^(\w+)\]:\s+(.+)$/gm, (_, id, text) => {
+    footnotes[id] = text
+    return `__FOOTNOTE_DEF_${id}__`
   })
 
   // Inline code (before other inline transformations)
@@ -364,20 +411,31 @@ function parseMarkdown(content: string): string {
 
   // Images with lazy loading
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
-    return `<div class="md-image-container"><img src="${src}" alt="${alt}" class="md-image" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="md-image-placeholder" style="display:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>${alt || 'Image'}</span></div></div>`
+    const safeSrc = escapeHtml(safeMarkdownUrl(src, ALLOWED_MARKDOWN_IMAGE_PROTOCOLS, true))
+    return `<div class="md-image-container"><img src="${safeSrc}" alt="${alt}" class="md-image" loading="lazy" /><div class="md-image-placeholder" style="display:none"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>${alt || 'Image'}</span></div></div>`
   })
 
   // Links with data attribute for click handling
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
-    const isExternal = /^https?:\/\//.test(href)
-    return `<a href="${href}" class="md-link" data-link-type="${isExternal ? 'external' : 'internal'}" title="${href}">${text}</a>`
+    const safeHref = safeMarkdownUrl(href, ALLOWED_MARKDOWN_LINK_PROTOCOLS)
+    const escapedHref = escapeHtml(safeHref)
+    const isExternal = /^https?:\/\//i.test(safeHref)
+    return `<a href="${escapedHref}" class="md-link" data-link-type="${isExternal ? 'external' : 'internal'}" title="${escapedHref}">${text}</a>`
   })
 
   // Autolinks
-  html = html.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, '<a href="$1" class="md-link" data-link-type="external">$1</a>')
+  html = html.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, (_, href) => {
+    const safeHref = safeMarkdownUrl(href, ALLOWED_MARKDOWN_LINK_PROTOCOLS)
+    const escapedHref = escapeHtml(safeHref)
+    return `<a href="${escapedHref}" class="md-link" data-link-type="external">${escapedHref}</a>`
+  })
 
   // Bare URLs in text (not inside tags)
-  html = html.replace(/(?<![="'])(https?:\/\/[^\s<)"']+)/g, '<a href="$1" class="md-link" data-link-type="external">$1</a>')
+  html = html.replace(/(?<![="'])(https?:\/\/[^\s<)"']+)/g, (_, href) => {
+    const safeHref = safeMarkdownUrl(href, ALLOWED_MARKDOWN_LINK_PROTOCOLS)
+    const escapedHref = escapeHtml(safeHref)
+    return `<a href="${escapedHref}" class="md-link" data-link-type="external">${escapedHref}</a>`
+  })
 
   // Footnote references [^id]
   html = html.replace(/\[\^(\w+)\]/g, (_, id) => {
@@ -446,6 +504,10 @@ function parseMarkdown(content: string): string {
     footnotesHtml += '</ol></section>'
     html += footnotesHtml
   }
+
+  protectedHtml.forEach((value, index) => {
+    html = html.replaceAll(`__MD_PROTECTED_HTML_${index}__`, value)
+  })
 
   // Paragraphs (lines not already wrapped)
   html = html.replace(/^(?!<[a-z/!]|$|\s*$)(.+)$/gm, '<p class="md-p">$1</p>')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeCustomCss } from './MarkdownPreview'
+import { parseMarkdown, sanitizeCustomCss } from './MarkdownPreview'
 
 describe('sanitizeCustomCss', () => {
   it('returns empty string for empty input', () => {
@@ -59,5 +59,56 @@ describe('sanitizeCustomCss', () => {
     const result = sanitizeCustomCss(css)
     expect(result).not.toMatch(/@import/i)
     expect(result).not.toMatch(/expression\s*\(/i)
+  })
+})
+
+describe('parseMarkdown', () => {
+  it('escapes raw html before preview rendering', () => {
+    const html = parseMarkdown('<img src=x onerror=alert(1)><script>alert(1)</script>')
+
+    expect(html).toContain('&lt;img')
+    expect(html).toContain('&lt;script')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<script')
+    expect(html).not.toMatch(/<[^>]+\sonerror=/)
+  })
+
+  it('sanitizes markdown link and image urls', () => {
+    const html = parseMarkdown([
+      '[bad](javascript:alert(1))',
+      '![bad](javascript:alert(1))',
+      '[protocol-relative](//evil.com)',
+      '[ok](https://example.com)',
+    ].join('\n'))
+
+    expect(html).toContain('href="#"')
+    expect(html).toContain('src="#"')
+    expect(html).toContain('href="https://example.com"')
+    expect(html).not.toContain('javascript:')
+  })
+
+  it('does not emit inline event handlers for generated images', () => {
+    const html = parseMarkdown('![broken](https://example.com/missing.png)')
+
+    expect(html).toContain('<img')
+    expect(html).not.toContain('onerror=')
+  })
+
+  it('keeps fenced code and mermaid output as generated preview html', () => {
+    const html = parseMarkdown([
+      '```ts',
+      'const value = "<tag>"',
+      '```',
+      '',
+      '```mermaid',
+      'graph TD',
+      'A[Start] --> B[End]',
+      '```',
+    ].join('\n'))
+
+    expect(html).toContain('md-code-wrapper')
+    expect(html).toContain('md-mermaid-rendered')
+    expect(html).toContain('&lt;tag&gt;')
+    expect(html).not.toContain('<tag>')
   })
 })
