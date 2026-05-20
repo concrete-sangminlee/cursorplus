@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated every remaining `electron/ipc/git.ts` IPC handler from `exec("git " + args)` to `execFile("git", [...args])`. Renderer-supplied branch names, file paths, commit messages, stash indices, and log counts can no longer inject shell commands via the git IPC bridge. The unsafe `runGit()` helper has been deleted; new `runGitOrEmpty()` mirrors the old graceful-degradation semantics for handlers that need them.
 - `orion run --fix` now refuses to write to paths that escape the project root. Previously the parsed `---FILE: <path> ---` blocks from AI output were written without validation, so a compromised provider or prompt-injected error stream piped into `orion run` could overwrite arbitrary files (e.g. `../../../etc/passwd`). The confirmation prompt now lists each target path so the user can spot anything unexpected. Added 10 regression tests.
 - Fixed an XSS opening in `editorZones.ts` where the AI suggestion badge interpolated the model name into `innerHTML`; the label is now built with `textContent`.
+- AI chat markdown link sanitization was hardened: `safeHref()` in `src/utils/aiChatMarkdown.ts` now rejects URLs containing control characters, whitespace, quotes, backticks, brackets, or backslashes in addition to enforcing the `http:`/`https:`/`mailto:`/`tel:` protocol allow-list. Closes injection paths like `[x](javascript:alert(1)" onload="alert(1))` that previously slipped past a protocol-only check.
+- API response HTML previews in `ApiClientPanel` are now rendered inside a `sandbox=""` iframe with `referrerPolicy="no-referrer"`. A malicious or compromised API can no longer execute scripts or fetch external resources in the renderer context when its body is previewed.
+- Notebook HTML cell outputs (`NotebookPanel`) are now rendered inside a `sandbox=""` iframe with `referrerPolicy="no-referrer"`. Shared `.ipynb` files containing embedded HTML output can no longer execute scripts against the IDE renderer's globals when opened.
+- `customCSS` passed to `MarkdownPreview` is now sanitized before injection into both the live preview and the exported HTML. `@import` directives, `</style>` breakout attempts, `expression(...)` (legacy IE), and any `url(...)` that isn't a `data:` URI are stripped — closes CSS-based exfiltration via attribute-selector tricks and external resource fetches.
 
 ### Fixed
 - Top-level `program.parseAsync(...)` now has a `.catch()` handler, so unhandled rejections from command handlers print a friendly error and exit 1 instead of dumping an unhandled-rejection warning.
@@ -23,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm run typecheck` script (`tsc --noEmit`), wired into CI.
 - CI workflows now declare `timeout-minutes`, least-privilege `permissions`, `concurrency` with cancel-in-progress, and npm caching in `actions/setup-node@v6`.
 - `CHANGELOG.md` and `SECURITY.md` are now shipped in the published npm tarball via the `files` manifest.
+
+### Changed
+- AI chat markdown parsing was extracted from `AIChatWidget` into a shared `src/utils/aiChatMarkdown.ts` module. The widget no longer duplicates fenced-code-block detection: both call sites use `hasCodeBlock()` and the shared `CODE_BLOCK_REGEX`.
 
 ## [2.2.0] - 2026-05-18
 
