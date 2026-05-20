@@ -27,6 +27,31 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// ─── Utility: customCSS sanitization ─────────────────────────────────────────
+
+/**
+ * Strips CSS patterns that can break out of the <style> tag, fetch external
+ * resources (and thereby exfiltrate data via attribute selectors), or execute
+ * code in legacy engines. Only `data:` URLs are allowed in `url(...)`.
+ */
+export function sanitizeCustomCss(css: string): string {
+  if (!css) return ''
+  let sanitized = css
+  // Prevent <style> breakout via a stray close tag.
+  sanitized = sanitized.replace(/<\/style/gi, '')
+  // Strip @import (can pull in remote CSS with every CSS-injection power).
+  sanitized = sanitized.replace(/@import\b[^;]*;?/gi, '')
+  // Neutralize expression() — legacy IE, defense in depth.
+  sanitized = sanitized.replace(/expression\s*\(/gi, 'invalid(')
+  // Block url() that isn't a data: URL — closes attribute-selector exfiltration.
+  sanitized = sanitized.replace(/url\s*\(\s*(['"]?)([^'")\s]*)/gi, (match, quote: string, value: string) => {
+    const lower = value.toLowerCase().trim()
+    if (lower.startsWith('data:')) return match
+    return `url(${quote}invalid:`
+  })
+  return sanitized
+}
+
 // ─── Syntax Highlighting ─────────────────────────────────────────────────────
 
 function highlightCode(code: string, lang: string): string {
@@ -433,6 +458,7 @@ function parseMarkdown(content: string): string {
 function generateExportHtml(content: string, styles: string, customCSS: string): string {
   const { frontmatter, body } = parseFrontmatter(content)
   const parsed = parseMarkdown(body)
+  const safeCustomCSS = sanitizeCustomCss(customCSS)
 
   let fmHtml = ''
   if (frontmatter) {
@@ -473,7 +499,7 @@ body {
   padding: 24px 32px;
 }
 ${styles}
-${customCSS}
+${safeCustomCSS}
 @media print {
   body { background: white; color: #1a1a1a; }
   .md-code-copy { display: none !important; }
@@ -758,6 +784,7 @@ export default function MarkdownPreview({ content, style, customCSS = '', onNavi
   // Parse frontmatter and body
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content])
   const html = useMemo(() => parseMarkdown(body), [body])
+  const safeCustomCSS = useMemo(() => sanitizeCustomCss(customCSS), [customCSS])
   const toc = useMemo(() => extractToc(content), [content])
 
   // Word and character count
@@ -1077,7 +1104,7 @@ export default function MarkdownPreview({ content, style, customCSS = '', onNavi
               {/* Rendered markdown */}
               <div dangerouslySetInnerHTML={{ __html: html }} />
               {/* Custom CSS injection */}
-              {customCSS && <style dangerouslySetInnerHTML={{ __html: customCSS }} />}
+              {safeCustomCSS && <style dangerouslySetInnerHTML={{ __html: safeCustomCSS }} />}
             </div>
           </div>
         )}
