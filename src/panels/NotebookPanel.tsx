@@ -65,6 +65,24 @@ interface InspectorVariable {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+export function NotebookHtmlOutput({ html }: { html: string }) {
+  return (
+    <iframe
+      title="Notebook HTML output"
+      sandbox=""
+      referrerPolicy="no-referrer"
+      srcDoc={html}
+      style={{
+        width: '100%',
+        minHeight: 200,
+        marginTop: 4,
+        border: 'none',
+        background: '#fff',
+      }}
+    />
+  );
+}
+
 let cellIdCounter = 0;
 const newCellId = () => `cell-${++cellIdCounter}`;
 
@@ -821,13 +839,7 @@ const NotebookPanel: React.FC = () => {
           </div>
         );
       case 'html':
-        return (
-          <div
-            key={idx}
-            dangerouslySetInnerHTML={{ __html: output.content }}
-            style={{ marginTop: 4 }}
-          />
-        );
+        return <NotebookHtmlOutput key={idx} html={output.content} />;
       case 'image':
         return (
           <div key={idx}>
