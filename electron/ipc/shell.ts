@@ -2,6 +2,7 @@ import type { IpcMain } from 'electron'
 import { shell } from 'electron'
 import { IPC } from '../../shared/ipc-channels'
 import { isSafeExternalUrl } from '../../shared/url-safety'
+import { isSafeOpenPath, isSafeRevealPath } from '../../shared/path-safety'
 
 export function registerShellHandlers(ipcMain: IpcMain) {
   // shell:open-external - open URL in default browser
@@ -19,6 +20,9 @@ export function registerShellHandlers(ipcMain: IpcMain) {
 
   // shell:show-item-in-folder - open file manager and select the file
   ipcMain.handle(IPC.SHELL_SHOW_ITEM_IN_FOLDER, async (_event, filePath: string) => {
+    if (!isSafeRevealPath(filePath)) {
+      return { success: false, error: 'Refused to reveal path: empty or contains control characters' }
+    }
     try {
       shell.showItemInFolder(filePath)
       return { success: true }
@@ -29,6 +33,9 @@ export function registerShellHandlers(ipcMain: IpcMain) {
 
   // shell:open-path - open file with default system application
   ipcMain.handle(IPC.SHELL_OPEN_PATH, async (_event, filePath: string) => {
+    if (!isSafeOpenPath(filePath)) {
+      return { success: false, error: 'Refused to open path: executable or script extensions are blocked' }
+    }
     try {
       const errorMessage = await shell.openPath(filePath)
       if (errorMessage) {
