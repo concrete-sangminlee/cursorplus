@@ -1,10 +1,14 @@
 import type { IpcMain } from 'electron'
 import { shell } from 'electron'
 import { IPC } from '../../shared/ipc-channels'
+import { isSafeExternalUrl } from '../../shared/url-safety'
 
 export function registerShellHandlers(ipcMain: IpcMain) {
   // shell:open-external - open URL in default browser
   ipcMain.handle(IPC.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
+    if (!isSafeExternalUrl(url)) {
+      return { success: false, error: 'Refused to open URL: protocol not in allowlist (http, https, mailto, tel)' }
+    }
     try {
       await shell.openExternal(url)
       return { success: true }
