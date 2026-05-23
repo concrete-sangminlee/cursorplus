@@ -5,13 +5,24 @@ import path from 'path'
 import { IPC } from '../../shared/ipc-channels'
 import { readFileContent, writeFileContent, deleteItem, renameItem, buildFileTree, detectLanguage } from '../filesystem/operations'
 import { startWatching, stopWatching, markRecentWrite } from '../filesystem/watcher'
-import { setProjectPath } from '../workspace/project-path'
+import { getProjectPath, setProjectPath } from '../workspace/project-path'
+import { resolveWorkspacePath, WorkspacePathAccessError } from './workspace-path-guard'
+import { isSafeRevealPath } from '../../shared/path-safety'
+
+async function workspacePath(rawPath: unknown, label: string): Promise<string> {
+  const rootPath = getProjectPath()
+  if (!rootPath) {
+    throw new WorkspacePathAccessError('No workspace root is open')
+  }
+  return resolveWorkspacePath(rootPath, rawPath, label)
+}
 
 export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
   ipcMain.handle(IPC.FS_READ_FILE, async (_event, filePath: string) => {
     try {
-      const content = await readFileContent(filePath)
-      const language = detectLanguage(filePath)
+      const safeFilePath = await workspacePath(filePath, 'file path')
+      const content = await readFileContent(safeFilePath)
+      const language = detectLanguage(safeFilePath)
       return { content, language }
     } catch (err: any) {
       console.error('Failed to read file:', err.message)
@@ -21,8 +32,9 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
 
   ipcMain.handle(IPC.FS_WRITE_FILE, async (_event, filePath: string, content: string) => {
     try {
-      markRecentWrite(filePath)
-      await writeFileContent(filePath, content)
+      const safeFilePath = await workspacePath(filePath, 'file path')
+      markRecentWrite(safeFilePath)
+      await writeFileContent(safeFilePath, content)
       return { success: true }
     } catch (err: any) {
       console.error('Failed to write file:', err.message)
@@ -32,7 +44,8 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
 
   ipcMain.handle(IPC.FS_DELETE, async (_event, itemPath: string) => {
     try {
-      await deleteItem(itemPath)
+      const safeItemPath = await workspacePath(itemPath, 'item path')
+      await deleteItem(safeItemPath)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
@@ -41,15 +54,25 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
 
   ipcMain.handle(IPC.FS_RENAME, async (_event, oldPath: string, newPath: string) => {
     try {
-      await renameItem(oldPath, newPath)
+      const safeOldPath = await workspacePath(oldPath, 'old path')
+      const safeNewPath = await workspacePath(newPath, 'new path')
+      await renameItem(safeOldPath, safeNewPath)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
 
+  // FS_READ_DIR is the workspace entry point — it sets the active project root
+  // that every other file:* / fs:* handler is then bounded against. We can't
+  // require an existing root here, but we still reject obviously bogus input
+  // (non-string, empty, control characters) so the rest of the chain has a
+  // sane invariant to lean on.
   ipcMain.handle(IPC.FS_READ_DIR, async (_event, dirPath: string) => {
     try {
+      if (typeof dirPath !== 'string' || !dirPath.trim() || /[\x00-\x1F\x7F]/.test(dirPath)) {
+        throw new WorkspacePathAccessError('Invalid workspace root path')
+      }
       setProjectPath(dirPath)
       return await buildFileTree(dirPath)
     } catch (err: any) {
@@ -60,8 +83,9 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
 
   ipcMain.handle(IPC.FS_CREATE_FILE, async (_event, filePath: string, content: string = '') => {
     try {
-      await fs.mkdir(path.dirname(filePath), { recursive: true })
-      await fs.writeFile(filePath, content, 'utf-8')
+      const safeFilePath = await workspacePath(filePath, 'file path')
+      await fs.mkdir(path.dirname(safeFilePath), { recursive: true })
+      await fs.writeFile(safeFilePath, content, 'utf-8')
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
@@ -70,7 +94,8 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
 
   ipcMain.handle(IPC.FS_CREATE_DIR, async (_event, dirPath: string) => {
     try {
-      await fs.mkdir(dirPath, { recursive: true })
+      const safeDirPath = await workspacePath(dirPath, 'directory path')
+      await fs.mkdir(safeDirPath, { recursive: true })
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
@@ -83,6 +108,14 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
     const maxResults = 200
 
     if (!query) return results
+
+    let safeRootPath: string
+    try {
+      safeRootPath = await workspacePath(rootPath, 'search root')
+    } catch (err: any) {
+      console.warn('Refused fs:search root:', err.message)
+      return results
+    }
 
     // Construct the search pattern once, outside the recursion. The previous
     // implementation rebuilt it for every file (and used the `g` flag with
@@ -120,28 +153,34 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
       } catch {}
     }
 
-    await searchDir(rootPath)
+    await searchDir(safeRootPath)
     return results
   })
 
   // Trash – attempt shell.trashItem first, fall back to rm
   ipcMain.handle(IPC.FS_TRASH, async (_event, itemPath: string) => {
     try {
-      await shell.trashItem(itemPath)
-      return { success: true }
-    } catch {
+      const safeItemPath = await workspacePath(itemPath, 'item path')
       try {
-        await fs.rm(itemPath, { recursive: true })
+        await shell.trashItem(safeItemPath)
         return { success: true }
-      } catch (err: any) {
-        return { success: false, error: err.message }
+      } catch {
+        await fs.rm(safeItemPath, { recursive: true })
+        return { success: true }
       }
+    } catch (err: any) {
+      return { success: false, error: err.message }
     }
   })
 
-  // Copy path to clipboard
+  // Copy path to clipboard – the path is never touched on disk, but we still
+  // reject NUL / control characters so a compromised renderer can't smuggle
+  // weird payloads into the user clipboard.
   ipcMain.handle(IPC.FS_COPY_PATH, async (_event, itemPath: string) => {
     try {
+      if (!isSafeRevealPath(itemPath)) {
+        return { success: false, error: 'Refused to copy path: empty or contains control characters' }
+      }
       clipboard.writeText(itemPath)
       return { success: true }
     } catch (err: any) {
@@ -152,9 +191,10 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
   // Duplicate a file – creates "<name> (copy).<ext>" next to original
   ipcMain.handle(IPC.FS_DUPLICATE, async (_event, srcPath: string) => {
     try {
-      const dir = path.dirname(srcPath)
-      const ext = path.extname(srcPath)
-      const base = path.basename(srcPath, ext)
+      const safeSrcPath = await workspacePath(srcPath, 'source path')
+      const dir = path.dirname(safeSrcPath)
+      const ext = path.extname(safeSrcPath)
+      const base = path.basename(safeSrcPath, ext)
       let copyPath = path.join(dir, `${base} (copy)${ext}`)
       // Avoid collisions
       let counter = 2
@@ -167,11 +207,11 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
           break // path doesn't exist, safe to use
         }
       }
-      const stat = await fs.stat(srcPath)
+      const stat = await fs.stat(safeSrcPath)
       if (stat.isDirectory()) {
-        await copyDir(srcPath, copyPath)
+        await copyDir(safeSrcPath, copyPath)
       } else {
-        await fs.copyFile(srcPath, copyPath)
+        await fs.copyFile(safeSrcPath, copyPath)
       }
       return { success: true, newPath: copyPath }
     } catch (err: any) {
@@ -179,8 +219,14 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
     }
   })
 
-  // Reveal item in system file manager
+  // Reveal item in system file manager. showItemInFolder doesn't execute the
+  // target, so a lighter NUL/control-character check (mirroring shell.ts) is
+  // sufficient — applying full workspace containment would break the legit
+  // case of revealing a recently-opened file that's outside the project.
   ipcMain.handle(IPC.FS_SHOW_ITEM, async (_event, itemPath: string) => {
+    if (!isSafeRevealPath(itemPath)) {
+      return { success: false, error: 'Refused to reveal path: empty or contains control characters' }
+    }
     try {
       shell.showItemInFolder(itemPath)
       return { success: true }
@@ -192,8 +238,10 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
   // Copy a file from source to destination directory
   ipcMain.handle(IPC.FS_COPY_FILE, async (_event, srcPath: string, destDir: string) => {
     try {
-      const fileName = path.basename(srcPath)
-      let destPath = path.join(destDir, fileName)
+      const safeSrcPath = await workspacePath(srcPath, 'source path')
+      const safeDestDir = await workspacePath(destDir, 'destination directory')
+      const fileName = path.basename(safeSrcPath)
+      let destPath = path.join(safeDestDir, fileName)
       // Avoid overwriting: if destination exists, add a suffix
       let counter = 1
       const ext = path.extname(fileName)
@@ -202,17 +250,17 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
         try {
           await fs.access(destPath)
           counter++
-          destPath = path.join(destDir, `${base} (${counter})${ext}`)
+          destPath = path.join(safeDestDir, `${base} (${counter})${ext}`)
         } catch {
           break // path doesn't exist, safe to use
         }
       }
-      const stat = await fs.stat(srcPath)
+      const stat = await fs.stat(safeSrcPath)
       if (stat.isDirectory()) {
-        await copyDir(srcPath, destPath)
+        await copyDir(safeSrcPath, destPath)
       } else {
-        await fs.mkdir(destDir, { recursive: true })
-        await fs.copyFile(srcPath, destPath)
+        await fs.mkdir(safeDestDir, { recursive: true })
+        await fs.copyFile(safeSrcPath, destPath)
       }
       return { success: true, newPath: destPath }
     } catch (err: any) {
@@ -220,8 +268,13 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
     }
   })
 
-  ipcMain.on(IPC.FS_WATCH_START, (_event, dirPath: string) => {
-    startWatching(dirPath, getWindow)
+  ipcMain.on(IPC.FS_WATCH_START, async (_event, dirPath: string) => {
+    try {
+      const safeDirPath = await workspacePath(dirPath, 'watch path')
+      startWatching(safeDirPath, getWindow)
+    } catch (err: any) {
+      console.warn('Refused fs:watch-start:', err.message)
+    }
   })
 
   ipcMain.on(IPC.FS_WATCH_STOP, () => {
