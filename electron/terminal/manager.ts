@@ -1,5 +1,6 @@
 import os from 'os'
 import path from 'path'
+import { getProjectPath } from '../workspace/project-path'
 
 interface PtyProcess {
   onData: (callback: (data: string) => void) => void
@@ -14,11 +15,6 @@ export interface ShellOptions {
 }
 
 const terminals = new Map<string, PtyProcess>()
-let currentProjectPath: string | null = null
-
-export function setProjectPath(projectPath: string) {
-  currentProjectPath = projectPath
-}
 
 function detectShell(): string {
   if (process.platform === 'win32') {
@@ -46,7 +42,7 @@ export async function createTerminal(
 
     const shell = shellOptions?.shellPath || detectShell()
     const args = shellOptions?.shellArgs || []
-    const cwd = currentProjectPath || os.homedir()
+    const cwd = getProjectPath() || os.homedir()
     const term = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: 80,

@@ -5,7 +5,7 @@ import path from 'path'
 import { IPC } from '../../shared/ipc-channels'
 import { readFileContent, writeFileContent, deleteItem, renameItem, buildFileTree, detectLanguage } from '../filesystem/operations'
 import { startWatching, stopWatching, markRecentWrite } from '../filesystem/watcher'
-import { setProjectPath } from '../terminal/manager'
+import { setProjectPath } from '../workspace/project-path'
 
 export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
   ipcMain.handle(IPC.FS_READ_FILE, async (_event, filePath: string) => {
