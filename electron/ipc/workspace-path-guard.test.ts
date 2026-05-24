@@ -20,6 +20,18 @@ async function canCreateDirectoryLink(target: string, linkPath: string): Promise
   }
 }
 
+async function canCreateFileLink(target: string, linkPath: string): Promise<boolean> {
+  try {
+    await fs.symlink(target, linkPath, 'file')
+    return true
+  } catch (err: any) {
+    if (err?.code === 'EPERM' || err?.code === 'EACCES' || err?.code === 'ENOTSUP') {
+      return false
+    }
+    throw err
+  }
+}
+
 beforeEach(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'orion-workspace-guard-'))
   workspaceRoot = path.join(tempDir, 'workspace')
@@ -140,8 +152,26 @@ describe('resolveWorkspaceRootPath', () => {
     await expect(resolveWorkspaceRootPath(filePath)).rejects.toThrow('directory required')
   })
 
+  it('rejects symlinks that resolve to files as workspace roots', async () => {
+    const filePath = path.join(tempDir, 'target-file.txt')
+    const linkPath = path.join(tempDir, 'link-to-file')
+    await fs.writeFile(filePath, 'hello')
+    const linked = await canCreateFileLink(filePath, linkPath)
+    if (!linked) {
+      console.warn('Skipping file symlink workspace root test: insufficient privileges')
+      return
+    }
+
+    await expect(resolveWorkspaceRootPath(linkPath)).rejects.toThrow('directory required')
+  })
+
   it('rejects relative workspace roots', async () => {
     await expect(resolveWorkspaceRootPath('relative-workspace')).rejects.toThrow('absolute path required')
+  })
+
+  it('rejects non-string workspace roots', async () => {
+    await expect(resolveWorkspaceRootPath(null)).rejects.toThrow('expected a string')
+    await expect(resolveWorkspaceRootPath(123)).rejects.toThrow('expected a string')
   })
 
   it('rejects missing workspace roots', async () => {

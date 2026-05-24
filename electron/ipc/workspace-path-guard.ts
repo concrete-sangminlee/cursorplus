@@ -72,16 +72,15 @@ async function resolveWorkspaceRoot(
     throw new WorkspacePathAccessError('No workspace root is open')
   }
 
-  const stat = await fs.stat(realPath)
-  if (!stat.isDirectory()) {
-    throw new WorkspacePathAccessError('Invalid workspace root: directory required')
-  }
-
   return { lexicalPath, realPath: path.resolve(realPath) }
 }
 
 export async function resolveWorkspaceRootPath(workspaceRoot: unknown): Promise<string> {
-  const { lexicalPath } = await resolveWorkspaceRoot(workspaceRoot)
+  const { lexicalPath, realPath } = await resolveWorkspaceRoot(workspaceRoot)
+  const stat = await fs.stat(realPath)
+  if (!stat.isDirectory()) {
+    throw new WorkspacePathAccessError('Invalid workspace root: directory required')
+  }
   return lexicalPath
 }
 
