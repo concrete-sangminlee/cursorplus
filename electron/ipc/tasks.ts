@@ -3,23 +3,60 @@ import { spawn, type ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { IPC } from '../../shared/ipc-channels'
+import { resolveActiveWorkspacePath } from './workspace-path-guard'
 
 const runningTasks = new Map<string, ChildProcess>()
 let taskCounter = 0
+
+function isLikelyCommand(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  // Reject NUL bytes (some shells parse the byte and silently truncate, so
+  // an attacker can hide a tail of the command past the NUL). We deliberately
+  // do NOT filter other control characters or metacharacters — running a
+  // user-supplied command line through `cmd /c` / `sh -c` is the documented
+  // contract of task:run.
+  if (/\x00/.test(trimmed)) return false
+  return true
+}
 
 export function registerTaskHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
   ipcMain.handle(
     IPC.TASK_RUN,
     async (_event, args: { command: string; cwd: string; label: string }) => {
       const taskId = `task-${++taskCounter}-${Date.now()}`
-      const { command, cwd, label } = args
+      const { command, cwd, label } = args ?? ({} as { command?: string; cwd?: string; label?: string })
+      const safeLabel = typeof label === 'string' ? label : 'task'
+
+      const emitFailure = (message: string) => {
+        const win = getWindow()
+        win?.webContents.send(IPC.TASK_OUTPUT, {
+          taskId,
+          data: `Error: ${message}\n`,
+          stream: 'stderr',
+        })
+        win?.webContents.send(IPC.TASK_COMPLETE, { taskId, code: 1 })
+        return { taskId, label: safeLabel, command: typeof command === 'string' ? command : '' }
+      }
+
+      if (!isLikelyCommand(command)) {
+        return emitFailure('Refused to run task: command is empty, non-string, or contains NUL')
+      }
+
+      let safeCwd: string
+      try {
+        safeCwd = await resolveActiveWorkspacePath(cwd, 'task cwd')
+      } catch (err: any) {
+        return emitFailure(`Refused to run task: ${err.message}`)
+      }
 
       const isWindows = process.platform === 'win32'
       const shell = isWindows ? 'cmd.exe' : '/bin/sh'
       const shellArgs = isWindows ? ['/c', command] : ['-c', command]
 
       const child = spawn(shell, shellArgs, {
-        cwd,
+        cwd: safeCwd,
         env: { ...process.env },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -65,7 +102,7 @@ export function registerTaskHandlers(ipcMain: IpcMain, getWindow: () => BrowserW
         })
       })
 
-      return { taskId, label, command }
+      return { taskId, label: safeLabel, command }
     }
   )
 
@@ -74,7 +111,9 @@ export function registerTaskHandlers(ipcMain: IpcMain, getWindow: () => BrowserW
     if (!child) return { success: false, error: 'Task not found' }
 
     try {
-      // On Windows, use taskkill to kill the process tree
+      // On Windows, use taskkill to kill the process tree. child.pid comes
+      // from our own runningTasks map, not from the renderer, so it's safe
+      // to interpolate.
       if (process.platform === 'win32' && child.pid) {
         spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
       } else {
@@ -88,8 +127,14 @@ export function registerTaskHandlers(ipcMain: IpcMain, getWindow: () => BrowserW
   })
 
   ipcMain.handle(IPC.TASK_LIST_SCRIPTS, async (_event, cwd: string) => {
+    let safeCwd: string
     try {
-      const pkgPath = path.join(cwd, 'package.json')
+      safeCwd = await resolveActiveWorkspacePath(cwd, 'scripts cwd')
+    } catch {
+      return []
+    }
+    try {
+      const pkgPath = path.join(safeCwd, 'package.json')
       const content = fs.readFileSync(pkgPath, 'utf-8')
       const pkg = JSON.parse(content)
       const scripts = pkg.scripts || {}
