@@ -1,5 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
+import { getProjectPath } from '../workspace/project-path'
 
 const CONTROL_CHARACTER_RE = /[\x00-\x1F\x7F]/
 
@@ -56,22 +57,40 @@ async function nearestExistingAncestor(targetPath: string): Promise<string> {
   }
 }
 
-export async function resolveWorkspacePath(
+async function resolveWorkspaceRoot(
   workspaceRoot: unknown,
-  candidatePath: unknown,
-  label = 'path',
-): Promise<string> {
+): Promise<{ lexicalPath: string; realPath: string }> {
   const rootInput = normalizePathInput(workspaceRoot, 'workspace root')
   if (!path.isAbsolute(rootInput)) {
     throw new WorkspacePathAccessError('Invalid workspace root: absolute path required')
   }
 
-  const rootLexicalPath = path.resolve(rootInput)
-  const rootRealPath = await realpathIfPresent(rootLexicalPath)
+  const lexicalPath = path.resolve(rootInput)
+  const realPath = await realpathIfPresent(lexicalPath)
 
-  if (!rootRealPath) {
+  if (!realPath) {
     throw new WorkspacePathAccessError('No workspace root is open')
   }
+
+  const stat = await fs.stat(realPath)
+  if (!stat.isDirectory()) {
+    throw new WorkspacePathAccessError('Invalid workspace root: directory required')
+  }
+
+  return { lexicalPath, realPath: path.resolve(realPath) }
+}
+
+export async function resolveWorkspaceRootPath(workspaceRoot: unknown): Promise<string> {
+  const { lexicalPath } = await resolveWorkspaceRoot(workspaceRoot)
+  return lexicalPath
+}
+
+export async function resolveWorkspacePath(
+  workspaceRoot: unknown,
+  candidatePath: unknown,
+  label = 'path',
+): Promise<string> {
+  const { lexicalPath: rootLexicalPath, realPath: rootRealPath } = await resolveWorkspaceRoot(workspaceRoot)
 
   const candidateInput = normalizePathInput(candidatePath, label)
   if (!path.isAbsolute(candidateInput)) {
@@ -86,16 +105,24 @@ export async function resolveWorkspacePath(
 
   const candidateRealPath = await realpathIfPresent(resolvedCandidate)
   if (candidateRealPath) {
-    if (!isPathInside(path.resolve(rootRealPath), path.resolve(candidateRealPath))) {
+    if (!isPathInside(rootRealPath, path.resolve(candidateRealPath))) {
       throw new WorkspacePathAccessError(`Refused ${label}: resolves outside workspace root`)
     }
     return resolvedCandidate
   }
 
   const ancestorRealPath = await nearestExistingAncestor(path.dirname(resolvedCandidate))
-  if (!isPathInside(path.resolve(rootRealPath), ancestorRealPath)) {
+  if (!isPathInside(rootRealPath, ancestorRealPath)) {
     throw new WorkspacePathAccessError(`Refused ${label}: parent resolves outside workspace root`)
   }
 
   return resolvedCandidate
+}
+
+export async function resolveActiveWorkspacePath(rawPath: unknown, label: string): Promise<string> {
+  const rootPath = getProjectPath()
+  if (!rootPath) {
+    throw new WorkspacePathAccessError('No workspace root is open')
+  }
+  return resolveWorkspacePath(rootPath, rawPath, label)
 }

@@ -3,26 +3,17 @@ import fs from 'fs/promises'
 import path from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { IPC } from '../../shared/ipc-channels'
-import { getProjectPath } from '../workspace/project-path'
-import { resolveWorkspacePath, WorkspacePathAccessError } from './workspace-path-guard'
+import { resolveActiveWorkspacePath, WorkspacePathAccessError } from './workspace-path-guard'
 
 // Track per-path watchers for file:watch
 const fileWatchers = new Map<string, FSWatcher>()
-
-async function workspacePath(rawPath: unknown, label: string): Promise<string> {
-  const rootPath = getProjectPath()
-  if (!rootPath) {
-    throw new WorkspacePathAccessError('No workspace root is open')
-  }
-  return resolveWorkspacePath(rootPath, rawPath, label)
-}
 
 export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
   // file:rename - rename/move a file or directory
   ipcMain.handle(IPC.FILE_RENAME, async (_event, oldPath: string, newPath: string) => {
     try {
-      const safeOldPath = await workspacePath(oldPath, 'old path')
-      const safeNewPath = await workspacePath(newPath, 'new path')
+      const safeOldPath = await resolveActiveWorkspacePath(oldPath, 'old path')
+      const safeNewPath = await resolveActiveWorkspacePath(newPath, 'new path')
       await fs.rename(safeOldPath, safeNewPath)
       return { success: true }
     } catch (err: any) {
@@ -33,8 +24,8 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:copy - copy a file from sourcePath to destPath
   ipcMain.handle(IPC.FILE_COPY, async (_event, sourcePath: string, destPath: string) => {
     try {
-      const safeSourcePath = await workspacePath(sourcePath, 'source path')
-      const safeDestPath = await workspacePath(destPath, 'destination path')
+      const safeSourcePath = await resolveActiveWorkspacePath(sourcePath, 'source path')
+      const safeDestPath = await resolveActiveWorkspacePath(destPath, 'destination path')
       await fs.mkdir(path.dirname(safeDestPath), { recursive: true })
       await fs.copyFile(safeSourcePath, safeDestPath)
       return { success: true }
@@ -46,8 +37,8 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:move - move a file from sourcePath to destPath
   ipcMain.handle(IPC.FILE_MOVE, async (_event, sourcePath: string, destPath: string) => {
     try {
-      const safeSourcePath = await workspacePath(sourcePath, 'source path')
-      const safeDestPath = await workspacePath(destPath, 'destination path')
+      const safeSourcePath = await resolveActiveWorkspacePath(sourcePath, 'source path')
+      const safeDestPath = await resolveActiveWorkspacePath(destPath, 'destination path')
       await fs.mkdir(path.dirname(safeDestPath), { recursive: true })
       await fs.rename(safeSourcePath, safeDestPath)
       return { success: true }
@@ -59,7 +50,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:stat - get file stats
   ipcMain.handle(IPC.FILE_STAT, async (_event, filePath: string) => {
     try {
-      const safeFilePath = await workspacePath(filePath, 'file path')
+      const safeFilePath = await resolveActiveWorkspacePath(filePath, 'file path')
       const stat = await fs.stat(safeFilePath)
       return {
         success: true,
@@ -80,7 +71,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:exists - check if path exists
   ipcMain.handle(IPC.FILE_EXISTS, async (_event, filePath: string) => {
     try {
-      const safeFilePath = await workspacePath(filePath, 'file path')
+      const safeFilePath = await resolveActiveWorkspacePath(filePath, 'file path')
       await fs.access(safeFilePath)
       return true
     } catch (err: any) {
@@ -94,7 +85,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:create-directory - recursively create directory
   ipcMain.handle(IPC.FILE_CREATE_DIRECTORY, async (_event, dirPath: string) => {
     try {
-      const safeDirPath = await workspacePath(dirPath, 'directory path')
+      const safeDirPath = await resolveActiveWorkspacePath(dirPath, 'directory path')
       await fs.mkdir(safeDirPath, { recursive: true })
       return { success: true }
     } catch (err: any) {
@@ -105,7 +96,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:delete-directory - recursively delete directory
   ipcMain.handle(IPC.FILE_DELETE_DIRECTORY, async (_event, dirPath: string) => {
     try {
-      const safeDirPath = await workspacePath(dirPath, 'directory path')
+      const safeDirPath = await resolveActiveWorkspacePath(dirPath, 'directory path')
       await fs.rm(safeDirPath, { recursive: true, force: true })
       return { success: true }
     } catch (err: any) {
@@ -116,7 +107,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:watch - watch a path for changes and send events to renderer
   ipcMain.handle(IPC.FILE_WATCH, async (_event, watchPath: string) => {
     try {
-      const safeWatchPath = await workspacePath(watchPath, 'watch path')
+      const safeWatchPath = await resolveActiveWorkspacePath(watchPath, 'watch path')
 
       // Stop any existing watcher on this path
       const existing = fileWatchers.get(safeWatchPath)
@@ -172,7 +163,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
   // file:read-binary - read file as base64 (for images, etc.)
   ipcMain.handle(IPC.FILE_READ_BINARY, async (_event, filePath: string) => {
     try {
-      const safeFilePath = await workspacePath(filePath, 'file path')
+      const safeFilePath = await resolveActiveWorkspacePath(filePath, 'file path')
       const buffer = await fs.readFile(safeFilePath)
       return { success: true, data: buffer.toString('base64') }
     } catch (err: any) {

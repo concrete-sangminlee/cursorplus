@@ -2,7 +2,7 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isPathInside, resolveWorkspacePath, WorkspacePathAccessError } from './workspace-path-guard'
+import { isPathInside, resolveWorkspacePath, resolveWorkspaceRootPath, WorkspacePathAccessError } from './workspace-path-guard'
 
 let tempDir: string
 let workspaceRoot: string
@@ -125,5 +125,31 @@ describe('resolveWorkspacePath', () => {
 
     const futurePath = path.join(linkPath, 'created-later.txt')
     await expect(resolveWorkspacePath(workspaceRoot, futurePath)).rejects.toThrow('parent resolves outside workspace root')
+  })
+})
+
+describe('resolveWorkspaceRootPath', () => {
+  it('allows existing absolute directory roots', async () => {
+    await expect(resolveWorkspaceRootPath(workspaceRoot)).resolves.toBe(path.resolve(workspaceRoot))
+  })
+
+  it('rejects file paths as workspace roots', async () => {
+    const filePath = path.join(workspaceRoot, 'not-a-directory.txt')
+    await fs.writeFile(filePath, 'hello')
+
+    await expect(resolveWorkspaceRootPath(filePath)).rejects.toThrow('directory required')
+  })
+
+  it('rejects relative workspace roots', async () => {
+    await expect(resolveWorkspaceRootPath('relative-workspace')).rejects.toThrow('absolute path required')
+  })
+
+  it('rejects missing workspace roots', async () => {
+    await expect(resolveWorkspaceRootPath(path.join(tempDir, 'missing-workspace'))).rejects.toThrow('No workspace root is open')
+  })
+
+  it('rejects malformed workspace roots', async () => {
+    await expect(resolveWorkspaceRootPath('')).rejects.toThrow('empty path')
+    await expect(resolveWorkspaceRootPath(`${workspaceRoot}\x00`)).rejects.toThrow('control characters')
   })
 })
