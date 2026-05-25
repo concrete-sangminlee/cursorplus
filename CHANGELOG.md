@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Clipboard IPC now rejects oversized payloads before they cross the renderer/main-process boundary. Text writes are capped at 5 MiB, clipboard images are capped at 16 megapixels and 25 MiB after PNG encoding, and malformed clipboard payload shapes are rejected with explicit errors. Added 12 regression tests in `electron/ipc/clipboard-guard.test.ts`.
 - Workspace opening now uses a dedicated `fs:open-workspace` IPC channel instead of overloading `fs:read-dir`. Only the new channel can validate and set the active workspace root; ordinary `fs:read-dir` calls are constrained to the current workspace and never mutate the root, removing the previous path-comparison heuristic that inferred caller intent.
 - `terminal:create` now validates the renderer-supplied shell options shape before calling `pty.spawn()`. Custom shells remain supported, but `shellPath` must be a non-empty string without NUL/control characters and `shellArgs` must be an array of strings without NUL bytes, preventing malformed IPC payloads from escaping the documented terminal shell-selection contract. Added 13 regression tests in `electron/ipc/terminal-options-guard.test.ts`.
 - `omo:start` no longer accepts an unused renderer-supplied project path. The OMO bridge never consumed that value, so the IPC contract now starts the assistant without letting a compromised renderer smuggle arbitrary path strings through an otherwise pathless initialization flow.
