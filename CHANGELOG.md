@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `customCSS` passed to `MarkdownPreview` is now sanitized before injection into both the live preview and the exported HTML. `@import` directives, `</style>` breakout attempts, `expression(...)` (legacy IE), and any `url(...)` that isn't a `data:` URI are stripped — closes CSS-based exfiltration via attribute-selector tricks and external resource fetches.
 
 ### Fixed
+- Open Folder commands from the command palette, welcome tab, recent-folder list, and native app menu now all route through the shared workspace-open flow instead of only opening the OS picker or dispatching an unhandled event.
 - Top-level `program.parseAsync(...)` now has a `.catch()` handler, so unhandled rejections from command handlers print a friendly error and exit 1 instead of dumping an unhandled-rejection warning.
 - `FS_SEARCH` IPC handler: hoisted the regex out of the per-file loop (was rebuilding it for every file), dropped the unused `g` flag together with its fragile `lastIndex` reset, and now lets an invalid user regex reject the renderer promise instead of silently skipping every file.
 - `orion search`: same regex hot-loop fix — dropped the `g` flag and removed the per-iteration `lastIndex` resets that were papering over its stateful semantics.
