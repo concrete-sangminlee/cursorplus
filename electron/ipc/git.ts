@@ -3,6 +3,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
+import { resolveGitCwd } from './git-cwd-guard'
 
 const execFileAsync = promisify(execFile)
 
@@ -15,12 +16,13 @@ const execFileAsync = promisify(execFile)
  * cannot inject commands via shell metacharacters.
  */
 async function runGitExec(
-  cwd: string,
+  cwd: unknown,
   args: string[],
   options?: { timeout?: number; maxBuffer?: number }
 ): Promise<string> {
+  const safeCwd = await resolveGitCwd(cwd)
   const { stdout } = await execFileAsync('git', args, {
-    cwd,
+    cwd: safeCwd,
     timeout: options?.timeout ?? 10000,
     maxBuffer: options?.maxBuffer ?? 1024 * 1024 * 5,
   })
@@ -33,7 +35,7 @@ async function runGitExec(
  * upstream queries) rather than propagating errors to the renderer.
  */
 async function runGitOrEmpty(
-  cwd: string,
+  cwd: unknown,
   args: string[],
   options?: { timeout?: number; maxBuffer?: number }
 ): Promise<string> {
