@@ -195,6 +195,7 @@ export interface ElectronAPI {
   writeFile: (filePath: string, content: string) => Promise<SuccessResult>
   deleteFile: (filePath: string) => Promise<SuccessResult>
   renameFile: (oldPath: string, newPath: string) => Promise<SuccessResult>
+  openWorkspace: (rootPath: string) => Promise<FileTreeNode[]>
   readDir: (dirPath: string) => Promise<FileTreeNode[]>
   openFolder: () => Promise<string | null>
   createFile: (filePath: string, content?: string) => Promise<SuccessResult>

@@ -1283,10 +1283,10 @@ export default function FileExplorer() {
   const handleOpenFolder = async () => {
     const path = await window.api.openFolder()
     if (path) {
+      const tree = await window.api.openWorkspace(path)
       setRootPath(path)
       // Load workspace settings for the opened folder
       await useWorkspaceStore.getState().loadWorkspaceSettings(path)
-      const tree = await window.api.readDir(path)
       setFileTree(tree)
       window.api.watchStart(path)
     }

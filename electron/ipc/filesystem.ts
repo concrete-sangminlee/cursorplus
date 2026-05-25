@@ -5,22 +5,9 @@ import path from 'path'
 import { IPC } from '../../shared/ipc-channels'
 import { readFileContent, writeFileContent, deleteItem, renameItem, buildFileTree, detectLanguage } from '../filesystem/operations'
 import { startWatching, stopWatching, markRecentWrite } from '../filesystem/watcher'
-import { getProjectPath, setProjectPath } from '../workspace/project-path'
-import { resolveActiveWorkspacePath, resolveWorkspacePath, resolveWorkspaceRootPath, WorkspacePathAccessError } from './workspace-path-guard'
+import { setProjectPath } from '../workspace/project-path'
+import { resolveActiveWorkspacePath, resolveWorkspaceRootPath } from './workspace-path-guard'
 import { isSafeRevealPath } from '../../shared/path-safety'
-
-async function shouldUpdateProjectPath(dirPath: string): Promise<boolean> {
-  const currentRoot = getProjectPath()
-  if (!currentRoot) return true
-
-  try {
-    await resolveWorkspacePath(currentRoot, dirPath, 'directory path')
-    return false
-  } catch (err) {
-    if (err instanceof WorkspacePathAccessError) return true
-    throw err
-  }
-}
 
 export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
   ipcMain.handle(IPC.FS_READ_FILE, async (_event, filePath: string) => {
@@ -68,20 +55,25 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
     }
   })
 
-  // FS_READ_DIR is the workspace entry point — it sets the active project root
-  // that every other file:* / fs:* handler is then bounded against. We can't
-  // require an existing root here, but we still reject obviously bogus input
-  // (non-string, empty, control characters) so the rest of the chain has a
-  // sane invariant to lean on. Subdirectory reads no longer narrow the active root.
+  // Opens or switches the active workspace root. All ordinary directory reads
+  // below are then constrained to this root.
+  ipcMain.handle(IPC.FS_OPEN_WORKSPACE, async (_event, rootPath: string) => {
+    try {
+      const safeRootPath = await resolveWorkspaceRootPath(rootPath)
+      const tree = await buildFileTree(safeRootPath)
+      setProjectPath(safeRootPath)
+      return tree
+    } catch (err: any) {
+      console.error('Failed to open workspace:', err.message)
+      return []
+    }
+  })
+
+  // Reads a directory inside the active workspace without changing the root.
   ipcMain.handle(IPC.FS_READ_DIR, async (_event, dirPath: string) => {
     try {
-      const safeDirPath = await resolveWorkspaceRootPath(dirPath)
-      const updateProjectPath = await shouldUpdateProjectPath(safeDirPath)
-      const tree = await buildFileTree(safeDirPath)
-      if (updateProjectPath) {
-        setProjectPath(safeDirPath)
-      }
-      return tree
+      const safeDirPath = await resolveActiveWorkspacePath(dirPath, 'directory path')
+      return await buildFileTree(safeDirPath)
     } catch (err: any) {
       console.error('Failed to read dir:', err.message)
       return []

@@ -4,6 +4,7 @@ export const IPC = {
   FS_WRITE_FILE: 'fs:write-file',
   FS_DELETE: 'fs:delete',
   FS_RENAME: 'fs:rename',
+  FS_OPEN_WORKSPACE: 'fs:open-workspace',
   FS_READ_DIR: 'fs:read-dir',
   FS_WATCH_START: 'fs:watch-start',
   FS_WATCH_STOP: 'fs:watch-stop',

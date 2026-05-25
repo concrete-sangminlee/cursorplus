@@ -364,7 +364,7 @@ export default function EditorPanel() {
       const filePath = (droppedFile as any).path as string | undefined
       if (filePath) {
         try {
-          const tree = await window.api.readDir(filePath)
+          const tree = await window.api.openWorkspace(filePath)
           if (tree && Array.isArray(tree) && tree.length >= 0) {
             // It's a valid directory - set as workspace root
             setRootPath(filePath)

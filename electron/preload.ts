@@ -200,6 +200,8 @@ const api = {
     ipcRenderer.invoke(IPC.FS_DELETE, filePath),
   renameFile: (oldPath: string, newPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_RENAME, oldPath, newPath),
+  openWorkspace: (rootPath: string): Promise<unknown[]> =>
+    ipcRenderer.invoke(IPC.FS_OPEN_WORKSPACE, rootPath),
   readDir: (dirPath: string): Promise<unknown[]> =>
     ipcRenderer.invoke(IPC.FS_READ_DIR, dirPath),
   openFolder: (): Promise<string | null> =>
