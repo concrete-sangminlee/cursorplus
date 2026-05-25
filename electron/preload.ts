@@ -381,8 +381,8 @@ const api = {
   // =======================================================================
   // OMO / AI assistant (registered via ipc/omo.ts)
   // =======================================================================
-  omoStart: (projectPath: string): Promise<void> =>
-    ipcRenderer.invoke(IPC.OMO_START, projectPath),
+  omoStart: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.OMO_START),
   omoStop: (): Promise<void> =>
     ipcRenderer.invoke(IPC.OMO_STOP),
   omoSend: (message: unknown): void =>

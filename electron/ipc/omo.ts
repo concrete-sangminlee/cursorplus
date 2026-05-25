@@ -3,8 +3,8 @@ import { IPC } from '../../shared/ipc-channels'
 import { startOmo, sendToOmo, stopOmo, setApiKeys, setPrompts } from '../omo-bridge/bridge'
 
 export function registerOmoHandlers(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
-  ipcMain.handle(IPC.OMO_START, async (_event, projectPath: string) => {
-    await startOmo(projectPath, (event) => {
+  ipcMain.handle(IPC.OMO_START, async () => {
+    await startOmo((event) => {
       getWindow()?.webContents.send(IPC.OMO_MESSAGE, event)
     })
   })

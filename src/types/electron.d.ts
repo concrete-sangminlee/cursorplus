@@ -294,7 +294,7 @@ export interface ElectronAPI {
   // =========================================================================
   // OMO / AI assistant
   // =========================================================================
-  omoStart: (projectPath: string) => Promise<void>
+  omoStart: () => Promise<void>
   omoStop: () => Promise<void>
   omoSend: (message: unknown) => void
   omoSetApiKeys: (keys: Record<string, string>) => Promise<void>

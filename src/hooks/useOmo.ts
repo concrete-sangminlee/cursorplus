@@ -22,7 +22,7 @@ export function useOmo() {
     appendOutput('Orion', `User Agent: ${navigator.userAgent}`, 'info')
     appendOutput('Orion', 'Initializing OMO agent framework...', 'info')
 
-    window.api.omoStart('.')
+    window.api.omoStart()
 
     const cleanup = window.api.onOmoMessage((raw: any) => {
       const event = raw as { type: string; payload: any }

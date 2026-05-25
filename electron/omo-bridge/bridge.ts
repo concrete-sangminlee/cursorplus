@@ -146,7 +146,7 @@ export function setPrompts(prompts: { systemPrompt?: string; userPromptTemplate?
   setCustomPrompts(prompts)
 }
 
-export async function startOmo(path: string, onMessage: (event: OmoEvent) => void): Promise<void> {
+export async function startOmo(onMessage: (event: OmoEvent) => void): Promise<void> {
   console.log('[OMO] Starting...')
   messageHandler = onMessage
   agents = defaultAgents.map((a) => ({ ...a }))
