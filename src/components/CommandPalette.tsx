@@ -382,7 +382,7 @@ export default function CommandPalette({ open, onClose, onOpenSettings }: Props)
     { id: 'new-file', label: 'File: New File', category: 'command' as const, icon: <FilePlus size={14} />, shortcut: 'Ctrl+N', action: () => { dispatch('orion:new-file'); onClose() }, group: 'File' },
     { id: 'new-window', label: 'File: New Window', category: 'command' as const, icon: <Maximize2 size={14} />, shortcut: 'Ctrl+Shift+N', action: () => { dispatch('orion:new-window'); onClose() }, group: 'File' },
     { id: 'open-file', label: 'File: Open File', category: 'command' as const, icon: <FolderOpenDot size={14} />, shortcut: 'Ctrl+O', action: () => { window.api?.openFile?.(); onClose() }, group: 'File' },
-    { id: 'open-folder', label: 'File: Open Folder', category: 'command' as const, icon: <FolderOpen size={14} />, shortcut: 'Ctrl+K Ctrl+O', action: () => { window.api?.openFolder(); onClose() }, group: 'File' },
+    { id: 'open-folder', label: 'File: Open Folder', category: 'command' as const, icon: <FolderOpen size={14} />, shortcut: 'Ctrl+K Ctrl+O', action: () => { dispatch('orion:open-folder'); onClose() }, group: 'File' },
     { id: 'save', label: 'File: Save', category: 'command' as const, icon: <Save size={14} />, shortcut: 'Ctrl+S', action: () => { dispatch('orion:save-file'); onClose() }, group: 'File' },
     { id: 'save-as', label: 'File: Save As...', category: 'command' as const, icon: <Save size={14} />, shortcut: 'Ctrl+Shift+S', action: () => { dispatch('orion:save-file-as'); onClose() }, group: 'File' },
     { id: 'save-all', label: 'File: Save All', category: 'command' as const, icon: <SaveAll size={14} />, shortcut: 'Ctrl+K S', action: () => { dispatch('orion:save-all'); onClose() }, group: 'File' },

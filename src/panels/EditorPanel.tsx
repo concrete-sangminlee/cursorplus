@@ -3588,9 +3588,7 @@ export default function EditorPanel() {
           </>
         ) : (
           <WelcomeTab
-            onOpenFolder={() => window.api.openFolder().then((result: any) => {
-              if (result) window.dispatchEvent(new CustomEvent('orion:folder-opened', { detail: result }))
-            })}
+            onOpenFolder={() => window.dispatchEvent(new Event('orion:open-folder'))}
             onOpenPalette={() => window.dispatchEvent(new Event('orion:open-palette'))}
             onOpenTerminal={() => window.dispatchEvent(new Event('orion:toggle-terminal'))}
             onOpenSettings={() => window.dispatchEvent(new Event('orion:open-settings'))}

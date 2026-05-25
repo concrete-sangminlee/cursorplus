@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react'
-import type { OpenFile } from '@shared/types'
+import type { FileNode, OpenFile } from '@shared/types'
 import { Upload } from 'lucide-react'
 import { useFileWatcher, useExternalFileWatcher } from './hooks/useIpc'
 import { useOmo } from './hooks/useOmo'
@@ -293,6 +293,42 @@ export default function App() {
     }
   }, [])
 
+  const applyWorkspaceTree = useCallback(async (folderPath: string, tree: FileNode[], successMessage?: string) => {
+    const { setRootPath, setFileTree } = useFileStore.getState()
+    setRootPath(folderPath)
+    await useWorkspaceStore.getState().loadWorkspaceSettings(folderPath)
+    setFileTree(tree)
+    window.api.watchStart(folderPath)
+
+    if (successMessage) {
+      useToastStore.getState().addToast({ type: 'success', message: successMessage, duration: 2000 })
+    }
+
+    setSidebarVisible(true)
+    setActiveView('explorer')
+  }, [])
+
+  const openWorkspacePath = useCallback(async (folderPath: string, successMessage?: string) => {
+    const tree = await window.api.openWorkspace(folderPath)
+    await applyWorkspaceTree(folderPath, tree, successMessage)
+  }, [applyWorkspaceTree])
+
+  const promptOpenWorkspace = useCallback(async () => {
+    const folderPath = await window.api?.openFolder?.()
+    if (folderPath) {
+      await openWorkspacePath(folderPath)
+    }
+  }, [openWorkspacePath])
+
+  const handleOpenFolderEvent = useCallback((event?: Event) => {
+    const folderPath = (event as CustomEvent<string | undefined> | undefined)?.detail
+    if (typeof folderPath === 'string' && folderPath.trim()) {
+      void openWorkspacePath(folderPath)
+      return
+    }
+    void promptOpenWorkspace()
+  }, [openWorkspacePath, promptOpenWorkspace])
+
   const handleGlobalDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     globalDragCounterRef.current = 0
@@ -303,7 +339,6 @@ export default function App() {
 
     const { addToast } = useToastStore.getState()
     const { openFile } = useEditorStore.getState()
-    const { setRootPath, setFileTree } = useFileStore.getState()
 
     // Check if a single folder was dropped (Electron exposes .path on File objects)
     // A dropped folder typically has no type or size=0 in Electron
@@ -316,11 +351,7 @@ export default function App() {
           const tree = await window.api.openWorkspace(filePath)
           if (tree && Array.isArray(tree) && tree.length >= 0) {
             // It's a valid directory - set as workspace root
-            setRootPath(filePath)
-            await useWorkspaceStore.getState().loadWorkspaceSettings(filePath)
-            setFileTree(tree)
-            window.api.watchStart(filePath)
-            addToast({ type: 'success', message: `Opened folder: ${droppedFile.name}`, duration: 2000 })
+            await applyWorkspaceTree(filePath, tree, `Opened folder: ${droppedFile.name}`)
             return
           }
         } catch {
@@ -375,7 +406,7 @@ export default function App() {
         duration: 2000,
       })
     }
-  }, [])
+  }, [applyWorkspaceTree])
 
   // --- Resizer constraints ---
   const sideConstraints: ResizerConstraints = {
@@ -535,12 +566,20 @@ export default function App() {
     return () => { unsub?.() }
   }, [openModal])
 
+  useEffect(() => {
+    const unsub = window.api?.onAppOpenFolder?.((folderPath) => {
+      void openWorkspacePath(folderPath)
+    })
+    return () => { unsub?.() }
+  }, [openWorkspacePath])
+
   // Listen for custom events from menu bar / commands
   useEffect(() => {
-    const handlers: Record<string, () => void> = {
+    const handlers: Record<string, (event: Event) => void> = {
       'orion:toggle-sidebar': () => { setSidebarVisible((v) => !v); announce(sidebarVisible ? 'Sidebar collapsed' : 'Sidebar expanded') },
       'orion:toggle-terminal': () => { setBottomVisible((v) => !v); announce(bottomVisible ? 'Terminal panel closed' : 'Terminal panel opened') },
       'orion:toggle-chat': () => { setChatVisible((v) => !v); announce(chatVisible ? 'Chat panel closed' : 'Chat panel opened') },
+      'orion:open-folder': handleOpenFolderEvent,
       'orion:open-settings': () => openModal(setSettingsOpen),
       'orion:open-palette': () => openModal(setPaletteOpen),
       'orion:keyboard-shortcuts': () => openModal(setShortcutsOpen),
@@ -598,7 +637,7 @@ export default function App() {
         window.removeEventListener(event, handler)
       })
     }
-  }, [toggleZenMode, openModal, announce, sidebarVisible, bottomVisible, chatVisible])
+  }, [toggleZenMode, openModal, announce, handleOpenFolderEvent, sidebarVisible, bottomVisible, chatVisible])
 
   // Update window title based on active file
   useEffect(() => {
