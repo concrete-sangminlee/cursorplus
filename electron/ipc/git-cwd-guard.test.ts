@@ -3,7 +3,7 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { setProjectPath } from '../workspace/project-path'
-import { resolveGitCwd } from './git-cwd-guard'
+import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
 
 let tempDir: string
 let workspaceRoot: string
@@ -59,5 +59,37 @@ describe('resolveGitCwd', () => {
     setProjectPath('')
 
     await expect(resolveGitCwd(workspaceRoot)).rejects.toThrow('No workspace root is open')
+  })
+})
+
+describe('resolveGitInternalPath', () => {
+  it('allows a relative gitDir that resolves inside the active workspace', async () => {
+    const result = await resolveGitInternalPath(workspaceRoot, '.', 'MERGE_HEAD')
+    expect(result).toBe(path.join(path.resolve(workspaceRoot), 'MERGE_HEAD'))
+  })
+
+  it('allows a nested relative gitDir inside the active workspace', async () => {
+    const gitDir = path.join(workspaceRoot, '.git')
+    await fs.mkdir(gitDir)
+    const result = await resolveGitInternalPath(workspaceRoot, '.git', 'MERGE_HEAD')
+    expect(result).toBe(path.join(path.resolve(workspaceRoot), '.git', 'MERGE_HEAD'))
+  })
+
+  it('rejects an absolute gitDir that resolves outside the active workspace', async () => {
+    await expect(resolveGitInternalPath(workspaceRoot, outsideDir, 'MERGE_HEAD'))
+      .rejects.toThrow('outside workspace root')
+  })
+
+  it('rejects an absolute gitDir from a worktree whose main repo is outside the workspace', async () => {
+    const externalGitDir = path.join(outsideDir, '.git', 'worktrees', 'wt')
+    await fs.mkdir(externalGitDir, { recursive: true })
+    await expect(resolveGitInternalPath(workspaceRoot, externalGitDir, 'rebase-merge'))
+      .rejects.toThrow('outside workspace root')
+  })
+
+  it('rejects when no active workspace is open', async () => {
+    setProjectPath('')
+    await expect(resolveGitInternalPath(workspaceRoot, '.git', 'MERGE_HEAD'))
+      .rejects.toThrow('No workspace root is open')
   })
 })

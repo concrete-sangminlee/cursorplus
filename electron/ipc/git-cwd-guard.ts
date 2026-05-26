@@ -1,4 +1,5 @@
 import fs from 'fs/promises'
+import path from 'path'
 import { resolveActiveWorkspacePath, WorkspacePathAccessError } from './workspace-path-guard'
 
 export async function resolveGitCwd(cwd: unknown): Promise<string> {
@@ -20,4 +21,19 @@ export async function resolveGitCwd(cwd: unknown): Promise<string> {
   }
 
   return safeCwd
+}
+
+/**
+ * Resolve a git-internal path (built from cwd + gitDir output + segments) and
+ * validate that the resulting directory is inside the active workspace.
+ *
+ * `git rev-parse --git-dir` can return an absolute path for linked worktrees,
+ * causing path.resolve(cwd, gitDir) to silently escape the workspace. This
+ * function catches that case before any filesystem I/O reaches an out-of-scope
+ * path.
+ */
+export async function resolveGitInternalPath(cwd: string, gitDir: string, ...segments: string[]): Promise<string> {
+  const resolvedGitDir = path.resolve(cwd, gitDir)
+  const validatedGitDir = await resolveActiveWorkspacePath(resolvedGitDir, 'git dir')
+  return path.join(validatedGitDir, ...segments)
 }

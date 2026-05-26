@@ -3,7 +3,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
-import { resolveGitCwd } from './git-cwd-guard'
+import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
 
 const execFileAsync = promisify(execFile)
 
@@ -392,12 +392,10 @@ export function registerGitHandlers() {
 
   ipcMain.handle('git:merge-status', async (_, cwd: string) => {
     try {
-      // Check for .git/MERGE_HEAD to detect active merge
-      const gitDir = await runGitOrEmpty(cwd, ['rev-parse', '--git-dir'])
-      if (!gitDir) return { merging: false }
-      const mergeHeadPath = path.resolve(cwd, gitDir, 'MERGE_HEAD')
-      const exists = fs.existsSync(mergeHeadPath)
-      return { merging: exists }
+      // rev-parse --verify MERGE_HEAD exits 0 and prints the hash when a merge
+      // is in progress, non-zero (empty) otherwise — no gitDir path needed.
+      const mergeHead = await runGitOrEmpty(cwd, ['rev-parse', '--verify', 'MERGE_HEAD'])
+      return { merging: mergeHead !== '' }
     } catch {
       return { merging: false }
     }
@@ -446,13 +444,24 @@ export function registerGitHandlers() {
       const gitDir = await runGitExec(cwd, ['rev-parse', '--git-dir'])
       if (!gitDir) return { rebasing: false }
 
-      const rebaseMergePath = path.resolve(cwd, gitDir, 'rebase-merge')
-      const rebaseApplyPath = path.resolve(cwd, gitDir, 'rebase-apply')
-      const isRebasing = fs.existsSync(rebaseMergePath) || fs.existsSync(rebaseApplyPath)
+      // Validate that the resolved gitDir is inside the workspace before any
+      // filesystem reads. git rev-parse --git-dir returns an absolute path for
+      // linked worktrees, which would otherwise silently escape the workspace.
+      let rebaseMergePath: string
+      let rebaseApplyPath: string
+      try {
+        rebaseMergePath = await resolveGitInternalPath(cwd, gitDir, 'rebase-merge')
+        rebaseApplyPath = await resolveGitInternalPath(cwd, gitDir, 'rebase-apply')
+      } catch {
+        // gitDir resolves outside the workspace (linked worktree). Fall back to
+        // a pure git command for detection without step-count detail.
+        const rebaseHead = await runGitOrEmpty(cwd, ['rev-parse', '--verify', 'REBASE_HEAD'])
+        return { rebasing: rebaseHead !== '', currentStep: 0, totalSteps: 0, headName: '' }
+      }
 
+      const isRebasing = fs.existsSync(rebaseMergePath) || fs.existsSync(rebaseApplyPath)
       if (!isRebasing) return { rebasing: false }
 
-      // Determine which directory is active
       const activeDir = fs.existsSync(rebaseMergePath) ? rebaseMergePath : rebaseApplyPath
 
       let currentStep = 0
