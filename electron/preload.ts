@@ -336,6 +336,8 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_STASH_SAVE, cwd, message),
   gitMergeStatus: (cwd: string): Promise<{ merging: boolean }> =>
     ipcRenderer.invoke(IPC.GIT_MERGE_STATUS, cwd),
+  gitRebaseStatus: (cwd: string): Promise<{ rebasing: boolean; currentStep?: number; totalSteps?: number; headName?: string }> =>
+    ipcRenderer.invoke(IPC.GIT_REBASE_STATUS, cwd),
   gitConflictFiles: (cwd: string): Promise<string[]> =>
     ipcRenderer.invoke(IPC.GIT_CONFLICT_FILES, cwd),
   gitMergeAbort: (cwd: string): Promise<string> =>

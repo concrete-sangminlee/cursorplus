@@ -54,6 +54,7 @@ export const IPC = {
   GIT_STASH_APPLY: 'git:stash-apply',
   GIT_STASH_SAVE: 'git:stash-save',
   GIT_MERGE_STATUS: 'git:merge-status',
+  GIT_REBASE_STATUS: 'git:rebase-status',
   GIT_CONFLICT_FILES: 'git:conflict-files',
   GIT_MERGE_ABORT: 'git:merge-abort',
   GIT_CREATE_BRANCH: 'git:create-branch',

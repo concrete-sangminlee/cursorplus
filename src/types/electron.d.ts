@@ -265,6 +265,7 @@ export interface ElectronAPI {
   gitStashApply: (cwd: string, index: number) => Promise<string>
   gitStashSave: (cwd: string, message: string) => Promise<string>
   gitMergeStatus: (cwd: string) => Promise<{ merging: boolean }>
+  gitRebaseStatus: (cwd: string) => Promise<{ rebasing: boolean; currentStep?: number; totalSteps?: number; headName?: string }>
   gitConflictFiles: (cwd: string) => Promise<string[]>
   gitMergeAbort: (cwd: string) => Promise<string>
   gitCreateBranch: (cwd: string, branchName: string) => Promise<string>
