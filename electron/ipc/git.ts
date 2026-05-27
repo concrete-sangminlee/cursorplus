@@ -5,6 +5,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
 import { normalizeGitBranchName, normalizeGitCommitHash } from './git-ref-guard'
+import { GIT_TAG_FORMAT, parseGitTagLine } from './git-tag-format'
 
 const execFileAsync = promisify(execFile)
 
@@ -45,6 +46,10 @@ async function runGitOrEmpty(
   } catch {
     return ''
   }
+}
+
+function gitErrorMessage(err: any): string {
+  return err?.stderr?.trim() || err?.message || 'Git operation failed'
 }
 
 export function registerGitHandlers() {
@@ -415,18 +420,30 @@ export function registerGitHandlers() {
   // ── Cherry-pick ──────────────────────────────────────────────────────
 
   ipcMain.handle('git:merge', async (_, cwd: string, branchName: string) => {
-    const safeBranchName = normalizeGitBranchName(branchName)
-    return await runGitExec(cwd, ['merge', safeBranchName])
+    try {
+      const safeBranchName = normalizeGitBranchName(branchName)
+      return await runGitExec(cwd, ['merge', safeBranchName])
+    } catch (err: any) {
+      throw new Error(gitErrorMessage(err))
+    }
   })
 
   ipcMain.handle('git:delete-branch', async (_, cwd: string, branchName: string) => {
-    const safeBranchName = normalizeGitBranchName(branchName)
-    return await runGitExec(cwd, ['branch', '-d', safeBranchName])
+    try {
+      const safeBranchName = normalizeGitBranchName(branchName)
+      return await runGitExec(cwd, ['branch', '-d', safeBranchName])
+    } catch (err: any) {
+      throw new Error(gitErrorMessage(err))
+    }
   })
 
   ipcMain.handle('git:cherry-pick', async (_, cwd: string, commitHash: string) => {
-    const safeHash = normalizeGitCommitHash(commitHash)
-    return await runGitExec(cwd, ['cherry-pick', safeHash])
+    try {
+      const safeHash = normalizeGitCommitHash(commitHash)
+      return await runGitExec(cwd, ['cherry-pick', safeHash])
+    } catch (err: any) {
+      throw new Error(gitErrorMessage(err))
+    }
   })
 
   // ── Revert ───────────────────────────────────────────────────────────
@@ -497,12 +514,9 @@ export function registerGitHandlers() {
 
   ipcMain.handle('git:tags', async (_, cwd: string) => {
     try {
-      const raw = await runGitExec(cwd, ['tag', '--sort=-creatordate', '--format=%(refname:short)\x1f%(objectname:short)\x1f%(creatordate:iso)'])
+      const raw = await runGitExec(cwd, ['tag', '--sort=-creatordate', `--format=${GIT_TAG_FORMAT}`])
       if (!raw) return []
-      return raw.split('\n').filter(Boolean).map((line) => {
-        const [name, hash, date] = line.split('\x1f')
-        return { name: name || '', hash: hash || '', date: date || '' }
-      })
+      return raw.split('\n').filter(Boolean).map(parseGitTagLine)
     } catch {
       return []
     }

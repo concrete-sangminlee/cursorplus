@@ -109,7 +109,12 @@ interface GitStashEntry {
 interface GitTagEntry {
   name: string
   hash: string
-  date?: string
+  targetHash?: string
+  message: string
+  tagger?: string
+  taggerEmail?: string
+  date: string
+  isAnnotated: boolean
 }
 
 interface TaskRunArgs {

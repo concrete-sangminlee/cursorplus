@@ -5,6 +5,7 @@ import {
   RotateCcw, ChevronsUp, Eye, ArrowRightLeft, Calendar, Hash,
   RefreshCw, Download, Loader,
 } from 'lucide-react'
+import { useFileStore } from '@/store/files'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -773,6 +774,7 @@ function FilterChip({ color, icon, label, onClear }: {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function GitTimelinePanel() {
+  const rootPath = useFileStore((s) => s.rootPath)
   // ── State ──
   const [viewMode, setViewMode] = useState<ViewMode>('repo')
   const [commits, setCommits] = useState<TimelineCommit[]>([])
@@ -960,9 +962,10 @@ export default function GitTimelinePanel() {
   }, [compare, ipcInvoke])
 
   const handleCherryPick = useCallback(async (hash: string) => {
+    if (!rootPath) return
     setContextMenu(null)
-    await ipcInvoke('git:cherry-pick', hash)
-  }, [ipcInvoke])
+    await ipcInvoke('git:cherry-pick', rootPath, hash)
+  }, [ipcInvoke, rootPath])
 
   const handleRevert = useCallback(async (hash: string) => {
     setContextMenu(null)

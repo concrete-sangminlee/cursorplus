@@ -126,7 +126,12 @@ export interface GitStashEntry {
 export interface GitTag {
   name: string
   hash: string
-  date?: string
+  targetHash?: string
+  message: string
+  tagger?: string
+  taggerEmail?: string
+  date: string
+  isAnnotated: boolean
 }
 
 // ---------------------------------------------------------------------------
