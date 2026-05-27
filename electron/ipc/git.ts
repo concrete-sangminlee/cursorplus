@@ -4,6 +4,7 @@ import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
 import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
+import { normalizeGitBranchName, normalizeGitCommitHash } from './git-ref-guard'
 
 const execFileAsync = promisify(execFile)
 
@@ -413,15 +414,19 @@ export function registerGitHandlers() {
 
   // ── Cherry-pick ──────────────────────────────────────────────────────
 
+  ipcMain.handle('git:merge', async (_, cwd: string, branchName: string) => {
+    const safeBranchName = normalizeGitBranchName(branchName)
+    return await runGitExec(cwd, ['merge', safeBranchName])
+  })
+
+  ipcMain.handle('git:delete-branch', async (_, cwd: string, branchName: string) => {
+    const safeBranchName = normalizeGitBranchName(branchName)
+    return await runGitExec(cwd, ['branch', '-d', safeBranchName])
+  })
+
   ipcMain.handle('git:cherry-pick', async (_, cwd: string, commitHash: string) => {
-    const safeHash = commitHash.replace(/[^0-9a-fA-F]/g, '')
-    if (!safeHash) return { success: false, error: 'Invalid commit hash' }
-    try {
-      const result = await runGitExec(cwd, ['cherry-pick', safeHash])
-      return { success: true, output: result }
-    } catch (err: any) {
-      return { success: false, error: err.stderr?.trim() || err.message }
-    }
+    const safeHash = normalizeGitCommitHash(commitHash)
+    return await runGitExec(cwd, ['cherry-pick', safeHash])
   })
 
   // ── Revert ───────────────────────────────────────────────────────────

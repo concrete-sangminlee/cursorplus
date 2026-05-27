@@ -106,6 +106,12 @@ interface GitStashEntry {
   message: string
 }
 
+interface GitTagEntry {
+  name: string
+  hash: string
+  date?: string
+}
+
 interface TaskRunArgs {
   command: string
   cwd: string
@@ -268,6 +274,10 @@ export interface ElectronAPI {
   gitRebaseStatus: (cwd: string) => Promise<{ rebasing: boolean; currentStep?: number; totalSteps?: number; headName?: string }>
   gitConflictFiles: (cwd: string) => Promise<string[]>
   gitMergeAbort: (cwd: string) => Promise<string>
+  gitMerge: (cwd: string, branchName: string) => Promise<string>
+  gitDeleteBranch: (cwd: string, branchName: string) => Promise<string>
+  gitCherryPick: (cwd: string, commitHash: string) => Promise<string>
+  gitTags: (cwd: string) => Promise<GitTagEntry[]>
   gitCreateBranch: (cwd: string, branchName: string) => Promise<string>
   gitStageAll: (cwd: string) => Promise<boolean>
   gitUnstageAll: (cwd: string) => Promise<boolean>

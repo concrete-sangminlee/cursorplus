@@ -123,6 +123,12 @@ export interface GitStashEntry {
   message: string
 }
 
+export interface GitTag {
+  name: string
+  hash: string
+  date?: string
+}
+
 // ---------------------------------------------------------------------------
 // Task types
 // ---------------------------------------------------------------------------
@@ -342,6 +348,14 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_CONFLICT_FILES, cwd),
   gitMergeAbort: (cwd: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_MERGE_ABORT, cwd),
+  gitMerge: (cwd: string, branchName: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_MERGE, cwd, branchName),
+  gitDeleteBranch: (cwd: string, branchName: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, cwd, branchName),
+  gitCherryPick: (cwd: string, commitHash: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, cwd, commitHash),
+  gitTags: (cwd: string): Promise<GitTag[]> =>
+    ipcRenderer.invoke(IPC.GIT_TAGS, cwd),
   gitCreateBranch: (cwd: string, branchName: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, cwd, branchName),
   gitStageAll: (cwd: string): Promise<boolean> =>
