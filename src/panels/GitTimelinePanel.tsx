@@ -969,15 +969,26 @@ export default function GitTimelinePanel() {
     try {
       await ipcInvoke('git:cherry-pick', rootPath, hash)
       addToast({ type: 'success', message: `Cherry-picked commit ${hash.substring(0, 7)}` })
+      loadCommits(true)
     } catch (err: any) {
       addToast({ type: 'error', message: err?.message || 'Cherry-pick failed' })
     }
-  }, [addToast, ipcInvoke, rootPath])
+  }, [addToast, ipcInvoke, loadCommits, rootPath])
 
   const handleRevert = useCallback(async (hash: string) => {
+    if (!rootPath) return
     setContextMenu(null)
-    await ipcInvoke('git:revert', hash)
-  }, [ipcInvoke])
+    try {
+      const result = await ipcInvoke('git:revert', rootPath, hash) as { success?: boolean; error?: string } | null
+      if (result?.success === false) {
+        throw new Error(result.error || 'Revert failed')
+      }
+      addToast({ type: 'success', message: `Reverted commit ${hash.substring(0, 7)}` })
+      loadCommits(true)
+    } catch (err: any) {
+      addToast({ type: 'error', message: err?.message || 'Revert failed' })
+    }
+  }, [addToast, ipcInvoke, loadCommits, rootPath])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, hash: string) => {
     e.preventDefault()

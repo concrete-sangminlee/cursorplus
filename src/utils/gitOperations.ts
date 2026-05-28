@@ -730,7 +730,11 @@ export async function commitAmend(
   message?: string,
   cwd?: string
 ): Promise<string> {
-  return git<string>('commitAmend', message, cwd);
+  const result = await git<{ success: boolean; output?: string; error?: string }>('commit-amend', message, cwd);
+  if (!result.success) {
+    throw new Error(result.error || 'Commit amend failed');
+  }
+  return result.output ?? '';
 }
 
 /** Cherry-pick a commit onto the current branch */
@@ -1852,7 +1856,11 @@ export async function clean(
   options?: { dryRun?: boolean; force?: boolean; directories?: boolean; ignored?: boolean },
   cwd?: string
 ): Promise<string[]> {
-  return git<string[]>('clean', options, cwd);
+  const result = await git<{ success: boolean; removedFiles?: string[]; error?: string }>('clean', options, cwd);
+  if (!result.success) {
+    throw new Error(result.error || 'Clean failed');
+  }
+  return result.removedFiles ?? [];
 }
 
 /** Show the content of a file at a specific ref */
