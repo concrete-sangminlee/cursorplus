@@ -731,9 +731,6 @@ export async function commitAmend(
   cwd?: string
 ): Promise<string> {
   const result = await git<{ success: boolean; output?: string; error?: string }>('commit-amend', cwd, message);
-  if (!result.success) {
-    throw new Error(result.error || 'Commit amend failed');
-  }
   return result.output ?? '';
 }
 
@@ -780,7 +777,7 @@ export async function resetSoft(
   ref: string,
   cwd?: string
 ): Promise<void> {
-  await git('reset', ref, 'soft', cwd);
+  await git('reset', cwd, 'soft', ref);
 }
 
 /** Mixed reset: move HEAD, unstage changes but keep in working tree */
@@ -788,7 +785,7 @@ export async function resetMixed(
   ref: string,
   cwd?: string
 ): Promise<void> {
-  await git('reset', ref, 'mixed', cwd);
+  await git('reset', cwd, 'mixed', ref);
 }
 
 /** Hard reset: move HEAD, discard all changes */
@@ -796,7 +793,7 @@ export async function resetHard(
   ref: string,
   cwd?: string
 ): Promise<void> {
-  await git('reset', ref, 'hard', cwd);
+  await git('reset', cwd, 'hard', ref);
 }
 
 /** Reset specific files to a given ref */
@@ -1857,9 +1854,6 @@ export async function clean(
   cwd?: string
 ): Promise<string[]> {
   const result = await git<{ success: boolean; removedFiles?: string[]; error?: string }>('clean', cwd, options);
-  if (!result.success) {
-    throw new Error(result.error || 'Clean failed');
-  }
   return result.removedFiles ?? [];
 }
 

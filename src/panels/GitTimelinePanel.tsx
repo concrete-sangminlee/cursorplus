@@ -810,6 +810,7 @@ export default function GitTimelinePanel() {
   const viewModeRef = useRef(viewMode)
   const activeFileRef = useRef(activeFile)
   const filtersRef = useRef(filters)
+  const filtersInitialMountRef = useRef(true)
 
   commitsLengthRef.current = commits.length
   viewModeRef.current = viewMode
@@ -920,6 +921,11 @@ export default function GitTimelinePanel() {
 
   // Reload when filters change (debounced)
   useEffect(() => {
+    if (filtersInitialMountRef.current) {
+      filtersInitialMountRef.current = false
+      return
+    }
+
     const timeout = setTimeout(() => {
       void loadCommits(true)
     }, 500)
@@ -1000,7 +1006,10 @@ export default function GitTimelinePanel() {
     if (!rootPath) return
     setContextMenu(null)
     try {
-      await ipcInvoke('git:cherry-pick', rootPath, hash)
+      const result = await ipcInvoke('git:cherry-pick', rootPath, hash)
+      if (result === null || result === undefined) {
+        throw new Error('Cherry-pick failed')
+      }
       addToast({ type: 'success', message: `Cherry-picked commit ${hash.substring(0, 7)}` })
       await loadCommits(true)
     } catch (err: any) {
@@ -1029,9 +1038,13 @@ export default function GitTimelinePanel() {
     setContextMenu({ x: e.clientX, y: e.clientY, hash })
   }, [])
 
-  const handleRefresh = useCallback(() => {
-    void loadCommits(true)
-  }, [loadCommits])
+  const handleRefresh = useCallback(async () => {
+    try {
+      await loadCommits(true)
+    } catch {
+      addToast({ type: 'error', message: 'Failed to refresh commits' })
+    }
+  }, [addToast, loadCommits])
 
   // ── Infinite scroll ──
   const handleScroll = useCallback(() => {
@@ -1273,7 +1286,11 @@ export default function GitTimelinePanel() {
       <React.Fragment key={commit.hash}>
         <div
           ref={(el) => {
-            if (el) rowRefs.current.set(commit.hash, el)
+            if (el) {
+              rowRefs.current.set(commit.hash, el)
+            } else {
+              rowRefs.current.delete(commit.hash)
+            }
           }}
           style={styles.commitRow(isSelected, isFocused)}
           onClick={() => handleCommitClick(commit.hash, index)}

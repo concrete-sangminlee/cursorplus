@@ -52,6 +52,24 @@ function gitErrorMessage(err: any): string {
   return err?.stderr?.trim() || err?.message || 'Git operation failed'
 }
 
+type GitSequencerOptions = {
+  noCommit?: boolean
+  mainline?: number
+}
+
+function appendGitSequencerOptions(args: string[], options?: GitSequencerOptions) {
+  if (options?.noCommit) {
+    args.push('--no-commit')
+  }
+
+  if (options?.mainline !== undefined) {
+    if (!Number.isInteger(options.mainline) || options.mainline < 1) {
+      throw new Error('Invalid mainline parent number')
+    }
+    args.push('-m', String(options.mainline))
+  }
+}
+
 export function registerGitHandlers() {
   ipcMain.handle('git:status', async (_, cwd: string) => {
     const branch = await runGitOrEmpty(cwd, ['branch', '--show-current'])
@@ -437,10 +455,13 @@ export function registerGitHandlers() {
     }
   })
 
-  ipcMain.handle('git:cherry-pick', async (_, cwd: string, commitHash: string) => {
+  ipcMain.handle('git:cherry-pick', async (_, cwd: string, commitHash: string, options?: GitSequencerOptions) => {
     try {
       const safeHash = normalizeGitCommitHash(commitHash)
-      return await runGitExec(cwd, ['cherry-pick', safeHash])
+      const args = ['cherry-pick']
+      appendGitSequencerOptions(args, options)
+      args.push(safeHash)
+      return await runGitExec(cwd, args)
     } catch (err: any) {
       throw new Error(gitErrorMessage(err))
     }
@@ -448,11 +469,24 @@ export function registerGitHandlers() {
 
   // ── Revert ───────────────────────────────────────────────────────────
 
-  ipcMain.handle('git:revert', async (_, cwd: string, commitHash: string) => {
-    const safeHash = commitHash.replace(/[^0-9a-fA-F]/g, '')
+  ipcMain.handle('git:revert', async (_, cwd: string, commitHash: string, options?: GitSequencerOptions) => {
+    const safeHash = typeof commitHash === 'string' ? commitHash.replace(/[^0-9a-fA-F]/g, '') : ''
     if (!safeHash) return { success: false, error: 'Invalid commit hash' }
     try {
-      const result = await runGitExec(cwd, ['revert', '--no-edit', safeHash])
+      const args = ['revert']
+      if (options?.noCommit) {
+        args.push('--no-commit')
+      } else {
+        args.push('--no-edit')
+      }
+      if (options?.mainline !== undefined) {
+        if (!Number.isInteger(options.mainline) || options.mainline < 1) {
+          return { success: false, error: 'Invalid mainline parent number' }
+        }
+        args.push('-m', String(options.mainline))
+      }
+      args.push(safeHash)
+      const result = await runGitExec(cwd, args)
       return { success: true, output: result }
     } catch (err: any) {
       return { success: false, error: err.stderr?.trim() || err.message }
@@ -730,17 +764,19 @@ export function registerGitHandlers() {
 
   // ── Clean ────────────────────────────────────────────────────────────
 
-  ipcMain.handle('git:clean', async (_, cwd: string, options?: { directories?: boolean; force?: boolean; dryRun?: boolean }) => {
+  ipcMain.handle('git:clean', async (_, cwd: string, options?: { directories?: boolean; force?: boolean; dryRun?: boolean; ignored?: boolean }) => {
     try {
       const args = ['clean']
-      // Always require at least -f or -n to prevent accidental data loss
       if (options?.dryRun) {
         args.push('-n')
-      } else {
+      } else if (options?.force !== false) {
         args.push('-f')
       }
       if (options?.directories) {
         args.push('-d')
+      }
+      if (options?.ignored) {
+        args.push('-x')
       }
       const result = await runGitExec(cwd, args)
       const removedFiles = result.split('\n').filter(Boolean).map((line) => {
