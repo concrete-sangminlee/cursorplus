@@ -730,7 +730,7 @@ export async function commitAmend(
   message?: string,
   cwd?: string
 ): Promise<string> {
-  const result = await git<{ success: boolean; output?: string; error?: string }>('commit-amend', message, cwd);
+  const result = await git<{ success: boolean; output?: string; error?: string }>('commit-amend', cwd, message);
   if (!result.success) {
     throw new Error(result.error || 'Commit amend failed');
   }
@@ -743,7 +743,7 @@ export async function cherryPick(
   options?: { noCommit?: boolean; mainline?: number },
   cwd?: string
 ): Promise<void> {
-  await git('cherryPick', hash, options, cwd);
+  await git('cherry-pick', cwd, hash, options);
 }
 
 /** Abort an in-progress cherry-pick */
@@ -762,7 +762,7 @@ export async function revert(
   options?: { noCommit?: boolean; mainline?: number },
   cwd?: string
 ): Promise<void> {
-  await git('revert', hash, options, cwd);
+  await git('revert', cwd, hash, options);
 }
 
 /** Abort an in-progress revert */
@@ -1856,7 +1856,7 @@ export async function clean(
   options?: { dryRun?: boolean; force?: boolean; directories?: boolean; ignored?: boolean },
   cwd?: string
 ): Promise<string[]> {
-  const result = await git<{ success: boolean; removedFiles?: string[]; error?: string }>('clean', options, cwd);
+  const result = await git<{ success: boolean; removedFiles?: string[]; error?: string }>('clean', cwd, options);
   if (!result.success) {
     throw new Error(result.error || 'Clean failed');
   }

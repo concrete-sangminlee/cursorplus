@@ -803,6 +803,25 @@ export default function GitTimelinePanel() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const mountedRef = useRef(true)
+  const loadingRef = useRef(false)
+  const loadRequestIdRef = useRef(0)
+  const commitsLengthRef = useRef(0)
+  const viewModeRef = useRef(viewMode)
+  const activeFileRef = useRef(activeFile)
+  const filtersRef = useRef(filters)
+
+  commitsLengthRef.current = commits.length
+  viewModeRef.current = viewMode
+  activeFileRef.current = activeFile
+  filtersRef.current = filters
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // ── IPC simulation ──
   const ipcInvoke = useCallback(async (channel: string, ...args: unknown[]): Promise<unknown> => {
@@ -831,7 +850,7 @@ export default function GitTimelinePanel() {
         return { commits: filtered, hasMore: offset + limit < 100 }
       }
       case 'git:show': {
-        const hash = args[0] as string
+        const hash = (args[1] ?? args[0]) as string
         return { hash, diff: `diff --git a/src/file.ts b/src/file.ts\nindex abc..def 100644\n--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1,5 +1,8 @@\n import React from 'react'\n+import { useState } from 'react'\n \n-function old() {\n+function updated() {\n+  const [state, setState] = useState(null)\n   return null\n }\n` }
       }
       case 'git:diff-commits': {
@@ -850,49 +869,62 @@ export default function GitTimelinePanel() {
 
   // ── Data loading ──
   const loadCommits = useCallback(async (reset: boolean = false) => {
-    if (loading) return
+    if (!mountedRef.current) return
+    if (!reset && loadingRef.current) return
+    const requestId = ++loadRequestIdRef.current
+    loadingRef.current = true
     setLoading(true)
 
     try {
-      const offset = reset ? 0 : commits.length
-      const channel = viewMode === 'file' ? 'git:file-log' : 'git:log'
+      const currentViewMode = viewModeRef.current
+      const currentActiveFile = activeFileRef.current
+      const currentFilters = filtersRef.current
+      const offset = reset ? 0 : commitsLengthRef.current
+      const channel = currentViewMode === 'file' ? 'git:file-log' : 'git:log'
       const result = await ipcInvoke(channel, {
         offset,
         limit: PAGE_SIZE,
-        file: viewMode === 'file' ? activeFile : undefined,
-        author: filters.author || undefined,
-        since: filters.dateFrom || undefined,
-        until: filters.dateTo || undefined,
-        search: filters.messageSearch || undefined,
+        file: currentViewMode === 'file' ? currentActiveFile : undefined,
+        author: currentFilters.author || undefined,
+        since: currentFilters.dateFrom || undefined,
+        until: currentFilters.dateTo || undefined,
+        search: currentFilters.messageSearch || undefined,
       }) as any
 
+      if (!mountedRef.current || requestId !== loadRequestIdRef.current) return
       if (reset) {
+        commitsLengthRef.current = result.commits.length
         setCommits(result.commits)
       } else {
-        setCommits(prev => [...prev, ...result.commits])
+        setCommits(prev => {
+          const next = [...prev, ...result.commits]
+          commitsLengthRef.current = next.length
+          return next
+        })
       }
       setHasMore(result.hasMore)
     } catch (err) {
       console.error('Failed to load git log:', err)
     } finally {
-      setLoading(false)
+      if (requestId === loadRequestIdRef.current) {
+        loadingRef.current = false
+        if (mountedRef.current) setLoading(false)
+      }
     }
-  }, [loading, commits.length, viewMode, activeFile, filters, ipcInvoke])
+  }, [ipcInvoke])
 
   // Initial load
   useEffect(() => {
-    loadCommits(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, activeFile])
+    void loadCommits(true)
+  }, [loadCommits, viewMode, activeFile])
 
   // Reload when filters change (debounced)
   useEffect(() => {
     const timeout = setTimeout(() => {
-      loadCommits(true)
+      void loadCommits(true)
     }, 500)
     return () => clearTimeout(timeout)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters])
+  }, [filters, loadCommits])
 
   // ── Filtered & sorted commits ──
   const filteredCommits = useMemo(() => {
@@ -953,9 +985,10 @@ export default function GitTimelinePanel() {
   }, [])
 
   const handleViewDiff = useCallback(async (hash: string) => {
-    await ipcInvoke('git:show', hash)
+    if (!rootPath) return
+    await ipcInvoke('git:show', rootPath, hash)
     // In a real app, this would open a diff tab
-  }, [ipcInvoke])
+  }, [ipcInvoke, rootPath])
 
   const handleCompare = useCallback(async () => {
     if (compare.commitA && compare.commitB) {
@@ -969,7 +1002,7 @@ export default function GitTimelinePanel() {
     try {
       await ipcInvoke('git:cherry-pick', rootPath, hash)
       addToast({ type: 'success', message: `Cherry-picked commit ${hash.substring(0, 7)}` })
-      loadCommits(true)
+      await loadCommits(true)
     } catch (err: any) {
       addToast({ type: 'error', message: err?.message || 'Cherry-pick failed' })
     }
@@ -980,11 +1013,11 @@ export default function GitTimelinePanel() {
     setContextMenu(null)
     try {
       const result = await ipcInvoke('git:revert', rootPath, hash) as { success?: boolean; error?: string } | null
-      if (result?.success === false) {
-        throw new Error(result.error || 'Revert failed')
+      if (!result?.success) {
+        throw new Error(result?.error || 'Revert failed')
       }
       addToast({ type: 'success', message: `Reverted commit ${hash.substring(0, 7)}` })
-      loadCommits(true)
+      await loadCommits(true)
     } catch (err: any) {
       addToast({ type: 'error', message: err?.message || 'Revert failed' })
     }
@@ -997,17 +1030,17 @@ export default function GitTimelinePanel() {
   }, [])
 
   const handleRefresh = useCallback(() => {
-    loadCommits(true)
+    void loadCommits(true)
   }, [loadCommits])
 
   // ── Infinite scroll ──
   const handleScroll = useCallback(() => {
-    if (!scrollRef.current || loading || !hasMore) return
+    if (!scrollRef.current || loadingRef.current || !hasMore) return
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
     if (scrollHeight - scrollTop - clientHeight < 200) {
-      loadCommits(false)
+      void loadCommits(false)
     }
-  }, [loading, hasMore, loadCommits])
+  }, [hasMore, loadCommits])
 
   // ── Keyboard navigation ──
   const navigateTo = useCallback((idx: number) => {
