@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Git timeline follow-ups now preserve reset/cherry-pick/revert IPC contracts end-to-end, wire cherry-pick/revert sequencer options through the main-process handlers, respect `git clean` ignored/force options, and prevent redundant initial timeline reloads or stale row refs after filtering.
 - Git timeline and shared git utility follow-ups now use cwd-first IPC argument order for show/revert/commit-amend/clean/cherry-pick calls, await post-action timeline refreshes, and stabilize timeline loading with request refs so stale fetch closures no longer race filter or mode changes.
 - Git timeline follow-ups now pass the active workspace cwd into revert actions, refresh the timeline after successful cherry-picks/reverts, and make shared commit-amend/clean helpers unwrap their raw IPC result objects instead of returning handler envelopes to callers.
 - Source control tag and cherry-pick follow-ups now keep annotated tags visible on their target commits, allow the shared git operations bridge to consume both raw IPC results and `{ data }` envelopes, and show a toast when timeline cherry-pick fails instead of leaving an unhandled promise rejection.
