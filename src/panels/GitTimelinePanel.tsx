@@ -6,6 +6,7 @@ import {
   RefreshCw, Download, Loader,
 } from 'lucide-react'
 import { useFileStore } from '@/store/files'
+import { useToastStore } from '@/store/toast'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -775,6 +776,7 @@ function FilterChip({ color, icon, label, onClear }: {
 
 export default function GitTimelinePanel() {
   const rootPath = useFileStore((s) => s.rootPath)
+  const addToast = useToastStore((s) => s.addToast)
   // ── State ──
   const [viewMode, setViewMode] = useState<ViewMode>('repo')
   const [commits, setCommits] = useState<TimelineCommit[]>([])
@@ -964,8 +966,13 @@ export default function GitTimelinePanel() {
   const handleCherryPick = useCallback(async (hash: string) => {
     if (!rootPath) return
     setContextMenu(null)
-    await ipcInvoke('git:cherry-pick', rootPath, hash)
-  }, [ipcInvoke, rootPath])
+    try {
+      await ipcInvoke('git:cherry-pick', rootPath, hash)
+      addToast({ type: 'success', message: `Cherry-picked commit ${hash.substring(0, 7)}` })
+    } catch (err: any) {
+      addToast({ type: 'error', message: err?.message || 'Cherry-pick failed' })
+    }
+  }, [addToast, ipcInvoke, rootPath])
 
   const handleRevert = useCallback(async (hash: string) => {
     setContextMenu(null)

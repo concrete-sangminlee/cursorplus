@@ -52,6 +52,12 @@ interface CommitTemplate {
 interface GitTag {
   name: string
   hash: string
+  targetHash?: string
+  message?: string
+  tagger?: string
+  taggerEmail?: string
+  date?: string
+  isAnnotated?: boolean
 }
 
 const CONVENTIONAL_COMMIT_TYPES = [
@@ -2251,7 +2257,10 @@ export default function SourceControlPanel() {
                       {entry.hash}
                     </span>
                     {/* Tags on this commit */}
-                    {tags.filter(t => t.hash.startsWith(entry.hash) || (entry.fullHash && t.hash.startsWith(entry.fullHash?.substring(0, 7)))).map(t => (
+                    {tags.filter(t => {
+                      const targetHash = t.targetHash || t.hash
+                      return targetHash.startsWith(entry.hash) || (entry.fullHash && targetHash.startsWith(entry.fullHash.substring(0, 7)))
+                    }).map(t => (
                       <span
                         key={t.name}
                         style={{

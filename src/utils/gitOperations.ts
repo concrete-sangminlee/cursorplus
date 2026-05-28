@@ -392,16 +392,20 @@ async function gitInvoke<T = string>(
     throw new Error('Electron IPC bridge not available');
   }
 
-  const result: GitIpcResult<T> = await electron.invoke(channel, ...args);
+  const result = await electron.invoke(channel, ...args);
 
-  if (result?.error) {
+  if (result && typeof result === 'object' && 'error' in result && result.error) {
     const err = new Error(result.error);
     (err as any).exitCode = result?.exitCode;
     (err as any).stderr = result?.stderr;
     throw err;
   }
 
-  return result?.data as T;
+  if (result && typeof result === 'object' && 'data' in result) {
+    return result.data as T;
+  }
+
+  return result as T;
 }
 
 /** Shorthand for git-namespaced IPC calls */
