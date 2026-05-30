@@ -5,6 +5,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
 import { normalizeGitBranchName, normalizeGitCommitHash } from './git-ref-guard'
+import { appendGitSequencerOptions, GitSequencerOptions } from './git-sequencer-guard'
 import { GIT_TAG_FORMAT, parseGitTagLine } from './git-tag-format'
 
 const execFileAsync = promisify(execFile)
@@ -52,23 +53,6 @@ function gitErrorMessage(err: any): string {
   return err?.stderr?.trim() || err?.message || 'Git operation failed'
 }
 
-type GitSequencerOptions = {
-  noCommit?: boolean
-  mainline?: number
-}
-
-function appendGitSequencerOptions(args: string[], options?: GitSequencerOptions) {
-  if (options?.noCommit) {
-    args.push('--no-commit')
-  }
-
-  if (options?.mainline !== undefined) {
-    if (!Number.isInteger(options.mainline) || options.mainline < 1) {
-      throw new Error('Invalid mainline parent number')
-    }
-    args.push('-m', String(options.mainline))
-  }
-}
 
 export function registerGitHandlers() {
   ipcMain.handle('git:status', async (_, cwd: string) => {
