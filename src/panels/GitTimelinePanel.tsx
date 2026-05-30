@@ -869,7 +869,7 @@ export default function GitTimelinePanel() {
   }, [])
 
   // ── Data loading ──
-  const loadCommits = useCallback(async (reset: boolean = false) => {
+  const loadCommits = useCallback(async (reset: boolean = false, showErrorToast: boolean = false) => {
     if (!mountedRef.current) return
     if (!reset && loadingRef.current) return
     const requestId = ++loadRequestIdRef.current
@@ -906,13 +906,16 @@ export default function GitTimelinePanel() {
       setHasMore(result.hasMore)
     } catch (err) {
       console.error('Failed to load git log:', err)
+      if (showErrorToast && mountedRef.current) {
+        addToast({ type: 'error', message: 'Failed to refresh commits' })
+      }
     } finally {
       if (requestId === loadRequestIdRef.current) {
         loadingRef.current = false
         if (mountedRef.current) setLoading(false)
       }
     }
-  }, [ipcInvoke])
+  }, [addToast, ipcInvoke])
 
   // Initial load
   useEffect(() => {
@@ -1007,7 +1010,7 @@ export default function GitTimelinePanel() {
     setContextMenu(null)
     try {
       const result = await ipcInvoke('git:cherry-pick', rootPath, hash)
-      if (result === null || result === undefined) {
+      if (result == null) {
         throw new Error('Cherry-pick failed')
       }
       addToast({ type: 'success', message: `Cherry-picked commit ${hash.substring(0, 7)}` })
@@ -1038,13 +1041,9 @@ export default function GitTimelinePanel() {
     setContextMenu({ x: e.clientX, y: e.clientY, hash })
   }, [])
 
-  const handleRefresh = useCallback(async () => {
-    try {
-      await loadCommits(true)
-    } catch {
-      addToast({ type: 'error', message: 'Failed to refresh commits' })
-    }
-  }, [addToast, loadCommits])
+  const handleRefresh = useCallback(() => {
+    void loadCommits(true, true)
+  }, [loadCommits])
 
   // ── Infinite scroll ──
   const handleScroll = useCallback(() => {

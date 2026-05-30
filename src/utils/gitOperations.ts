@@ -369,6 +369,7 @@ export interface GitStashOptions {
 
 /** Result of an IPC git operation */
 interface GitIpcResult<T = string> {
+  success?: boolean;
   data?: T;
   error?: string;
   exitCode?: number;
@@ -394,11 +395,21 @@ async function gitInvoke<T = string>(
 
   const result = await electron.invoke(channel, ...args);
 
-  if (result && typeof result === 'object' && 'error' in result && result.error) {
-    const err = new Error(result.error);
-    (err as any).exitCode = result?.exitCode;
-    (err as any).stderr = result?.stderr;
-    throw err;
+  if (result && typeof result === 'object') {
+    const ipcResult = result as GitIpcResult<T>;
+    const errorMessage =
+      typeof ipcResult.error === 'string' && ipcResult.error.length > 0
+        ? ipcResult.error
+        : typeof ipcResult.stderr === 'string' && ipcResult.stderr.length > 0
+          ? ipcResult.stderr
+          : undefined;
+
+    if (ipcResult.success === false || ('error' in ipcResult && Boolean(ipcResult.error))) {
+      const err = new Error(errorMessage || 'Git operation failed');
+      (err as any).exitCode = ipcResult.exitCode;
+      (err as any).stderr = ipcResult.stderr;
+      throw err;
+    }
   }
 
   if (result && typeof result === 'object' && 'data' in result) {
