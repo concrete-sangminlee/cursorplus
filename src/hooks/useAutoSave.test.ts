@@ -155,4 +155,27 @@ describe('useAutoSave', () => {
     unmount()
     spy.mockRestore()
   })
+
+  it('removes stale recovery entries when stored recovery payload is invalid', async () => {
+    const { result, unmount } = renderHook(() => useAutoSave())
+    const recoveryKey = '/workspace/stale.ts'
+
+    act(() => {
+      result.current.scheduleAutoSave(recoveryKey, 'stale')
+      vi.advanceTimersByTime(0)
+    })
+
+    const recoveryIndex = JSON.parse(localStorage.getItem('orion-recovery-index') || '{}') as Record<string, string>
+    const entryKey = recoveryIndex[recoveryKey]
+    expect(entryKey).toBeTruthy()
+
+    localStorage.setItem(entryKey, '{broken-json')
+
+    const entries = getRecoveryEntries()
+    expect(entries).toHaveLength(0)
+    expect(localStorage.getItem(entryKey)).toBeNull()
+    expect(localStorage.getItem('orion-recovery-index')).toBe('{}')
+
+    unmount()
+  })
 })

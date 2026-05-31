@@ -129,11 +129,12 @@ export function getRecoveryEntries(): RecoveryEntry[] {
       if (raw) {
         const parsed = JSON.parse(raw) as RecoveryEntry
         entries.push(parsed)
-      } else {
+    } else {
         // Stale index entry
         delete index[filePath]
       }
     } catch {
+      localStorage.removeItem(key)
       delete index[filePath]
     }
   }
