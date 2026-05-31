@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 export interface IpcResult {
   success: boolean
   error?: string
@@ -31,6 +33,8 @@ export async function writeFileChecked(
   content: string,
   operation = 'Save file',
 ): Promise<void> {
+  const queueKey = path.resolve(filePath)
+
   const runWrite = async () => {
     const api = (globalThis as { api?: { writeFile?: (filePath: string, content: string) => Promise<IpcResult> } }).api
     if (!api?.writeFile) {
@@ -41,13 +45,13 @@ export async function writeFileChecked(
     assertIpcSuccess(result, operation)
   }
 
-  const previous = writeQueues.get(filePath) ?? Promise.resolve()
+  const previous = writeQueues.get(queueKey) ?? Promise.resolve()
   const current = previous.catch(() => {}).then(() => runWrite())
   const queued = current.catch(() => {}).finally(() => {
-    if (writeQueues.get(filePath) === queued) {
-      writeQueues.delete(filePath)
+    if (writeQueues.get(queueKey) === queued) {
+      writeQueues.delete(queueKey)
     }
   })
-  writeQueues.set(filePath, queued)
+  writeQueues.set(queueKey, queued)
   await current
 }
