@@ -472,12 +472,31 @@ export function registerGitHandlers() {
     })
   })
 
-  ipcMain.handle('git:push', async (_, cwd: string) => {
-    return await runGitOrEmpty(cwd, ['push'])
+  ipcMain.handle('git:push', async (_, cwd: string, remote = 'origin', branch?: string, force = false) => {
+    const safeRemote = remote?.trim()
+    const args = ['push']
+    if (force) {
+      args.push('--force-with-lease')
+    }
+    if (safeRemote) {
+      args.push(safeRemote)
+    }
+    if (branch) {
+      args.push(branch)
+    }
+    return await runGitOrEmpty(cwd, args)
   })
 
-  ipcMain.handle('git:pull', async (_, cwd: string) => {
-    return await runGitOrEmpty(cwd, ['pull'])
+  ipcMain.handle('git:pull', async (_, cwd: string, remote = 'origin', branch?: string) => {
+    const safeRemote = remote?.trim()
+    const args = ['pull']
+    if (safeRemote) {
+      args.push(safeRemote)
+    }
+    if (branch) {
+      args.push(branch)
+    }
+    return await runGitOrEmpty(cwd, args)
   })
 
   ipcMain.handle('git:fetch', async (_, cwd: string) => {

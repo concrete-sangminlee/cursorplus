@@ -270,8 +270,8 @@ export interface ElectronAPI {
   gitBlame: (cwd: string, filePath: string) => Promise<GitBlameEntry[]>
   gitFileDiff: (cwd: string, filePath: string) => Promise<DiffHunk[]>
   gitDiffFile: (cwd: string, filePath: string) => Promise<DiffHunk[]>
-  gitPush: (cwd: string) => Promise<string>
-  gitPull: (cwd: string) => Promise<string>
+  gitPush: (cwd: string, remote?: string, branch?: string, force?: boolean) => Promise<string>
+  gitPull: (cwd: string, remote?: string, branch?: string) => Promise<string>
   gitFetch: (cwd: string) => Promise<string>
   gitStash: (cwd: string) => Promise<string>
   gitStashPop: (cwd: string, index?: number) => Promise<string>

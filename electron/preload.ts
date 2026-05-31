@@ -350,10 +350,10 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_FILE_DIFF, cwd, filePath),
   gitDiffFile: (cwd: string, filePath: string): Promise<GitDiffHunk[]> =>
     ipcRenderer.invoke(IPC.GIT_DIFF_FILE, cwd, filePath),
-  gitPush: (cwd: string): Promise<string> =>
-    ipcRenderer.invoke(IPC.GIT_PUSH, cwd),
-  gitPull: (cwd: string): Promise<string> =>
-    ipcRenderer.invoke(IPC.GIT_PULL, cwd),
+  gitPush: (cwd: string, remote = 'origin', branch?: string, force = false): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_PUSH, cwd, remote, branch, force),
+  gitPull: (cwd: string, remote = 'origin', branch?: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_PULL, cwd, remote, branch),
   gitFetch: (cwd: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_FETCH, cwd),
   gitStash: (cwd: string): Promise<string> =>
