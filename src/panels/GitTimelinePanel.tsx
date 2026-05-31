@@ -835,20 +835,27 @@ export default function GitTimelinePanel() {
 
     switch (channel) {
       case 'git:log': {
-        const opts = (args[0] || {}) as any
+        const opts = (args[1] || args[0] || {}) as any
         const offset = opts.offset || 0
         const limit = opts.limit || PAGE_SIZE
         const generated = generateMockCommits(limit, offset)
         return { commits: generated, hasMore: offset + limit < 200 }
       }
       case 'git:file-log': {
-        const opts = (args[0] || {}) as any
+        const opts = (args[1] || args[0] || {}) as any
         const offset = opts.offset || 0
         const limit = opts.limit || PAGE_SIZE
         const all = generateMockCommits(limit, offset)
         // Filter to ~60% of commits for file mode
         const filtered = all.filter((_, i) => i % 3 !== 2)
         return { commits: filtered, hasMore: offset + limit < 100 }
+      }
+      case 'git:log-page': {
+        const opts = (args[1] || args[0] || {}) as any
+        const offset = opts.offset || 0
+        const limit = opts.limit || PAGE_SIZE
+        const generated = generateMockCommits(limit, offset)
+        return { commits: generated, hasMore: offset + limit < 200 }
       }
       case 'git:show': {
         const hash = (args[1] ?? args[0]) as string
@@ -871,6 +878,7 @@ export default function GitTimelinePanel() {
   // ── Data loading ──
   const loadCommits = useCallback(async (reset: boolean = false, showErrorToast: boolean = false) => {
     if (!mountedRef.current) return
+    if (!rootPath) return
     if (!reset && loadingRef.current) return
     const requestId = ++loadRequestIdRef.current
     loadingRef.current = true
@@ -881,16 +889,20 @@ export default function GitTimelinePanel() {
       const currentActiveFile = activeFileRef.current
       const currentFilters = filtersRef.current
       const offset = reset ? 0 : commitsLengthRef.current
-      const channel = currentViewMode === 'file' ? 'git:file-log' : 'git:log'
-      const result = await ipcInvoke(channel, {
-        offset,
-        limit: PAGE_SIZE,
-        file: currentViewMode === 'file' ? currentActiveFile : undefined,
-        author: currentFilters.author || undefined,
-        since: currentFilters.dateFrom || undefined,
-        until: currentFilters.dateTo || undefined,
-        search: currentFilters.messageSearch || undefined,
-      }) as any
+      const channel = currentViewMode === 'file' ? 'git:file-log' : 'git:log-page'
+      const result = await ipcInvoke(
+        channel,
+        rootPath,
+        {
+          offset,
+          limit: PAGE_SIZE,
+          file: currentViewMode === 'file' ? currentActiveFile : undefined,
+          author: currentFilters.author || undefined,
+          since: currentFilters.dateFrom || undefined,
+          until: currentFilters.dateTo || undefined,
+          search: currentFilters.messageSearch || undefined,
+        },
+      ) as any
 
       if (!mountedRef.current || requestId !== loadRequestIdRef.current) return
       if (reset) {
@@ -915,7 +927,7 @@ export default function GitTimelinePanel() {
         if (mountedRef.current) setLoading(false)
       }
     }
-  }, [addToast, ipcInvoke])
+  }, [addToast, ipcInvoke, rootPath])
 
   // Initial load
   useEffect(() => {
@@ -1001,9 +1013,10 @@ export default function GitTimelinePanel() {
 
   const handleCompare = useCallback(async () => {
     if (compare.commitA && compare.commitB) {
-      await ipcInvoke('git:diff-commits', compare.commitA, compare.commitB)
+      if (!rootPath) return
+      await ipcInvoke('git:diff-commits', rootPath, compare.commitA, compare.commitB)
     }
-  }, [compare, ipcInvoke])
+  }, [compare, ipcInvoke, rootPath])
 
   const handleCherryPick = useCallback(async (hash: string) => {
     if (!rootPath) return

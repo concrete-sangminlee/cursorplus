@@ -59,6 +59,110 @@ function gitErrorMessage(err: any): string {
   return err?.stderr?.trim() || err?.message || 'Git operation failed'
 }
 
+interface GitLogPageOptions {
+  offset?: unknown
+  limit?: unknown
+  file?: unknown
+  author?: unknown
+  since?: unknown
+  until?: unknown
+  search?: unknown
+}
+
+interface ParsedLogCommit {
+  fullHash: string
+  hash: string
+  author: string
+  email: string
+  date: string
+  message: string
+}
+
+function normalizeGitLogOptions(
+  options?: GitLogPageOptions,
+): {
+  offset: number
+  limit: number
+  file?: string
+  author?: string
+  since?: string
+  until?: string
+  search?: string
+} {
+  const opts = options ?? {}
+
+  const toNonNegativeInt = (value: unknown, fallback: number): number => {
+    const parsed = Number.parseInt(String(value ?? ''), 10)
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback
+    return parsed
+  }
+
+  const trimOrUndefined = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+
+  const safeLimit = Math.min(toNonNegativeInt(opts.limit, 50), 200)
+  const safeOffset = toNonNegativeInt(opts.offset, 0)
+
+  return {
+    offset: safeOffset,
+    limit: safeLimit,
+    file: trimOrUndefined(opts.file),
+    author: trimOrUndefined(opts.author),
+    since: trimOrUndefined(opts.since),
+    until: trimOrUndefined(opts.until),
+    search: trimOrUndefined(opts.search),
+  }
+}
+
+function parseGitLogOutput(raw: string): ParsedLogCommit[] {
+  if (!raw) return []
+  const SEP = '\x1f'
+  const REC = '\x1e'
+  const rawEntries = raw.split(REC).filter(Boolean)
+  return rawEntries.map((record) => {
+    const parts = record.trim().split(SEP)
+    return {
+      fullHash: parts[0] || '',
+      hash: parts[1] || '',
+      author: parts[2] || '',
+      email: parts[3] || '',
+      date: parts[4] || '',
+      message: parts[5] || '',
+    }
+  })
+}
+
+async function getGitLogPage(cwd: string, options?: GitLogPageOptions) {
+  const { offset, limit, file, author, since, until, search } = normalizeGitLogOptions(options)
+
+  const SEP = '\x1f'
+  const REC = '\x1e'
+  const format = `%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%ai${SEP}%s${REC}`
+
+  const args = ['log', `--pretty=format:${format}`, `--skip=${offset}`, `--max-count=${Math.min(limit + 1, 201)}`]
+  if (author) args.push(`--author=${author}`)
+  if (since) args.push(`--since=${since}`)
+  if (until) args.push(`--until=${until}`)
+  if (search) {
+    args.push(`--grep=${search}`, '--regexp-ignore-case')
+  }
+  if (file) {
+    args.push('--', file)
+  }
+
+  const raw = await runGitOrEmpty(cwd, args)
+  const parsed = parseGitLogOutput(raw)
+  const hasMore = parsed.length > limit
+
+  return {
+    commits: parsed.slice(0, limit),
+    hasMore,
+  }
+}
+
 
 export function registerGitHandlers() {
   ipcMain.handle('git:status', async (_, cwd: string) => {
@@ -147,6 +251,22 @@ export function registerGitHandlers() {
         message: parts[5] || '',
       }
     })
+  })
+
+  ipcMain.handle('git:log-page', async (_, cwd: string, options?: GitLogPageOptions) => {
+    return getGitLogPage(cwd, options)
+  })
+
+  ipcMain.handle('git:file-log', async (_, cwd: string, options?: GitLogPageOptions) => {
+    return getGitLogPage(cwd, options)
+  })
+
+  ipcMain.handle('git:diff-commits', async (_, cwd: string, commitA: string, commitB: string) => {
+    const safeA = tryNormalizeGitCommitHash(commitA)
+    const safeB = tryNormalizeGitCommitHash(commitB)
+    if (!safeA || !safeB) return { diff: '', filesChanged: 0 }
+    const output = await runGitOrEmpty(cwd, ['diff', `${safeA}..${safeB}`])
+    return { diff: output, filesChanged: output ? output.split('\n').filter(Boolean).length : 0 }
   })
 
   ipcMain.handle('git:blame', async (_, cwd: string, filePath: string) => {
