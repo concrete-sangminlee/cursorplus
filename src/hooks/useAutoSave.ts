@@ -54,14 +54,42 @@ function storeRecovery(filePath: string, content: string) {
   const key = recoveryKey(filePath)
   const index = getRecoveryIndex()
 
+  const getRecoveryTimestamp = (path: string, recoveryKey: string): number | null => {
+    try {
+      const raw = localStorage.getItem(recoveryKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw) as RecoveryEntry
+      return typeof parsed.timestamp === 'number' ? parsed.timestamp : null
+    } catch {
+      return null
+    }
+  }
+
   // If this file isn't already tracked and we're at the limit, evict the oldest
   if (!index[filePath]) {
-    const entries = Object.keys(index)
+    const entries = Object.entries(index)
     if (entries.length >= MAX_RECOVERY_FILES) {
-      const oldest = entries[0]
-      const oldKey = recoveryKey(oldest)
-      try { localStorage.removeItem(oldKey) } catch {}
-      delete index[oldest]
+      let oldest: { path: string; key: string; timestamp: number } | null = null
+      for (const [trackedPath, trackedKey] of entries) {
+        const ts = getRecoveryTimestamp(trackedPath, trackedKey)
+        if (ts === null) continue
+        if (!oldest || ts < oldest.timestamp) {
+          oldest = { path: trackedPath, key: trackedKey, timestamp: ts }
+        }
+      }
+
+      if (!oldest && entries.length > 0) {
+        oldest = {
+          path: entries[0][0],
+          key: entries[0][1],
+          timestamp: Date.now(),
+        }
+      }
+
+      if (oldest) {
+        try { localStorage.removeItem(oldest.key) } catch {}
+        delete index[oldest.path]
+      }
     }
   }
 

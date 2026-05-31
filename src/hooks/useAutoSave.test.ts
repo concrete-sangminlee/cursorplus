@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { useAutoSave } from './useAutoSave'
+import { getRecoveryEntries, useAutoSave } from './useAutoSave'
 
 describe('useAutoSave', () => {
   beforeEach(() => {
@@ -121,5 +121,38 @@ describe('useAutoSave', () => {
       await Promise.resolve()
     })
     expect(apiWrite).toHaveBeenCalledTimes(1)
+  })
+
+  it('evicts the oldest recovery entry by timestamp when capacity is exceeded', async () => {
+    const nowValues = [
+      1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900,
+      2000, 2100, 2200, 2300,
+    ]
+    let nowIndex = 0
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => {
+      const value = nowValues[nowIndex]
+      nowIndex += 1
+      return value
+    })
+
+    const { result, unmount } = renderHook(() => useAutoSave())
+
+    act(() => {
+      for (let i = 1; i <= 10; i++) {
+        result.current.scheduleAutoSave(`/workspace/file-${i}.ts`, `v${i}`)
+      }
+      // Refresh the oldest path so it should not be evicted on overflow.
+      result.current.scheduleAutoSave('/workspace/file-1.ts', 'v1-updated')
+      result.current.scheduleAutoSave('/workspace/file-11.ts', 'v11')
+    })
+
+    const entries = getRecoveryEntries()
+    expect(entries).toHaveLength(10)
+    expect(entries.some((entry) => entry.path === '/workspace/file-1.ts')).toBe(true)
+    expect(entries.some((entry) => entry.path === '/workspace/file-2.ts')).toBe(false)
+    expect(entries.some((entry) => entry.path === '/workspace/file-11.ts')).toBe(true)
+
+    unmount()
+    spy.mockRestore()
   })
 })
