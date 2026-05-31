@@ -359,8 +359,8 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_MERGE, cwd, branchName),
   gitDeleteBranch: (cwd: string, branchName: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, cwd, branchName),
-  gitCherryPick: (cwd: string, commitHash: string): Promise<string> =>
-    ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, cwd, commitHash),
+  gitCherryPick: (cwd: string, commitHash: string, options?: { noCommit?: boolean; mainline?: number }): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, cwd, commitHash, options),
   gitTags: (cwd: string): Promise<GitTag[]> =>
     ipcRenderer.invoke(IPC.GIT_TAGS, cwd),
   gitCreateBranch: (cwd: string, branchName: string): Promise<string> =>

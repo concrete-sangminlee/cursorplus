@@ -281,7 +281,7 @@ export interface ElectronAPI {
   gitMergeAbort: (cwd: string) => Promise<string>
   gitMerge: (cwd: string, branchName: string) => Promise<string>
   gitDeleteBranch: (cwd: string, branchName: string) => Promise<string>
-  gitCherryPick: (cwd: string, commitHash: string) => Promise<string>
+  gitCherryPick: (cwd: string, commitHash: string, options?: { noCommit?: boolean; mainline?: number }) => Promise<string>
   gitTags: (cwd: string) => Promise<GitTagEntry[]>
   gitCreateBranch: (cwd: string, branchName: string) => Promise<string>
   gitStageAll: (cwd: string) => Promise<boolean>
