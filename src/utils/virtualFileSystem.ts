@@ -3,6 +3,7 @@
  * Provides unified file operations across local, remote, and in-memory file systems.
  * Supports file watching, change events, and atomic operations.
  */
+import { writeFileChecked } from './ipcResult'
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -158,7 +159,7 @@ export class LocalFileSystem implements IFileSystem {
   }
 
   async writeFile(path: string, content: string): Promise<void> {
-    await api()?.writeFile?.(this.resolve(path), content)
+    await writeFileChecked(this.resolve(path), content, `Write ${path}`)
   }
 
   async createDirectory(path: string, recursive = true): Promise<void> {

@@ -19,6 +19,7 @@ import { useToastStore } from '@/store/toast'
 import { useFileStore } from '@/store/files'
 import { useSettingsStore } from '@/store/settings'
 import { getCurrentContext, buildSystemPrompt, getContextSummary, type CodeContext } from '@/utils/codeContext'
+import { writeFileChecked } from '@/utils/ipcResult'
 
 /* ── Model definitions ─────────────────────────────────── */
 
@@ -365,15 +366,19 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     if (!activeFilePath) return
     updateFileContent(activeFilePath, code)
     try {
-      await window.api.writeFile(activeFilePath, code)
-    } catch {
+      await writeFileChecked(activeFilePath, code, 'Apply code')
+      const filename = activeFilePath.split(/[\\/]/).pop() || activeFilePath
+      addToast({ type: 'success', message: `Code applied to ${filename}` })
+      setApplied(true)
+      setShowDiffPreview(false)
+      setTimeout(() => setApplied(false), 2000)
+      return
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to apply code'
+      addToast({ type: 'error', message })
       // file was still updated in-memory
+      return
     }
-    const filename = activeFilePath.split(/[\\/]/).pop() || activeFilePath
-    addToast({ type: 'success', message: `Code applied to ${filename}` })
-    setApplied(true)
-    setShowDiffPreview(false)
-    setTimeout(() => setApplied(false), 2000)
   }
 
   const handleInsertAtCursor = () => {

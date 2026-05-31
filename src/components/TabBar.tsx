@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
 import { useProblemsStore, getProblemsForFile } from '@/store/problems'
+import { clearRecovery } from '@/hooks/useAutoSave'
 import { X, ChevronLeft, ChevronRight, Pin, MoreHorizontal, Copy, FolderOpen, ArrowRightLeft, Columns, Rows } from 'lucide-react'
+import { writeFileChecked } from '@/utils/ipcResult'
 
 // ─── CSS Variables & Keyframes (injected once) ─────────────────────────────
 
@@ -885,11 +887,14 @@ export default function TabBar() {
       const file = openFiles.find((f) => f.path === filePath)
       if (file) {
         try {
-          await (window as any).api.writeFile(filePath, file.content)
+          await writeFileChecked(filePath, file.content, `Save ${file.name}`)
           markSaved(filePath)
+          clearRecovery(filePath)
           addToast({ type: 'success', message: `Saved ${file.name}`, duration: 1500 })
         } catch {
           // best effort
+          addToast({ type: 'error', message: `Failed to save ${file.name}` })
+          return
         }
       }
       closeFile(filePath)

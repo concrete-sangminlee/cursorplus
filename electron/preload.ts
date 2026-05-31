@@ -205,7 +205,9 @@ const api = {
   // =======================================================================
   readFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke(IPC.FS_READ_FILE, filePath),
-  writeFile: (filePath: string, content: string): Promise<void> =>
+  writeFile: (filePath: string, content: string): Promise<IpcResult> =>
+    ipcRenderer.invoke(IPC.FS_WRITE_FILE, filePath, content),
+  saveFile: (filePath: string, content: string): Promise<IpcResult> =>
     ipcRenderer.invoke(IPC.FS_WRITE_FILE, filePath, content),
   deleteFile: (filePath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FS_DELETE, filePath),

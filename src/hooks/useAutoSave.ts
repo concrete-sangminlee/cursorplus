@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useEditorStore } from '@/store/editor'
 import { useToastStore } from '@/store/toast'
 import { useFileHistoryStore } from '@/store/fileHistory'
+import { writeFileChecked } from '@/utils/ipcResult'
 
 // ── Types ──────────────────────────────────────────────
 export type AutoSaveMode = 'off' | 'afterDelay' | 'onFocusChange' | 'onWindowChange'
@@ -148,7 +149,7 @@ async function performSave(filePath: string, content: string) {
   try {
     // Take auto-save snapshot (throttled to 5 min intervals in the store)
     useFileHistoryStore.getState().addSnapshot(filePath, content, 'Auto-saved')
-    await window.api.writeFile(filePath, content)
+    await writeFileChecked(filePath, content, 'Auto-save')
     useEditorStore.getState().markSaved(filePath)
     clearRecovery(filePath)
     emitAutoSaved()
@@ -163,17 +164,20 @@ async function saveAllModified() {
   const modified = openFiles.filter((f) => f.isModified)
   if (modified.length === 0) return
 
+  let savedCount = 0
+
   await Promise.all(
     modified.map(async (f) => {
       try {
-        await window.api.writeFile(f.path, f.content)
+        await writeFileChecked(f.path, f.content, `Auto-save ${f.name}`)
         markSaved(f.path)
         clearRecovery(f.path)
+        savedCount++
       } catch {}
     })
   )
 
-  if (modified.length > 0) emitAutoSaved()
+  if (savedCount > 0) emitAutoSaved()
 }
 
 // ── Recovery backup interval (every 5 seconds for modified files) ──

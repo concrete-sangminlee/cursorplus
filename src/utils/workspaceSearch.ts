@@ -6,6 +6,7 @@
  */
 
 import { fuzzyMatch, type FuzzyMatchResult } from './fuzzyMatch'
+import { writeFileChecked } from './ipcResult'
 
 /* ── Constants ────────────────────────────────────────── */
 
@@ -1031,7 +1032,7 @@ export class SearchEngine {
 
     // Write back
     try {
-      await api()?.writeFile?.(match.filePath, newContent)
+      await writeFileChecked(match.filePath, newContent, `Replace in ${match.filePath}`)
       this.searchIndex.indexFile(match.filePath, newContent)
       this.resultCache.clear()
     } catch (err) {
@@ -1051,7 +1052,7 @@ export class SearchEngine {
 
     for (const preview of previews) {
       try {
-        await api()?.writeFile?.(preview.filePath, preview.newContent)
+        await writeFileChecked(preview.filePath, preview.newContent, `Replace in ${preview.filePath}`)
         this.searchIndex.indexFile(preview.filePath, preview.newContent)
         filesModified++
       } catch (err) {

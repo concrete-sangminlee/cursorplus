@@ -3,6 +3,7 @@ import { Search, ChevronRight, FileText, Loader2, Replace, X, ChevronsUpDown, Ch
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
 import { useToastStore } from '@/store/toast'
+import { writeFileChecked } from '@/utils/ipcResult'
 
 interface SearchMatch {
   file: string
@@ -337,7 +338,7 @@ export default function SearchPanel() {
     if (undoStack.length === 0) return
     const last = undoStack[undoStack.length - 1]
     try {
-      await window.api.writeFile(last.filePath, last.originalContent)
+      await writeFileChecked(last.filePath, last.originalContent, 'Undo replace')
       const { openFiles, updateFileContent } = useEditorStore.getState()
       const openF = openFiles.find(f => f.path === last.filePath)
       if (openF) {
@@ -357,6 +358,7 @@ export default function SearchPanel() {
     if (!query.trim()) return
 
     let totalReplacements = 0
+    let failedWrites = 0
     const { openFiles, updateFileContent } = useEditorStore.getState()
 
     for (const result of results) {
@@ -371,9 +373,8 @@ export default function SearchPanel() {
         if (!matches) continue
 
         const newContent = fileData.content.replace(regex, replaceQuery)
+        await writeFileChecked(result.filePath, newContent, `Replace in ${result.fileName}`)
         totalReplacements += matches.length
-
-        await window.api.writeFile(result.filePath, newContent)
 
         const openF = openFiles.find(f => f.path === result.filePath)
         if (openF) {
@@ -381,13 +382,21 @@ export default function SearchPanel() {
         }
       } catch (err: any) {
         addToast({ type: 'error', message: `Failed to replace in ${result.fileName}: ${err?.message}` })
+        failedWrites++
       }
     }
 
-    addToast({
-      type: 'success',
-      message: `Replaced ${totalReplacements} occurrence${totalReplacements !== 1 ? 's' : ''} across ${results.length} file${results.length !== 1 ? 's' : ''}`
-    })
+    if (failedWrites > 0) {
+      addToast({
+        type: failedWrites === results.length ? 'error' : 'warning',
+        message: `Replaced ${totalReplacements} occurrence${totalReplacements !== 1 ? 's' : ''} across ${results.length} file${results.length !== 1 ? 's' : ''}`,
+      })
+    } else {
+      addToast({
+        type: 'success',
+        message: `Replaced ${totalReplacements} occurrence${totalReplacements !== 1 ? 's' : ''} across ${results.length} file${results.length !== 1 ? 's' : ''}`,
+      })
+    }
 
     handleSearch()
   }
@@ -408,7 +417,7 @@ export default function SearchPanel() {
       if (!matches) return
 
       const newContent = fileData.content.replace(regex, replaceQuery)
-      await window.api.writeFile(filePath, newContent)
+      await writeFileChecked(filePath, newContent, `Replace in ${fileName}`)
 
       const openF = openFiles.find(f => f.path === filePath)
       if (openF) {
@@ -448,7 +457,7 @@ export default function SearchPanel() {
 
       lines[lineIndex] = lines[lineIndex].replace(regex, replaceQuery)
       const newContent = lines.join('\n')
-      await window.api.writeFile(filePath, newContent)
+      await writeFileChecked(filePath, newContent, `Replace in ${fileName}`)
 
       const openF = openFiles.find(f => f.path === filePath)
       if (openF) {

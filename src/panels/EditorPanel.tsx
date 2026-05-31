@@ -29,6 +29,7 @@ import { useEditorStore as useBreadcrumbEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
 import { useWorkspaceStore } from '@/store/workspace'
 import { useFileHistoryStore } from '@/store/fileHistory'
+import { writeFileChecked } from '@/utils/ipcResult'
 import TimelinePanel from '@/components/TimelinePanel'
 import FileIcon, { FolderIcon } from '@/components/FileIcon'
 import { registerCodeActionProviders } from '@/providers/codeActions'
@@ -2149,12 +2150,18 @@ export default function EditorPanel() {
         e.preventDefault()
         if (activeFile) {
           setSaving(true)
-          useFileHistoryStore.getState().addSnapshot(activeFile.path, activeFile.content, 'Saved')
-          await window.api.writeFile(activeFile.path, activeFile.content)
-          markSaved(activeFile.path)
-          clearRecovery(activeFile.path)
-          addToast({ type: 'success', message: `Saved ${activeFile.name}`, duration: 1500 })
-          setTimeout(() => setSaving(false), 800)
+          try {
+            useFileHistoryStore.getState().addSnapshot(activeFile.path, activeFile.content, 'Saved')
+            await writeFileChecked(activeFile.path, activeFile.content, `Save ${activeFile.name}`)
+            markSaved(activeFile.path)
+            clearRecovery(activeFile.path)
+            addToast({ type: 'success', message: `Saved ${activeFile.name}`, duration: 1500 })
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to save file'
+            addToast({ type: 'error', message: `${message}` })
+          } finally {
+            setTimeout(() => setSaving(false), 800)
+          }
         }
       }
     }
@@ -2504,11 +2511,17 @@ export default function EditorPanel() {
           }
 
           useFileHistoryStore.getState().addSnapshot(af.path, content, 'Saved')
-          window.api.writeFile(af.path, content).then(() => {
+          try {
+            await writeFileChecked(af.path, content, `Save ${af.name}`)
             markSaved(af.path)
+            clearRecovery(af.path)
             addToast({ type: 'success', message: `Saved ${af.name}`, duration: 1500 })
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to save file'
+            addToast({ type: 'error', message })
+          } finally {
             setTimeout(() => setSaving(false), 800)
-          })
+          }
         }
       },
       // Multi-cursor & selection actions (from Command Palette)

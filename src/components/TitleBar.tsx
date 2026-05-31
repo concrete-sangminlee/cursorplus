@@ -105,20 +105,13 @@ function buildMenus(
 ): MenuDef[] {
   /* ---------- helpers ------------------------------------------------ */
   const saveActiveFile = () => {
-    const active = editorStore.openFiles.find(
-      (f) => f.path === editorStore.activeFilePath,
-    )
-    if (active && active.path) {
-      window.api?.saveFile?.(active.path, active.content)
+    if (editorStore.activeFilePath) {
+      dispatch('orion:save-file')
     }
   }
 
   const saveAllFiles = () => {
-    editorStore.openFiles.forEach((f) => {
-      if (f.isModified && f.path) {
-        window.api?.saveFile?.(f.path, f.content)
-      }
-    })
+    dispatch('orion:save-all')
   }
 
   const dispatch = (name: string, detail?: unknown) =>

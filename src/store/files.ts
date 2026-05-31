@@ -666,7 +666,10 @@ export const useFileStore = create<FileStore>((set, get) => ({
     const filePath = `${dirPath}${sep}${fileName}`
 
     try {
-      await window.electronAPI?.writeFile?.(filePath, template.content)
+      const result = await window.electronAPI?.writeFile?.(filePath, template.content)
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Failed to create file')
+      }
     } catch (err) {
       console.error('[FileStore] createFileFromTemplate failed:', err)
       throw err

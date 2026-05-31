@@ -17,6 +17,7 @@ import Resizer from './components/Resizer'
 import StatusBar from './components/StatusBar'
 import CommandPalette from '@/components/CommandPalette'
 import ToastContainer from '@/components/Toast'
+import { writeFileChecked } from '@/utils/ipcResult'
 import FileExplorer from './panels/FileExplorer'
 import BottomPanel from './panels/BottomPanel'
 import {
@@ -608,20 +609,31 @@ export default function App() {
         window.dispatchEvent(new Event('orion:open-settings'))
       },
       'orion:save-all': () => {
-        const { openFiles, markSaved } = useEditorStore.getState()
-        const modified = openFiles.filter((f: OpenFile) => f.isModified)
-        Promise.all(modified.map(async (f: OpenFile) => {
-          try {
-            await window.api.writeFile(f.path, f.content)
-            markSaved(f.path)
-            clearRecovery(f.path)
-          } catch {}
-        })).then(() => {
-          if (modified.length > 0) {
-            const { addToast } = useToastStore.getState()
-            addToast({ type: 'success', message: `Saved ${modified.length} file(s)` })
+        void (async () => {
+          const { openFiles, markSaved } = useEditorStore.getState()
+          const { addToast } = useToastStore.getState()
+          const modified = openFiles.filter((f: OpenFile) => f.isModified)
+          let savedCount = 0
+          let failedCount = 0
+
+          for (const file of modified) {
+            try {
+              await writeFileChecked(file.path, file.content, `Save ${file.name}`)
+              markSaved(file.path)
+              clearRecovery(file.path)
+              savedCount++
+            } catch {
+              failedCount++
+            }
           }
-        })
+
+          if (savedCount > 0) {
+            addToast({ type: 'success', message: `Saved ${savedCount} file(s)` })
+          }
+          if (failedCount > 0) {
+            addToast({ type: 'error', message: `Failed to save ${failedCount} file(s)` })
+          }
+        })()
       },
       'orion:focus-editor': () => {
         // Focus the Monaco editor instance when requested
@@ -661,20 +673,31 @@ export default function App() {
       // Ctrl+Shift+S -> save all
       if (ctrl && e.shiftKey && e.key === 'S') {
         e.preventDefault()
-        const { openFiles, markSaved } = useEditorStore.getState()
-        const modified = openFiles.filter((f: OpenFile) => f.isModified)
-        Promise.all(modified.map(async (f: OpenFile) => {
-          try {
-            await window.api.writeFile(f.path, f.content)
-            markSaved(f.path)
-            clearRecovery(f.path)
-          } catch {}
-        })).then(() => {
-          if (modified.length > 0) {
-            const { addToast } = useToastStore.getState()
-            addToast({ type: 'success', message: `Saved ${modified.length} file(s)` })
+        void (async () => {
+          const { openFiles, markSaved } = useEditorStore.getState()
+          const { addToast } = useToastStore.getState()
+          const modified = openFiles.filter((f: OpenFile) => f.isModified)
+          let savedCount = 0
+          let failedCount = 0
+
+          for (const file of modified) {
+            try {
+              await writeFileChecked(file.path, file.content, `Save ${file.name}`)
+              markSaved(file.path)
+              clearRecovery(file.path)
+              savedCount++
+            } catch {
+              failedCount++
+            }
           }
-        })
+
+          if (savedCount > 0) {
+            addToast({ type: 'success', message: `Saved ${savedCount} file(s)` })
+          }
+          if (failedCount > 0) {
+            addToast({ type: 'error', message: `Failed to save ${failedCount} file(s)` })
+          }
+        })()
         return
       }
 
