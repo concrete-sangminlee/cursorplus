@@ -40,3 +40,11 @@ export function normalizeGitCommitHash(value: unknown, label = 'commit hash'): s
 
   return trimmed
 }
+
+export function tryNormalizeGitCommitHash(value: unknown): string | null {
+  try {
+    return normalizeGitCommitHash(value)
+  } catch {
+    return null
+  }
+}

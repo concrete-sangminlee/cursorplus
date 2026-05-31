@@ -4,7 +4,7 @@ import { promisify } from 'util'
 import * as path from 'path'
 import * as fs from 'fs'
 import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
-import { normalizeGitBranchName, normalizeGitCommitHash } from './git-ref-guard'
+import { normalizeGitBranchName, normalizeGitCommitHash, tryNormalizeGitCommitHash } from './git-ref-guard'
 import { appendGitSequencerOptions, GitSequencerOptions } from './git-sequencer-guard'
 import { GIT_TAG_FORMAT, parseGitTagLine } from './git-tag-format'
 
@@ -187,8 +187,7 @@ export function registerGitHandlers() {
   })
 
   ipcMain.handle('git:show', async (_, cwd: string, hash: string) => {
-    // Sanitize hash - only allow hex chars
-    const safeHash = hash.replace(/[^0-9a-fA-F]/g, '')
+    const safeHash = tryNormalizeGitCommitHash(hash)
     if (!safeHash) return null
 
     const SEP = '\x1f'
@@ -541,7 +540,7 @@ export function registerGitHandlers() {
         args.push(tagName)
       }
       if (commitHash) {
-        const safeHash = commitHash.replace(/[^0-9a-fA-F]/g, '')
+        const safeHash = tryNormalizeGitCommitHash(commitHash)
         if (safeHash) args.push(safeHash)
       }
       await runGitExec(cwd, args)

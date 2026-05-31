@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   normalizeGitBranchName,
   normalizeGitCommitHash,
+  tryNormalizeGitCommitHash,
   UnsafeGitRefError,
 } from './git-ref-guard'
 
@@ -42,5 +43,37 @@ describe('normalizeGitCommitHash', () => {
     expect(() => normalizeGitCommitHash('main')).toThrow(UnsafeGitRefError)
     expect(() => normalizeGitCommitHash('a'.repeat(41))).toThrow(UnsafeGitRefError)
     expect(() => normalizeGitCommitHash(null)).toThrow(UnsafeGitRefError)
+  })
+})
+
+describe('tryNormalizeGitCommitHash', () => {
+  it('returns the trimmed hash for a valid 7-char input', () => {
+    expect(tryNormalizeGitCommitHash('abc1234')).toBe('abc1234')
+  })
+
+  it('returns the hash for a valid 40-char input', () => {
+    expect(tryNormalizeGitCommitHash('a'.repeat(40))).toBe('a'.repeat(40))
+  })
+
+  it('trims surrounding whitespace before validating', () => {
+    expect(tryNormalizeGitCommitHash(' abc1234 ')).toBe('abc1234')
+  })
+
+  it('returns null for a hash that is too short', () => {
+    expect(tryNormalizeGitCommitHash('abc123')).toBeNull()
+  })
+
+  it('returns null when input contains non-hex characters', () => {
+    expect(tryNormalizeGitCommitHash('abc1234/extra')).toBeNull()
+  })
+
+  it('returns null for a non-string input', () => {
+    expect(tryNormalizeGitCommitHash(null)).toBeNull()
+    expect(tryNormalizeGitCommitHash(undefined)).toBeNull()
+    expect(tryNormalizeGitCommitHash(42)).toBeNull()
+  })
+
+  it('returns null for an empty string', () => {
+    expect(tryNormalizeGitCommitHash('')).toBeNull()
   })
 })
