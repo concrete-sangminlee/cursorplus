@@ -77,4 +77,49 @@ describe('useAutoSave', () => {
 
     expect(apiWrite).not.toHaveBeenCalled()
   })
+
+  it('uses defaults for invalid persisted autoSaveDelay values', async () => {
+    localStorage.setItem(
+      'orion-editor-settings',
+      JSON.stringify({ autoSaveMode: 'afterDelay', autoSaveDelay: 'abc' })
+    )
+
+    const { result } = renderHook(() => useAutoSave())
+    const apiWrite = (globalThis as unknown as { api: { writeFile: ReturnType<typeof vi.fn> } }).api.writeFile
+
+    act(() => {
+      result.current.scheduleAutoSave('/workspace/a.ts', 'A')
+      vi.advanceTimersByTime(0)
+    })
+    expect(apiWrite).toHaveBeenCalledTimes(0)
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+
+    expect(apiWrite).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores invalid autoSaveDelay events and keeps the previous delay', async () => {
+    const { result } = renderHook(() => useAutoSave())
+    const apiWrite = (globalThis as unknown as { api: { writeFile: ReturnType<typeof vi.fn> } }).api.writeFile
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('orion:editor-config', {
+          detail: { autoSaveMode: 'afterDelay', autoSaveDelay: -100 },
+        })
+      )
+      result.current.scheduleAutoSave('/workspace/a.ts', 'A')
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(apiWrite).toHaveBeenCalledTimes(0)
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+    expect(apiWrite).toHaveBeenCalledTimes(1)
+  })
 })

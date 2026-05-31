@@ -17,6 +17,12 @@ const DEFAULTS: AutoSaveSettings = {
   autoSaveDelay: 1000,
 }
 
+function normalizeAutoSaveDelay(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULTS.autoSaveDelay
+  if (!Number.isInteger(value) || value < 0) return DEFAULTS.autoSaveDelay
+  return value
+}
+
 // ── Recovery helpers ──────────────────────────────────
 const RECOVERY_INDEX_KEY = 'orion-recovery-index'
 const MAX_RECOVERY_FILES = 10
@@ -132,7 +138,7 @@ export function getAutoSaveSettings(): AutoSaveSettings {
       }
       return {
         autoSaveMode: mode,
-        autoSaveDelay: parsed.autoSaveDelay ?? DEFAULTS.autoSaveDelay,
+        autoSaveDelay: normalizeAutoSaveDelay(parsed.autoSaveDelay),
       }
     }
   } catch {}
@@ -201,7 +207,10 @@ export function useAutoSave() {
         }
         settingsRef.current = {
           autoSaveMode: mode,
-          autoSaveDelay: detail.autoSaveDelay ?? settingsRef.current.autoSaveDelay,
+          autoSaveDelay:
+            detail.autoSaveDelay !== undefined
+              ? normalizeAutoSaveDelay(detail.autoSaveDelay)
+              : settingsRef.current.autoSaveDelay,
         }
       }
     }
