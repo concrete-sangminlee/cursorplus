@@ -530,13 +530,8 @@ export default function SourceControlPanel() {
   const handleStashPop = async (index: number) => {
     if (!rootPath) return
     try {
-      // Pop uses drop after apply for specific index
-      if (index === 0) {
-        await (window as any).api.gitStashPop(rootPath)
-      } else {
-        await (window as any).api.gitStashApply(rootPath, index)
-        await (window as any).api.gitStashDrop(rootPath, index)
-      }
+      // Pop can be done by applying and dropping in one command.
+      await (window as any).api.gitStashApply(rootPath, index, { drop: true })
       appendOutput('Git', `[stash] Popped stash@{${index}}`, 'info')
       addToast({ type: 'success', message: `Popped stash@{${index}}` })
       refreshStatus()
