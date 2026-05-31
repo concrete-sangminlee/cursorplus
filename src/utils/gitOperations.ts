@@ -1112,7 +1112,14 @@ export async function createTag(
   options?: { message?: string; hash?: string; force?: boolean },
   cwd?: string
 ): Promise<void> {
-  await git('createTag', name, options, cwd);
+  await git(
+    'createTag',
+    cwd,
+    name,
+    options?.message,
+    options?.hash,
+    options?.force
+  );
 }
 
 /** Delete a local tag */

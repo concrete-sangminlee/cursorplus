@@ -755,9 +755,12 @@ export function registerGitHandlers() {
     }
   })
 
-  ipcMain.handle('git:create-tag', async (_, cwd: string, tagName: string, message?: string, commitHash?: string) => {
+  ipcMain.handle('git:create-tag', async (_, cwd: string, tagName: string, message?: string, commitHash?: string, force?: boolean) => {
     try {
       const args = ['tag']
+      if (force) {
+        args.push('-f')
+      }
       if (message) {
         args.push('-a', tagName, '-m', message)
       } else {

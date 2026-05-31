@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clean, commitAmend, getConfig, stageAll } from './gitOperations'
+import { clean, commitAmend, createTag, getConfig, stageAll } from './gitOperations'
 
 function mockGitInvoke(result: unknown) {
   const invoke = vi.fn().mockResolvedValue(result)
@@ -39,5 +39,19 @@ describe('gitOperations IPC error handling', () => {
 
     expect(value).toBe('alice')
     expect(invoke).toHaveBeenCalledWith('git:config-get', 'user.name', 'local', '/repo')
+  })
+
+  it('normalizes createTag to git:create-tag and keeps option ordering', async () => {
+    const invoke = mockGitInvoke('created')
+    await createTag('v1', { message: 'release', force: true }, '/repo')
+
+    expect(invoke).toHaveBeenCalledWith(
+      'git:create-tag',
+      '/repo',
+      'v1',
+      'release',
+      undefined,
+      true
+    )
   })
 })
