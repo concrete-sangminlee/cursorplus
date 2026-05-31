@@ -262,7 +262,7 @@ export interface ElectronAPI {
   gitDiff: (cwd: string, filePath?: string) => Promise<string>
   gitStage: (cwd: string, filePath: string) => Promise<boolean>
   gitUnstage: (cwd: string, filePath: string) => Promise<boolean>
-  gitCommit: (cwd: string, message: string) => Promise<boolean>
+  gitCommit: (cwd: string, message: string, amend?: boolean) => Promise<boolean>
   gitDiscard: (cwd: string, filePath: string) => Promise<boolean>
   gitBranches: (cwd: string) => Promise<GitBranch[]>
   gitCheckout: (cwd: string, branch: string) => Promise<string>

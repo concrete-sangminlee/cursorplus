@@ -329,8 +329,8 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_STAGE, cwd, filePath),
   gitUnstage: (cwd: string, filePath: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC.GIT_UNSTAGE, cwd, filePath),
-  gitCommit: (cwd: string, message: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC.GIT_COMMIT, cwd, message),
+  gitCommit: (cwd: string, message: string, amend = false): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.GIT_COMMIT, cwd, message, amend),
   gitDiscard: (cwd: string, filePath: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC.GIT_DISCARD, cwd, filePath),
   gitBranches: (cwd: string): Promise<GitBranch[]> =>

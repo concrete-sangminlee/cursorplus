@@ -364,9 +364,20 @@ export function registerGitHandlers() {
     return true
   })
 
-  ipcMain.handle('git:commit', async (_, cwd: string, message: string) => {
+  ipcMain.handle('git:commit', async (_, cwd: string, message: string, amend = false) => {
     // Pass the message via stdin as the argument value — no shell quoting needed.
-    const result = await runGitOrEmpty(cwd, ['commit', '-m', message])
+    const args = ['commit']
+    if (amend) {
+      args.push('--amend')
+      if (message) {
+        args.push('-m', message)
+      } else {
+        args.push('--no-edit')
+      }
+    } else {
+      args.push('-m', message)
+    }
+    const result = await runGitOrEmpty(cwd, args)
     return result !== ''
   })
 
