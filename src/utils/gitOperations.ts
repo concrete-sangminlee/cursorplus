@@ -1045,7 +1045,7 @@ export async function stashPop(
   index?: number,
   cwd?: string
 ): Promise<void> {
-  await git('stashPop', index ?? 0, cwd);
+  await git('stash-pop', index ?? 0, cwd);
 }
 
 /** Apply the topmost (or specified) stash entry without removing it */
@@ -1053,7 +1053,7 @@ export async function stashApply(
   index?: number,
   cwd?: string
 ): Promise<void> {
-  await git('stashApply', index ?? 0, cwd);
+  await git('stash-apply', index ?? 0, cwd);
 }
 
 /** Drop a specific stash entry */
@@ -1061,12 +1061,12 @@ export async function stashDrop(
   index: number,
   cwd?: string
 ): Promise<void> {
-  await git('stashDrop', index, cwd);
+  await git('stash-drop', index, cwd);
 }
 
 /** Drop all stash entries */
 export async function stashClear(cwd?: string): Promise<void> {
-  await git('stashClear', cwd);
+  await git('stash-clear', cwd);
 }
 
 /** List all stash entries */
@@ -1079,7 +1079,7 @@ export async function stashShow(
   index?: number,
   cwd?: string
 ): Promise<string> {
-  return git<string>('stashShow', index ?? 0, cwd);
+  return git<string>('stash-show', index ?? 0, cwd);
 }
 
 /** Create a stash from specific files */
