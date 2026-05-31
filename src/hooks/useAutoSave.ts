@@ -186,7 +186,7 @@ const RECOVERY_INTERVAL = 5000
 // ── Hook ──────────────────────────────────────────────
 export function useAutoSave() {
   const settingsRef = useRef<AutoSaveSettings>(getAutoSaveSettings())
-  const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const delayTimerRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   // Re-read settings when they change
   useEffect(() => {
@@ -222,10 +222,15 @@ export function useAutoSave() {
     const { autoSaveMode, autoSaveDelay } = settingsRef.current
     if (autoSaveMode !== 'afterDelay') return
 
-    if (delayTimerRef.current) clearTimeout(delayTimerRef.current)
-    delayTimerRef.current = setTimeout(() => {
-      performSave(filePath, content)
+    const existingTimer = delayTimerRefs.current.get(filePath)
+    if (existingTimer) clearTimeout(existingTimer)
+
+    const timer = setTimeout(async () => {
+      delayTimerRefs.current.delete(filePath)
+      if (settingsRef.current.autoSaveMode !== 'afterDelay') return
+      await performSave(filePath, content)
     }, autoSaveDelay)
+    delayTimerRefs.current.set(filePath, timer)
   }, [])
 
   // ── onFocusChange: save when editor blurs ──
@@ -263,7 +268,10 @@ export function useAutoSave() {
   // Clean up timer on unmount
   useEffect(() => {
     return () => {
-      if (delayTimerRef.current) clearTimeout(delayTimerRef.current)
+      for (const timer of delayTimerRefs.current.values()) {
+        clearTimeout(timer)
+      }
+      delayTimerRefs.current.clear()
     }
   }, [])
 
