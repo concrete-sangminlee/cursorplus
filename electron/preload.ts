@@ -121,6 +121,10 @@ export interface GitStashEntry {
   index: number
   hash: string
   message: string
+  branch?: string
+  date?: string
+  author?: string
+  untracked?: boolean
 }
 
 export interface GitTag {
@@ -132,6 +136,18 @@ export interface GitTag {
   taggerEmail?: string
   date: string
   isAnnotated: boolean
+}
+
+type GitStashMode = 'all' | 'staged' | 'keep-index'
+
+interface GitStashApplyOptions {
+  drop?: boolean
+}
+
+interface GitStashSaveOptions {
+  message?: string
+  mode?: GitStashMode
+  includeUntracked?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -337,16 +353,27 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_FETCH, cwd),
   gitStash: (cwd: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_STASH, cwd),
-  gitStashPop: (cwd: string): Promise<string> =>
-    ipcRenderer.invoke(IPC.GIT_STASH_POP, cwd),
+  gitStashPop: (cwd: string, index?: number): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_STASH_POP, cwd, index),
   gitStashList: (cwd: string): Promise<GitStashEntry[]> =>
     ipcRenderer.invoke(IPC.GIT_STASH_LIST, cwd),
   gitStashDrop: (cwd: string, index: number): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_STASH_DROP, cwd, index),
-  gitStashApply: (cwd: string, index: number): Promise<string> =>
-    ipcRenderer.invoke(IPC.GIT_STASH_APPLY, cwd, index),
-  gitStashSave: (cwd: string, message: string): Promise<string> =>
-    ipcRenderer.invoke(IPC.GIT_STASH_SAVE, cwd, message),
+  gitStashApply: (cwd: string, index: number, options?: GitStashApplyOptions): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_STASH_APPLY, cwd, index, options),
+  gitStashSave: (cwd: string, rawMessageOrOptions: string | GitStashSaveOptions): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_STASH_SAVE, cwd, rawMessageOrOptions),
+  gitStashClear: (cwd: string): Promise<string> =>
+    ipcRenderer.invoke('git:stash-clear', cwd),
+  gitStashShow: (cwd: string, index: number): Promise<{
+    stashId: string
+    files: Array<{ path: string; status: 'modified' | 'added' | 'deleted' | 'renamed'; insertions: number; deletions: number }>
+    hunks: Array<{ header: string; lines: Array<{ type: 'context' | 'addition' | 'deletion' | 'header'; content: string; oldLineNumber?: number; newLineNumber?: number }> }>
+    rawDiff: string
+  } | null> =>
+    ipcRenderer.invoke('git:stash-show', cwd, index),
+  gitStashBranch: (cwd: string, index: number, branchName: string): Promise<string> =>
+    ipcRenderer.invoke('git:stash-branch', cwd, index, branchName),
   gitMergeStatus: (cwd: string): Promise<{ merging: boolean }> =>
     ipcRenderer.invoke(IPC.GIT_MERGE_STATUS, cwd),
   gitRebaseStatus: (cwd: string): Promise<{ rebasing: boolean; currentStep?: number; totalSteps?: number; headName?: string }> =>

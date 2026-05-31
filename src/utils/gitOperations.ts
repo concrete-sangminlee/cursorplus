@@ -623,7 +623,7 @@ function normalizeRemote(raw: any): GitRemote {
 
 /** List all stashes */
 export async function getStashes(cwd?: string): Promise<GitStash[]> {
-  const result = await git<any[]>('stashList', cwd);
+  const result = await git<any[]>('stash-list', cwd);
   return (result ?? []).map(normalizeStash);
 }
 

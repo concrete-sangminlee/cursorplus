@@ -23,6 +23,7 @@ import {
   Inbox,
   Check,
 } from 'lucide-react'
+import { useFileStore } from '@/store/files'
 import { useToastStore } from '@/store/toast'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -66,6 +67,16 @@ interface StashDiffData {
   rawDiff: string
 }
 
+interface RawStashEntry {
+  index: number
+  message: string
+  hash: string
+  branch?: string
+  date?: string
+  author?: string
+  untracked?: boolean
+}
+
 type StashMode = 'all' | 'staged' | 'keep-index'
 
 interface ContextMenuState {
@@ -73,94 +84,6 @@ interface ContextMenuState {
   x: number
   y: number
   stashId: string | null
-}
-
-// ─── Mock Data Generators ───────────────────────────────────────────────────
-
-const MOCK_BRANCHES = [
-  'main', 'develop', 'feature/auth', 'feature/dashboard',
-  'fix/memory-leak', 'refactor/state', 'release/v2.0', 'hotfix/login',
-]
-
-const MOCK_MESSAGES = [
-  'WIP: refactoring authentication module',
-  'Saving progress on dashboard layout',
-  'Experimental CSS grid implementation',
-  'Quick save before switching branches',
-  'Half-done API integration work',
-  'Testing new validation approach',
-  'Debug session state - do not drop',
-  'Prototype for new search feature',
-  'Incomplete migration to new API',
-  'Temp save: fixing flaky tests',
-  'Stash before rebasing onto main',
-  'WIP: sidebar navigation redesign',
-]
-
-const MOCK_FILES: StashDiffFile[] = [
-  { path: 'src/auth/login.ts', status: 'modified', insertions: 45, deletions: 12 },
-  { path: 'src/components/Dashboard.tsx', status: 'modified', insertions: 78, deletions: 34 },
-  { path: 'src/utils/validators.ts', status: 'added', insertions: 120, deletions: 0 },
-  { path: 'src/legacy/oldHelper.ts', status: 'deleted', insertions: 0, deletions: 88 },
-  { path: 'src/api/endpoints.ts', status: 'modified', insertions: 23, deletions: 8 },
-  { path: 'src/styles/layout.css', status: 'renamed', insertions: 5, deletions: 3 },
-]
-
-function generateMockStashes(count: number): StashEntry[] {
-  const stashes: StashEntry[] = []
-  const now = Date.now()
-  for (let i = 0; i < count; i++) {
-    const daysAgo = Math.floor(Math.random() * 60)
-    const hoursAgo = Math.floor(Math.random() * 24)
-    stashes.push({
-      id: `stash-${i}`,
-      index: i,
-      message: MOCK_MESSAGES[i % MOCK_MESSAGES.length],
-      branch: MOCK_BRANCHES[i % MOCK_BRANCHES.length],
-      date: new Date(now - daysAgo * 86400000 - hoursAgo * 3600000),
-      hash: Math.random().toString(16).substring(2, 9),
-      filesChanged: Math.floor(Math.random() * 12) + 1,
-      insertions: Math.floor(Math.random() * 200) + 5,
-      deletions: Math.floor(Math.random() * 100) + 1,
-      untrackedIncluded: Math.random() > 0.6,
-    })
-  }
-  return stashes
-}
-
-function generateMockDiff(stashId: string): StashDiffData {
-  const files = MOCK_FILES.slice(0, Math.floor(Math.random() * 4) + 2)
-  const hunks: StashDiffHunk[] = [
-    {
-      header: '@@ -10,8 +10,12 @@ import { useState } from "react"',
-      lines: [
-        { type: 'context', content: '  const [data, setData] = useState(null)', oldLineNumber: 10, newLineNumber: 10 },
-        { type: 'context', content: '  const [loading, setLoading] = useState(false)', oldLineNumber: 11, newLineNumber: 11 },
-        { type: 'deletion', content: '  const [error, setError] = useState(null)', oldLineNumber: 12 },
-        { type: 'deletion', content: '  const handleFetch = async () => {', oldLineNumber: 13 },
-        { type: 'addition', content: '  const [error, setError] = useState<Error | null>(null)', newLineNumber: 12 },
-        { type: 'addition', content: '  const [retryCount, setRetryCount] = useState(0)', newLineNumber: 13 },
-        { type: 'addition', content: '', newLineNumber: 14 },
-        { type: 'addition', content: '  const handleFetch = useCallback(async () => {', newLineNumber: 15 },
-        { type: 'context', content: '    setLoading(true)', oldLineNumber: 14, newLineNumber: 16 },
-        { type: 'context', content: '    try {', oldLineNumber: 15, newLineNumber: 17 },
-      ],
-    },
-    {
-      header: '@@ -35,5 +39,9 @@ function processResult(input: string) {',
-      lines: [
-        { type: 'context', content: '  const result = parse(input)', oldLineNumber: 35, newLineNumber: 39 },
-        { type: 'deletion', content: '  return result', oldLineNumber: 36 },
-        { type: 'addition', content: '  if (!result.valid) {', newLineNumber: 40 },
-        { type: 'addition', content: '    throw new ValidationError(result.errors)', newLineNumber: 41 },
-        { type: 'addition', content: '  }', newLineNumber: 42 },
-        { type: 'addition', content: '  return result.data', newLineNumber: 43 },
-        { type: 'context', content: '}', oldLineNumber: 37, newLineNumber: 44 },
-      ],
-    },
-  ]
-
-  return { stashId, files, hunks, rawDiff: '' }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -216,53 +139,78 @@ function getStatusLabel(status: StashDiffFile['status']): string {
 
 // ─── Simulated IPC ──────────────────────────────────────────────────────────
 
-async function gitStashList(): Promise<StashEntry[]> {
-  await new Promise(r => setTimeout(r, 400 + Math.random() * 300))
-  const result = await window.electron?.invoke('git:stash-list').catch(() => null)
-  if (result) return result
-  return generateMockStashes(8)
+function normalizeStashDate(raw: string | undefined): Date {
+  const parsed = raw ? new Date(raw) : null
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return parsed
+  }
+  return new Date()
 }
 
-async function gitStashCreate(message: string, mode: StashMode, includeUntracked: boolean): Promise<boolean> {
-  await new Promise(r => setTimeout(r, 300 + Math.random() * 200))
-  await window.electron?.invoke('git:stash-create', { message, mode, includeUntracked }).catch(() => null)
+function normalizeStashEntry(raw: RawStashEntry): StashEntry {
+  return {
+    id: `stash-${raw.index}-${raw.hash.slice(0, 7)}`,
+    index: raw.index ?? 0,
+    message: raw.message || `stash@{${raw.index}}`,
+    branch: raw.branch || '',
+    date: normalizeStashDate(raw.date),
+    hash: raw.hash || '',
+    filesChanged: 0,
+    insertions: 0,
+    deletions: 0,
+    untrackedIncluded: Boolean(raw.untracked),
+  }
+}
+
+async function gitStashList(rootPath: string): Promise<StashEntry[]> {
+  const result = await window.electron?.invoke('git:stash-list', rootPath).catch(() => null)
+  if (!result) throw new Error('Failed to load stashes')
+  return (result as RawStashEntry[]).map(normalizeStashEntry)
+}
+
+async function gitStashCreate(rootPath: string, message: string, mode: StashMode, includeUntracked: boolean): Promise<boolean> {
+  const result = await window.electron?.invoke('git:stash-save', rootPath, {
+    message,
+    mode,
+    includeUntracked,
+  }).catch(() => null)
+  if (!result) throw new Error('Failed to create stash')
   return true
 }
 
-async function gitStashApply(index: number, drop: boolean): Promise<boolean> {
-  await new Promise(r => setTimeout(r, 250 + Math.random() * 200))
-  await window.electron?.invoke('git:stash-apply', { index, drop }).catch(() => null)
+async function gitStashApply(rootPath: string, index: number, drop: boolean): Promise<boolean> {
+  const result = await window.electron?.invoke('git:stash-apply', rootPath, index, { drop }).catch(() => null)
+  if (!result) throw new Error('Failed to apply stash')
   return true
 }
 
-async function gitStashPop(index: number): Promise<boolean> {
-  await new Promise(r => setTimeout(r, 250 + Math.random() * 200))
-  await window.electron?.invoke('git:stash-pop', { index }).catch(() => null)
+async function gitStashPop(rootPath: string, index: number): Promise<boolean> {
+  const result = await window.electron?.invoke('git:stash-pop', rootPath, index).catch(() => null)
+  if (!result) throw new Error('Failed to pop stash')
   return true
 }
 
-async function gitStashDrop(index: number): Promise<boolean> {
-  await new Promise(r => setTimeout(r, 200 + Math.random() * 150))
-  await window.electron?.invoke('git:stash-drop', { index }).catch(() => null)
+async function gitStashDrop(rootPath: string, index: number): Promise<boolean> {
+  const result = await window.electron?.invoke('git:stash-drop', rootPath, index).catch(() => null)
+  if (!result) throw new Error('Failed to drop stash')
   return true
 }
 
-async function gitStashClear(): Promise<boolean> {
-  await new Promise(r => setTimeout(r, 300 + Math.random() * 200))
-  await window.electron?.invoke('git:stash-clear').catch(() => null)
+async function gitStashClear(rootPath: string): Promise<boolean> {
+  const result = await window.electron?.invoke('git:stash-clear', rootPath).catch(() => null)
+  if (!result) throw new Error('Failed to clear stashes')
   return true
 }
 
-async function gitStashShowDiff(index: number): Promise<StashDiffData> {
-  await new Promise(r => setTimeout(r, 350 + Math.random() * 300))
-  const result = await window.electron?.invoke('git:stash-show', { index }).catch(() => null)
-  if (result) return result
-  return generateMockDiff(`stash@{${index}}`)
+async function gitStashShowDiff(rootPath: string, index: number): Promise<StashDiffData> {
+  const result = await window.electron?.invoke('git:stash-show', rootPath, index).catch(() => null)
+  if (!result) throw new Error('Failed to load stash diff')
+  return result as StashDiffData
 }
 
-async function gitStashBranch(index: number, branchName: string): Promise<boolean> {
-  await new Promise(r => setTimeout(r, 400 + Math.random() * 300))
-  await window.electron?.invoke('git:stash-branch', { index, branchName }).catch(() => null)
+async function gitStashBranch(rootPath: string, index: number, branchName: string): Promise<boolean> {
+  const result = await window.electron?.invoke('git:stash-branch', rootPath, index, branchName).catch(() => null)
+  if (!result) throw new Error('Failed to create stash branch')
   return true
 }
 
@@ -768,6 +716,7 @@ function BranchFromStashDialog({
 
 export default function GitStashPanel() {
   const addToast = useToastStore(s => s.addToast)
+  const rootPath = useFileStore((state) => state.rootPath)
 
   // ── State ───────────────────────────────────────────────────────────────
   const [stashes, setStashes] = useState<StashEntry[]>([])
@@ -795,17 +744,24 @@ export default function GitStashPanel() {
 
   // ── Data fetching ───────────────────────────────────────────────────────
   const fetchStashes = useCallback(async () => {
+    if (!rootPath) {
+      setStashes([])
+      setLoading(false)
+      setError('No workspace open')
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
-      const data = await gitStashList()
+      const data = await gitStashList(rootPath)
       setStashes(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load stashes')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [rootPath])
 
   useEffect(() => {
     fetchStashes()
@@ -839,9 +795,10 @@ export default function GitStashPanel() {
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const handleCreateStash = useCallback(async (message: string, mode: StashMode, includeUntracked: boolean) => {
+    if (!rootPath) return
     setIsCreating(true)
     try {
-      await gitStashCreate(message, mode, includeUntracked)
+      await gitStashCreate(rootPath, message, mode, includeUntracked)
       addToast({ type: 'success', message: `Stash created: ${message}` })
       setShowCreateForm(false)
       await fetchStashes()
@@ -850,12 +807,13 @@ export default function GitStashPanel() {
     } finally {
       setIsCreating(false)
     }
-  }, [addToast, fetchStashes])
+  }, [addToast, fetchStashes, rootPath])
 
   const handleApplyStash = useCallback(async (stash: StashEntry, drop: boolean) => {
+    if (!rootPath) return
     setOperatingStashId(stash.id)
     try {
-      await gitStashApply(stash.index, drop)
+      await gitStashApply(rootPath, stash.index, drop)
       addToast({ type: 'success', message: `Stash applied${drop ? ' and dropped' : ''}: ${stash.message}` })
       if (drop) await fetchStashes()
     } catch {
@@ -863,12 +821,13 @@ export default function GitStashPanel() {
     } finally {
       setOperatingStashId(null)
     }
-  }, [addToast, fetchStashes])
+  }, [addToast, fetchStashes, rootPath])
 
   const handlePopStash = useCallback(async (stash: StashEntry) => {
+    if (!rootPath) return
     setOperatingStashId(stash.id)
     try {
-      await gitStashPop(stash.index)
+      await gitStashPop(rootPath, stash.index)
       addToast({ type: 'success', message: `Stash popped: ${stash.message}` })
       await fetchStashes()
     } catch {
@@ -876,12 +835,13 @@ export default function GitStashPanel() {
     } finally {
       setOperatingStashId(null)
     }
-  }, [addToast, fetchStashes])
+  }, [addToast, fetchStashes, rootPath])
 
   const handleDropStash = useCallback(async (stash: StashEntry) => {
+    if (!rootPath) return
     setOperatingStashId(stash.id)
     try {
-      await gitStashDrop(stash.index)
+      await gitStashDrop(rootPath, stash.index)
       addToast({ type: 'success', message: `Stash dropped: stash@{${stash.index}}` })
       if (expandedStashId === stash.id) {
         setExpandedStashId(null)
@@ -894,11 +854,12 @@ export default function GitStashPanel() {
     } finally {
       setOperatingStashId(null)
     }
-  }, [addToast, fetchStashes, expandedStashId, selectedStashId])
+  }, [addToast, fetchStashes, expandedStashId, selectedStashId, rootPath])
 
   const handleClearAll = useCallback(async () => {
+    if (!rootPath) return
     try {
-      await gitStashClear()
+      await gitStashClear(rootPath)
       addToast({ type: 'success', message: 'All stashes cleared' })
       setExpandedStashId(null)
       setDiffData(null)
@@ -907,9 +868,10 @@ export default function GitStashPanel() {
     } catch {
       addToast({ type: 'error', message: 'Failed to clear stashes' })
     }
-  }, [addToast, fetchStashes])
+  }, [addToast, fetchStashes, rootPath])
 
   const handleViewDiff = useCallback(async (stash: StashEntry) => {
+    if (!rootPath) return
     if (expandedStashId === stash.id) {
       setExpandedStashId(null)
       setDiffData(null)
@@ -918,7 +880,7 @@ export default function GitStashPanel() {
     setExpandedStashId(stash.id)
     setDiffLoading(true)
     try {
-      const data = await gitStashShowDiff(stash.index)
+      const data = await gitStashShowDiff(rootPath, stash.index)
       setDiffData(data)
     } catch {
       addToast({ type: 'error', message: 'Failed to load stash diff' })
@@ -926,12 +888,13 @@ export default function GitStashPanel() {
     } finally {
       setDiffLoading(false)
     }
-  }, [expandedStashId, addToast])
+  }, [expandedStashId, addToast, rootPath])
 
   const handleCreateBranch = useCallback(async (stash: StashEntry, branchName: string) => {
+    if (!rootPath) return
     setOperatingStashId(stash.id)
     try {
-      await gitStashBranch(stash.index, branchName)
+      await gitStashBranch(rootPath, stash.index, branchName)
       addToast({ type: 'success', message: `Branch "${branchName}" created from stash` })
       setBranchDialog(null)
       await fetchStashes()
@@ -940,7 +903,7 @@ export default function GitStashPanel() {
     } finally {
       setOperatingStashId(null)
     }
-  }, [addToast, fetchStashes])
+  }, [addToast, fetchStashes, rootPath])
 
   // ── Context menu ────────────────────────────────────────────────────────
   const handleContextMenu = useCallback((e: React.MouseEvent, stashId: string) => {

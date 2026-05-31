@@ -5,6 +5,12 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { resolveGitCwd, resolveGitInternalPath } from './git-cwd-guard'
 import { normalizeGitBranchName, normalizeGitCommitHash, tryNormalizeGitCommitHash } from './git-ref-guard'
+import {
+  appendGitStashCreateArgs,
+  GitStashCreateOptions,
+  GitStashApplyOptions,
+  resolveGitStashIndex,
+} from './git-stash-guard'
 import { appendGitSequencerOptions, GitSequencerOptions } from './git-sequencer-guard'
 import { GIT_TAG_FORMAT, parseGitTagLine } from './git-tag-format'
 
@@ -351,8 +357,9 @@ export function registerGitHandlers() {
     return await runGitOrEmpty(cwd, ['stash'])
   })
 
-  ipcMain.handle('git:stash-pop', async (_, cwd: string) => {
-    return await runGitOrEmpty(cwd, ['stash', 'pop'])
+  ipcMain.handle('git:stash-pop', async (_, cwd: string, rawIndex: unknown) => {
+    const safeIndex = resolveGitStashIndex(rawIndex)
+    return await runGitOrEmpty(cwd, ['stash', 'pop', `stash@{${safeIndex}}`])
   })
 
   ipcMain.handle('git:create-branch', async (_, cwd: string, branchName: string) => {
@@ -371,30 +378,116 @@ export function registerGitHandlers() {
 
   ipcMain.handle('git:stash-list', async (_, cwd: string) => {
     const SEP = '\x1f'
-    const raw = await runGitOrEmpty(cwd, ['stash', 'list', `--pretty=format:%H${SEP}%s`])
+    const raw = await runGitOrEmpty(cwd, ['stash', 'list', `--pretty=format:%H${SEP}%s${SEP}%an${SEP}%at${SEP}%gd`])
     if (!raw) return []
     return raw.split('\n').filter(Boolean).map((line, index) => {
       const parts = line.split(SEP)
+      const message = parts[1] || `stash@{${index}}`
+      const branchMatch = message.match(/^On (.+):/)
       return {
         index,
         hash: (parts[0] || '').substring(0, 8),
-        message: parts[1] || `stash@{${index}}`,
+        message,
+        branch: branchMatch ? branchMatch[1] : '',
+        date: parts[3] ? new Date(Number(parts[3]) * 1000).toISOString() : '',
+        author: parts[2] || '',
+        untracked: false,
       }
     })
   })
 
-  ipcMain.handle('git:stash-drop', async (_, cwd: string, index: number) => {
-    const safeIndex = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0
+  ipcMain.handle('git:stash-drop', async (_, cwd: string, rawIndex: unknown) => {
+    const safeIndex = resolveGitStashIndex(rawIndex)
     return await runGitOrEmpty(cwd, ['stash', 'drop', `stash@{${safeIndex}}`])
   })
 
-  ipcMain.handle('git:stash-apply', async (_, cwd: string, index: number) => {
-    const safeIndex = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0
-    return await runGitOrEmpty(cwd, ['stash', 'apply', `stash@{${safeIndex}}`])
+  ipcMain.handle(
+    'git:stash-apply',
+    async (_, cwd: string, rawIndex: unknown, rawOptions: unknown) => {
+      const options: GitStashApplyOptions =
+        rawIndex && typeof rawIndex === 'object' && !Array.isArray(rawIndex) && 'index' in rawIndex && typeof rawOptions !== 'object'
+          ? (rawIndex as GitStashApplyOptions)
+          : typeof rawOptions === 'object' && rawOptions !== null
+            ? (rawOptions as GitStashApplyOptions)
+            : {}
+
+      const safeIndexSource = rawIndex && typeof rawIndex === 'object' && !Array.isArray(rawIndex) && 'index' in rawIndex
+        ? (rawIndex as { index?: unknown }).index
+        : rawIndex
+
+      const safeIndex = resolveGitStashIndex(safeIndexSource)
+      const command = options.drop ? 'pop' : 'apply'
+      return await runGitOrEmpty(cwd, ['stash', command, `stash@{${safeIndex}}`])
   })
 
-  ipcMain.handle('git:stash-save', async (_, cwd: string, message: string) => {
-    return await runGitOrEmpty(cwd, ['stash', 'push', '-m', message])
+  ipcMain.handle('git:stash-save', async (_, cwd: string, rawMessageOrOptions?: string | GitStashCreateOptions) => {
+    const options: GitStashCreateOptions = typeof rawMessageOrOptions === 'object'
+      ? rawMessageOrOptions ?? {}
+      : { message: rawMessageOrOptions }
+
+    const args = ['stash', 'push']
+    appendGitStashCreateArgs(args, options)
+    return await runGitOrEmpty(cwd, args)
+  })
+
+  ipcMain.handle('git:stash-clear', async (_, cwd: string) => {
+    return await runGitOrEmpty(cwd, ['stash', 'clear'])
+  })
+
+  ipcMain.handle('git:stash-show', async (_, cwd: string, rawIndex: unknown) => {
+    const safeIndex = resolveGitStashIndex(rawIndex)
+    const raw = await runGitOrEmpty(cwd, ['stash', 'show', `stash@{${safeIndex}}`, '--name-only', '--patch', '--no-color'])
+    if (!raw) return null
+
+    const files: Array<{ path: string; status: 'modified' | 'added' | 'deleted' | 'renamed'; insertions: number; deletions: number }> = []
+    const hunks: Array<{ header: string; lines: Array<{ type: 'context' | 'addition' | 'deletion' | 'header'; content: string; oldLineNumber?: number; newLineNumber?: number }> }> = []
+
+    let currentHunk: typeof hunks[number] | null = null
+    const lines = raw.split('\n')
+    for (const line of lines) {
+      if (line.startsWith('diff --git ')) {
+        const parts = line.split(' ')
+        const right = parts[parts.length - 1] || ''
+        const filePath = right.startsWith('b/') ? right.slice(2) : right
+        if (filePath) {
+          files.push({ path: filePath, status: 'modified', insertions: 0, deletions: 0 })
+        }
+      } else if (line.startsWith('@@ ')) {
+        if (currentHunk) {
+          hunks.push(currentHunk)
+        }
+        currentHunk = { header: line, lines: [] }
+      } else if (currentHunk) {
+        const type = line.startsWith('+')
+          ? 'addition'
+          : line.startsWith('-')
+            ? 'deletion'
+            : line.startsWith('\\')
+              ? 'context'
+              : 'context'
+
+        currentHunk.lines.push({
+          type,
+          content: line,
+        })
+      }
+    }
+    if (currentHunk) {
+      hunks.push(currentHunk)
+    }
+
+    return {
+      stashId: `stash@{${safeIndex}}`,
+      files,
+      hunks,
+      rawDiff: raw,
+    }
+  })
+
+  ipcMain.handle('git:stash-branch', async (_, cwd: string, rawIndex: unknown, rawBranch: unknown) => {
+    const safeIndex = resolveGitStashIndex(rawIndex)
+    const branchName = normalizeGitBranchName(rawBranch as string | undefined)
+    return await runGitOrEmpty(cwd, ['stash', 'branch', branchName, `stash@{${safeIndex}}`])
   })
 
   ipcMain.handle('git:merge-status', async (_, cwd: string) => {

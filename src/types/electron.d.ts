@@ -104,6 +104,10 @@ interface GitStashEntry {
   index: number
   hash: string
   message: string
+  branch?: string
+  date?: string
+  author?: string
+  untracked?: boolean
 }
 
 interface GitTagEntry {
@@ -270,11 +274,23 @@ export interface ElectronAPI {
   gitPull: (cwd: string) => Promise<string>
   gitFetch: (cwd: string) => Promise<string>
   gitStash: (cwd: string) => Promise<string>
-  gitStashPop: (cwd: string) => Promise<string>
+  gitStashPop: (cwd: string, index?: number) => Promise<string>
   gitStashList: (cwd: string) => Promise<GitStashEntry[]>
   gitStashDrop: (cwd: string, index: number) => Promise<string>
-  gitStashApply: (cwd: string, index: number) => Promise<string>
-  gitStashSave: (cwd: string, message: string) => Promise<string>
+  gitStashApply: (cwd: string, index: number, options?: { drop?: boolean }) => Promise<string>
+  gitStashSave: (cwd: string, messageOrOptions: string | {
+    message?: string
+    mode?: string
+    includeUntracked?: boolean
+  }) => Promise<string>
+  gitStashClear: (cwd: string) => Promise<string>
+  gitStashShow: (cwd: string, index: number) => Promise<{
+    stashId: string
+    files: Array<{ path: string; status: 'modified' | 'added' | 'deleted' | 'renamed'; insertions: number; deletions: number }>
+    hunks: Array<{ header: string; lines: Array<{ type: 'context' | 'addition' | 'deletion' | 'header'; content: string; oldLineNumber?: number; newLineNumber?: number }> }>
+    rawDiff: string
+  } | null>
+  gitStashBranch: (cwd: string, index: number, branchName: string) => Promise<string>
   gitMergeStatus: (cwd: string) => Promise<{ merging: boolean }>
   gitRebaseStatus: (cwd: string) => Promise<{ rebasing: boolean; currentStep?: number; totalSteps?: number; headName?: string }>
   gitConflictFiles: (cwd: string) => Promise<string[]>
