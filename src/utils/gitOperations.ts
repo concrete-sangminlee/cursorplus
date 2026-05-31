@@ -424,7 +424,18 @@ async function git<T = string>(
   operation: string,
   ...args: unknown[]
 ): Promise<T> {
-  return gitInvoke<T>(`git:${operation}`, ...args);
+  const channel = toIpcOperation(operation)
+  return gitInvoke<T>(`git:${channel}`, ...args);
+}
+
+function toIpcOperation(operation: string): string {
+  if (!operation) {
+    return operation
+  }
+  if (operation.includes('-')) {
+    return operation
+  }
+  return operation.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)
 }
 
 /* ══════════════════════════════════════════════════════════════

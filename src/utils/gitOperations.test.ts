@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clean, commitAmend } from './gitOperations'
+import { clean, commitAmend, getConfig, stageAll } from './gitOperations'
 
 function mockGitInvoke(result: unknown) {
   const invoke = vi.fn().mockResolvedValue(result)
@@ -25,5 +25,19 @@ describe('gitOperations IPC error handling', () => {
 
     await expect(clean({ force: true }, '/repo')).rejects.toThrow('Git operation failed')
     expect(invoke).toHaveBeenCalledWith('git:clean', '/repo', { force: true })
+  })
+
+  it('normalizes camelCase git operations to hyphenated IPC channels', async () => {
+    const invoke = mockGitInvoke('abc123')
+    await stageAll('/repo')
+    expect(invoke).toHaveBeenCalledWith('git:stage-all', '/repo')
+  })
+
+  it('normalizes getConfig to git:config-get and preserves arguments order', async () => {
+    const invoke = mockGitInvoke('alice')
+    const value = await getConfig('user.name', 'local', '/repo')
+
+    expect(value).toBe('alice')
+    expect(invoke).toHaveBeenCalledWith('git:config-get', 'user.name', 'local', '/repo')
   })
 })
