@@ -34,4 +34,48 @@ describe('ipcResult helpers', () => {
 
     await expect(writeFileChecked('file.ts', 'content', 'save')).rejects.toThrow('denied')
   })
+
+  it('serializes writes for the same file path', async () => {
+    const apiWrite = (globalThis as unknown as { api: { writeFile: unknown } }).api.writeFile as ReturnType<typeof vi.fn>
+    const calls: string[] = []
+    let resolveFirstWrite: () => void = () => {}
+    const firstWriteDone = new Promise<void>((resolve) => {
+      resolveFirstWrite = resolve
+    })
+
+    apiWrite.mockImplementation((filePath: string, content: string) => {
+      calls.push(`${filePath}:${content}`)
+      if (calls.length === 1) {
+        return firstWriteDone.then(() => ({ success: true }))
+      }
+      return Promise.resolve({ success: true })
+    })
+
+    const first = writeFileChecked('file.ts', 'one', 'save')
+    const second = writeFileChecked('file.ts', 'two', 'save')
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(apiWrite).toHaveBeenCalledTimes(1)
+    resolveFirstWrite()
+    await first
+    await second
+
+    expect(apiWrite).toHaveBeenCalledTimes(2)
+    expect(apiWrite).toHaveBeenNthCalledWith(1, 'file.ts', 'one')
+    expect(apiWrite).toHaveBeenNthCalledWith(2, 'file.ts', 'two')
+  })
+
+  it('allows parallel writes for different file paths', async () => {
+    const apiWrite = (globalThis as unknown as { api: { writeFile: unknown } }).api.writeFile as ReturnType<typeof vi.fn>
+    apiWrite.mockResolvedValue({ success: true })
+
+    const first = writeFileChecked('a.ts', 'one', 'save')
+    const second = writeFileChecked('b.ts', 'two', 'save')
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(apiWrite).toHaveBeenCalledTimes(2)
+
+    await first
+    await second
+  })
 })
