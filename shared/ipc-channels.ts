@@ -61,6 +61,7 @@ export const IPC = {
   GIT_DELETE_BRANCH: 'git:delete-branch',
   GIT_CHERRY_PICK: 'git:cherry-pick',
   GIT_TAGS: 'git:tags',
+  GIT_CREATE_TAG: 'git:create-tag',
   GIT_CREATE_BRANCH: 'git:create-branch',
   GIT_STAGE_ALL: 'git:stage-all',
   GIT_UNSTAGE_ALL: 'git:unstage-all',

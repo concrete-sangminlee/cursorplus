@@ -149,6 +149,11 @@ interface GitStashSaveOptions {
   mode?: GitStashMode
   includeUntracked?: boolean
 }
+interface GitCreateTagOptions {
+  message?: string
+  hash?: string
+  force?: boolean
+}
 
 // ---------------------------------------------------------------------------
 // Task types
@@ -390,6 +395,12 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, cwd, commitHash, options),
   gitTags: (cwd: string): Promise<GitTag[]> =>
     ipcRenderer.invoke(IPC.GIT_TAGS, cwd),
+  gitCreateTag: (
+    cwd: string,
+    name: string,
+    options?: GitCreateTagOptions
+  ): Promise<string> =>
+    ipcRenderer.invoke(IPC.GIT_CREATE_TAG, cwd, name, options?.message, options?.hash, options?.force),
   gitCreateBranch: (cwd: string, branchName: string): Promise<string> =>
     ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, cwd, branchName),
   gitStageAll: (cwd: string): Promise<boolean> =>
