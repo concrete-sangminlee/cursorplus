@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { Files, Search, GitBranch, Bot, Settings, ListTree, Package, CircleUser, Bug, FlaskConical, RotateCcw, EyeOff } from 'lucide-react'
+import { Files, Search, GitBranch, Bot, Settings, ListTree, Package, CircleUser, Bug, FlaskConical, RotateCcw, EyeOff, Rocket } from 'lucide-react'
 import { useEditorStore } from '@/store/editor'
 import { useFileStore } from '@/store/files'
 import { useProblemsStore, getProblemsCount } from '@/store/problems'
 import type { FileNode, OpenFile } from '@shared/types'
 
-type PanelView = 'explorer' | 'search' | 'git' | 'debug' | 'agents' | 'outline' | 'extensions' | 'testing'
+type PanelView = 'explorer' | 'search' | 'git' | 'debug' | 'agents' | 'saas' | 'outline' | 'extensions' | 'testing'
 
 interface Props {
   activeView: PanelView
@@ -28,6 +28,7 @@ const defaultItems: ActivityItem[] = [
   { view: 'git', Icon: GitBranch, label: 'Source Control', shortcut: 'Ctrl+Shift+G', badgeKey: 'git' },
   { view: 'debug', Icon: Bug, label: 'Run and Debug', shortcut: 'Ctrl+Shift+D', badgeKey: 'debug' },
   { view: 'agents', Icon: Bot, label: 'AI Agents', showDot: true },
+  { view: 'saas', Icon: Rocket, label: 'SaaS Launch Ops', showDot: true },
   { view: 'outline', Icon: ListTree, label: 'Outline', shortcut: 'Ctrl+Shift+O' },
   { view: 'extensions', Icon: Package, label: 'Extensions', shortcut: 'Ctrl+Shift+X', badgeKey: 'extensions' },
   { view: 'testing', Icon: FlaskConical, label: 'Testing', shortcut: 'Ctrl+Shift+T' },

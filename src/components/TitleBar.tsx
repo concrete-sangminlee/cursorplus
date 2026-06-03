@@ -485,6 +485,11 @@ function buildMenus(
         },
         {
           type: 'action',
+          label: 'SaaS Launch Ops',
+          action: () => dispatch('orion:show-saas-ops'),
+        },
+        {
+          type: 'action',
           label: 'Extensions',
           shortcut: 'Ctrl+Shift+X',
           action: () => dispatch('orion:show-extensions'),

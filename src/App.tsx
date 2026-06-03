@@ -44,6 +44,7 @@ const ExtensionsPanel = React.lazy(() => import('./panels/ExtensionsPanel'))
 const OutlinePanel = React.lazy(() => import('@/panels/OutlinePanel'))
 const EditorPanel = React.lazy(() => import('./panels/EditorPanel'))
 const AgentPanel = React.lazy(() => import('./panels/AgentPanel'))
+const SaasOpsPanel = React.lazy(() => import('./panels/SaasOpsPanel'))
 const DebugPanel = React.lazy(() => import('./panels/DebugPanel'))
 const TestingPanel = React.lazy(() => import('./panels/TestingPanel'))
 const ComposerPanel = React.lazy(() => import('./panels/ComposerPanel'))
@@ -593,6 +594,12 @@ export default function App() {
       'orion:show-search': () => { setSidebarVisible(true); setActiveView('search') },
       'orion:show-git': () => { setSidebarVisible(true); setActiveView('git') },
       'orion:show-agents': () => { setSidebarVisible(true); setActiveView('agents') },
+      'orion:show-saas-ops': () => { setSidebarVisible(true); setActiveView('saas') },
+      'orion:open-account': () => {
+        setSidebarVisible(true)
+        setActiveView('saas')
+        requestAnimationFrame(() => window.dispatchEvent(new Event('orion:saas-billing-tab')))
+      },
       'orion:show-outline': () => { setSidebarVisible(true); setActiveView('outline') },
       'orion:show-debug': () => { setSidebarVisible(true); setActiveView('debug') },
       'orion:show-extensions': () => { setSidebarVisible(true); setActiveView('extensions') },
@@ -1122,6 +1129,7 @@ export default function App() {
               <ErrorBoundary>
                 <Suspense fallback={<PanelFallback />}>
                   {activeView === 'agents' && <AgentPanel />}
+                  {activeView === 'saas' && <SaasOpsPanel />}
                   {activeView === 'search' && <SearchPanel />}
                   {activeView === 'git' && <SourceControlPanel />}
                   {activeView === 'debug' && <DebugPanel />}
