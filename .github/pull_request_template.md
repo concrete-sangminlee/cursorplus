@@ -1,17 +1,44 @@
-## Description
-What does this PR do?
+## Summary
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
+Describe the change in 1-3 sentences.
+
+## Scope
+
+- [ ] CLI
+- [ ] Desktop renderer
+- [ ] Electron main/preload
+- [ ] Shared contracts
 - [ ] Documentation
-- [ ] Refactoring
+- [ ] Tests only
+- [ ] Build/release configuration
+
+## Motivation
+
+What problem does this solve, and why is this the right level of change?
 
 ## Testing
-- [ ] Tests pass (`npm run test:cli`)
-- [ ] CLI builds (`npm run cli:build`)
+
+- [ ] Not run, because:
+- [ ] `npm run typecheck`
+- [ ] `npm run test`
+- [ ] `npm run test:cli`
+- [ ] `npm run cli:build`
+- [ ] `npm run build`
+- [ ] Manual desktop check
+- [ ] Manual CLI check
+
+## Risk
+
+- [ ] Low: docs, tests, or isolated cleanup
+- [ ] Medium: behavior change with focused coverage
+- [ ] High: cross-cutting change, migration, packaging, or provider logic
+
+Notes:
 
 ## Checklist
-- [ ] My code follows the project's style
-- [ ] I have added tests for new features
-- [ ] Documentation has been updated
+
+- [ ] The PR is focused on one coherent change.
+- [ ] User-facing behavior changes are documented.
+- [ ] New behavior has tests or a clear explanation for why tests were not added.
+- [ ] Generated artifacts are excluded unless they are intentionally part of the release.
+- [ ] Secrets, tokens, and local machine paths are not included.
