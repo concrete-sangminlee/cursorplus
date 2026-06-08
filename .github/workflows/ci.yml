@@ -1,5 +1,6 @@
 name: CI
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -33,7 +34,7 @@ jobs:
       - run: npm test -- --run
       - run: npm run build
 
-  lint:
+  cli-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,3 +45,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run cli:build
+      - run: node dist-cli/index.mjs --version
