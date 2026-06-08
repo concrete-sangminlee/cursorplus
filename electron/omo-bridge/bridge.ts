@@ -1,6 +1,7 @@
 import type { OmoBridgeMessage, OmoEvent } from './protocol'
 import type { Agent } from '../../shared/types'
 import { callAI, callAIStreaming, canRespond, checkOllama, getOllamaStatus, setCustomPrompts } from './ai-client'
+import { debugLog, errorLog, warnLog } from '../logger'
 
 let messageHandler: ((event: OmoEvent) => void) | null = null
 let apiKeys: Record<string, string> = {}
@@ -74,7 +75,7 @@ async function handleWithAI(message: string, model: string, mode: string) {
         responseModel = result?.model || model
       } catch (streamErr: any) {
         // Fallback to non-streaming
-        console.log('[OMO] Streaming failed, falling back to non-streaming:', streamErr.message)
+        warnLog('OMO', 'Streaming failed, falling back to non-streaming:', streamErr.message)
         const result = await callAI(model, message, apiKeys, messageHandler)
         responseText = result?.content || 'Failed to get response.'
         responseModel = result?.model || model
@@ -91,14 +92,14 @@ async function handleWithAI(message: string, model: string, mode: string) {
 
 로컬 AI를 사용하려면:
 
-1. **Ollama 설치**: [ollama.com](https://ollama.com) 에서 다운로드
-2. **모델 다운로드**: 터미널에서 \`ollama pull llama3.2\` 실행
-3. **Ollama 실행**: \`ollama serve\` 또는 앱 실행
-4. **재시작**: Orion을 다시 시작하면 자동 감지됩니다
+1. **Ollama 설치**: [ollama.com](https://ollama.com)에서 다운로드하세요.
+2. **모델 다운로드**: 터미널에서 \`ollama pull llama3.2\`를 실행하세요.
+3. **Ollama 실행**: \`ollama serve\`를 실행하세요.
+4. **Orion 재시작**: Orion을 다시 시작하면 자동으로 감지됩니다.
 
-또는 Settings(⚙️)에서 API 키를 입력할 수도 있습니다.`
+또는 Settings에서 Anthropic/OpenAI API 키를 입력해도 됩니다.`
       } else {
-        responseText = `Ollama가 감지되었지만 응답 생성에 실패했습니다. 터미널에서 Ollama 상태를 확인해주세요.`
+        responseText = `Ollama가 감지되었지만 응답 생성에 실패했습니다. 터미널에서 Ollama 상태를 확인해 주세요.`
       }
       responseModel = 'System'
     }
@@ -128,9 +129,9 @@ async function handleWithAI(message: string, model: string, mode: string) {
     updateAgent('sisyphus', { status: 'active', currentTask: undefined, progress: undefined })
 
   } catch (err: any) {
-    console.error('[OMO] error:', err)
+    errorLog('OMO', 'Request handling failed:', err)
     chatResponse(
-      `**Error:** ${err.message || err}\n\nOllama가 실행 중인지 확인해주세요 (\`ollama serve\`).`,
+      `**Error:** ${err.message || err}\n\nOllama가 실행 중인지 확인해 주세요 (\`ollama serve\`).`,
       'System', model,
     )
     agents.forEach((a) => updateAgent(a.id, { status: a.id === 'sisyphus' ? 'active' : 'idle', currentTask: undefined, progress: undefined }))
@@ -139,7 +140,7 @@ async function handleWithAI(message: string, model: string, mode: string) {
 
 export function setApiKeys(keys: Record<string, string>) {
   apiKeys = keys
-  console.log('[OMO] API keys updated:', Object.keys(keys).filter((k) => !!keys[k]))
+  debugLog('OMO', 'API keys updated:', Object.keys(keys).filter((k) => !!keys[k]))
 }
 
 export function setPrompts(prompts: { systemPrompt?: string; userPromptTemplate?: string }) {
@@ -147,7 +148,7 @@ export function setPrompts(prompts: { systemPrompt?: string; userPromptTemplate?
 }
 
 export async function startOmo(onMessage: (event: OmoEvent) => void): Promise<void> {
-  console.log('[OMO] Starting...')
+  debugLog('OMO', 'Starting...')
   messageHandler = onMessage
   agents = defaultAgents.map((a) => ({ ...a }))
 
@@ -167,7 +168,7 @@ export async function startOmo(onMessage: (event: OmoEvent) => void): Promise<vo
 }
 
 export function sendToOmo(message: OmoBridgeMessage): void {
-  console.log('[OMO] sendToOmo:', message?.type)
+  debugLog('OMO', 'sendToOmo:', message?.type)
   if (!messageHandler) return
 
   const userMessage = message?.payload?.message || ''

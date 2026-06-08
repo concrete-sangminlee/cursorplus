@@ -1,4 +1,5 @@
 import type { OmoEvent } from './protocol'
+import { debugLog } from '../logger'
 
 interface AIConfig {
   provider: string
@@ -156,7 +157,7 @@ export async function checkOllama(): Promise<{ available: boolean; models: strin
             const models = (json.models || []).map((m: any) => m.name || m.model)
             ollamaAvailable = true
             ollamaModels = models
-            console.log('[AI Client] Ollama available, models:', models)
+            debugLog('AI Client', 'Ollama available, models:', models)
             resolve({ available: true, models })
           } catch {
             ollamaAvailable = false
@@ -194,7 +195,7 @@ let customUserTemplate: string = ''
 export function setCustomPrompts(prompts: { systemPrompt?: string; userPromptTemplate?: string }) {
   customSystemPrompt = prompts.systemPrompt || ''
   customUserTemplate = prompts.userPromptTemplate || ''
-  console.log('[AI Client] Custom prompts updated')
+  debugLog('AI Client', 'Custom prompts updated')
 }
 
 // Conversation history for context
@@ -217,7 +218,7 @@ export async function callAI(
 
   if (!config) return null
 
-  console.log(`[AI Client] Calling ${config.provider} / ${config.model}`)
+  debugLog('AI Client', `Calling ${config.provider} / ${config.model}`)
 
   // Apply user template if set
   let processedMessage = message
@@ -276,7 +277,7 @@ export async function callAIStreaming(
 
   if (!config) return null
 
-  console.log(`[AI Client] Calling ${config.provider} / ${config.model} (streaming)`)
+  debugLog('AI Client', `Calling ${config.provider} / ${config.model} (streaming)`)
 
   // Apply user template if set
   let processedMessage = message

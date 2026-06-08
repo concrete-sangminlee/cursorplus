@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, screen, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, screen, globalShortcut, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { debugLog, errorLog } from './logger'
 import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerTerminalHandlers } from './ipc/terminal'
 import { registerSettingsHandlers } from './ipc/settings'
@@ -45,7 +46,7 @@ function logCrash(prefix: string, err: unknown): void {
     : String(err)
   const entry = `[${timestamp}] ${prefix}: ${message}\n`
 
-  console.error(`[Main] ${prefix}:`, err)
+  errorLog('Main', prefix, err)
 
   try {
     ensureLogDir()
@@ -93,7 +94,7 @@ function saveWindowState(state: WindowState): void {
   try {
     fs.writeFileSync(stateFilePath, JSON.stringify(state))
   } catch (err) {
-    console.error('[Main] Failed to save window state:', err)
+    errorLog('Main', 'Failed to save window state:', err)
   }
 }
 
@@ -164,11 +165,11 @@ async function checkForUpdates(win: BrowserWindow): Promise<void> {
 
     sendUpdateStatus(win, { status: 'not-available' })
 
-    console.log('[AutoUpdater] Update check complete - no update available')
+    debugLog('AutoUpdater', 'Update check complete - no update available')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     sendUpdateStatus(win, { status: 'error', error: message })
-    console.error('[AutoUpdater] Update check failed:', err)
+    errorLog('AutoUpdater', 'Update check failed:', err)
   }
 }
 
@@ -546,8 +547,7 @@ function buildAppMenu(): Menu {
       {
         label: 'Documentation',
         click: () => {
-          const { shell } = require('electron')
-          shell.openExternal('https://github.com/orion-ide/orion')
+          shell.openExternal('https://github.com/concrete-sangminlee/orion')
         },
       },
       {
@@ -564,8 +564,7 @@ function buildAppMenu(): Menu {
       {
         label: 'Report Issue...',
         click: () => {
-          const { shell } = require('electron')
-          shell.openExternal('https://github.com/orion-ide/orion/issues')
+          shell.openExternal('https://github.com/concrete-sangminlee/orion/issues')
         },
       },
       { type: 'separator' },
@@ -663,12 +662,12 @@ function createWindow(filesToOpen?: string[]): BrowserWindow {
   win.webContents.on('will-navigate', (event, url) => {
     if (process.env.VITE_DEV_SERVER_URL && url.startsWith(process.env.VITE_DEV_SERVER_URL)) return
     event.preventDefault()
-    require('electron').shell.openExternal(url)
+    shell.openExternal(url)
   })
 
   // Security: prevent new window creation — open in default browser
   win.webContents.setWindowOpenHandler(({ url }) => {
-    require('electron').shell.openExternal(url)
+    shell.openExternal(url)
     return { action: 'deny' }
   })
 
