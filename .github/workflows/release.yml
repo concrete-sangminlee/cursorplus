@@ -28,6 +28,7 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm test -- --run
+      - run: npm run test:cli
       - run: npm run build
       - run: npm run cli:build
       - run: node dist-cli/index.mjs --version
