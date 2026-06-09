@@ -27,6 +27,13 @@ What problem does this solve, and why is this the right level of change?
 - [ ] Manual desktop check
 - [ ] Manual CLI check
 
+## Security and Dependency Impact
+
+- [ ] No dependency changes are included.
+- [ ] Added/updated dependencies were checked for permission and license impact.
+- [ ] Packaging, release, native process, or installer behavior was considered.
+- [ ] No new data exposure paths were introduced.
+
 ## Risk
 
 - [ ] Low: docs, tests, or isolated cleanup

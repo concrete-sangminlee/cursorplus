@@ -33,6 +33,12 @@ How should Orion behave after this change?
 
 What other approaches did you consider, and why are they less suitable?
 
+## Security and dependency considerations
+
+- [ ] Feature does not increase file-system, shell, or network exposure.
+- [ ] This feature does not add high-risk new dependencies.
+- [ ] If dependencies are required, alternatives and risk trade-offs are documented.
+
 ## Usage example
 
 For CLI requests, show the command shape. For desktop requests, describe the UI flow.
