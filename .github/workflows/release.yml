@@ -25,6 +25,14 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
+      - name: Verify release version matches tag
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_NAME" != "$PKG_VERSION" ]; then
+            echo "Release tag ($TAG_NAME) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
       - run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm test -- --run
@@ -32,6 +40,7 @@ jobs:
       - run: npm run build
       - run: npm run cli:build
       - run: node dist-cli/index.mjs --version
+      - run: npm pack --dry-run
       - name: Publish npm package
         if: env.NPM_TOKEN != ''
         run: npm publish

@@ -47,3 +47,4 @@ jobs:
       - run: npm ci
       - run: npm run cli:build
       - run: node dist-cli/index.mjs --version
+      - run: node dist-cli/index.mjs --help

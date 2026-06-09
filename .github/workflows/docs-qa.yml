@@ -1,0 +1,29 @@
+name: Docs QA
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: lycheeverse/lychee-action@v1
+        with:
+          fail: true
+          args: >
+            --verbose
+            --no-progress
+            --max-concurrency 8
+            --max-retries 3
+            --accept 200,301,302,303,307,308,403,429
+            --exclude-mail
+            --exclude-link-local
+            -- README.md CONTRIBUTING.md SECURITY.md
+            .github/workflows/*.yml .github/*.md .github/ISSUE_TEMPLATE/*.md
+            cli/README.md docs/**/*.md
