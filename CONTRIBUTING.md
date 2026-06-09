@@ -1,241 +1,164 @@
-# Contributing to Orion IDE
+﻿# Contributing to Orion IDE
 
-Thank you for your interest in contributing to Orion! This guide will help you get started.
+This guide explains how to make focused, reviewable changes to Orion's CLI, Electron app, renderer, and shared contracts.
 
-## Table of Contents
+## Quick Start
 
-- [Development Environment Setup](#development-environment-setup)
-- [Project Structure](#project-structure)
-- [Adding a New CLI Command](#adding-a-new-cli-command)
-- [Code Style Guidelines](#code-style-guidelines)
-- [Testing Requirements](#testing-requirements)
-- [Pull Request Process](#pull-request-process)
+```bash
+git clone https://github.com/<your-username>/orion.git
+cd orion
+npm ci
+npm run cli:build
+npm run test:cli
+npm run dev
+```
 
-## Development Environment Setup
+## Prerequisites
 
-### Prerequisites
-
-- **Node.js** >= 22.12.0 (we recommend using [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm))
-- **npm** >= 9.0.0
-- **Git**
-
-### Getting Started
-
-1. **Fork the repository** on GitHub.
-
-2. **Clone your fork:**
-   ```bash
-   git clone https://github.com/<your-username>/orion.git
-   cd orion
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   npm ci
-   ```
-
-4. **Build the CLI:**
-   ```bash
-   npm run cli:build
-   ```
-
-5. **Run the tests:**
-   ```bash
-   npm run test:cli
-   ```
-
-6. **Start the development server** (for the Electron IDE):
-   ```bash
-   npm run dev
-   ```
-
-### Environment Variables
-
-To use AI features locally, configure at least one provider:
-
-| Variable | Description |
+| Requirement | Notes |
 |---|---|
-| `ANTHROPIC_API_KEY` | API key for Claude models |
-| `OPENAI_API_KEY` | API key for GPT models |
-| `OLLAMA_HOST` | Host URL for local Ollama instance (default: `http://localhost:11434`) |
+| Node.js 22.12+ | Required by `package.json` and CI |
+| npm | Use `npm ci` for clean installs |
+| Git | Required for source control workflows |
+| Native build tools | Required by Electron/native dependencies such as `node-pty` |
+| Ollama | Optional for local AI provider testing |
+| Provider API keys | Optional for Anthropic/OpenAI provider testing |
 
-## Project Structure
+## Repository Map
 
-```
-orion/
-  cli/              # CLI source code (TypeScript)
-    commands/       # Individual command implementations
-    index.ts        # CLI entry point
-  src/              # Electron IDE source code
-  dist-cli/         # Built CLI output (generated)
-  dist-electron/    # Built Electron output (generated)
-  tests/            # Test files
-```
+| Area | Path | Purpose |
+|---|---|---|
+| CLI | `cli/` | Commander entrypoint, command implementations, CLI utilities, CLI tests |
+| CLI commands | `cli/commands/` | One command module per feature area |
+| Desktop main process | `electron/` | Electron app startup, menus, preload, IPC, terminal bridge |
+| IPC guards | `electron/ipc/` | Validation around clipboard, Git, shell, terminal, workspace, and filesystem actions |
+| Renderer | `src/` | React app, panels, components, stores, hooks, utilities, themes |
+| Shared contracts | `shared/` | IPC channel names, shared types, path/URL safety helpers |
+| Docs | `docs/` | Architecture, health notes, feature guides, operational notes |
+| Workflows | `.github/` | CI, release, Dependabot, issue and PR templates |
+| Build output | `dist*`, `build/`, `release/` | Generated artifacts; avoid editing by hand |
 
-## Adding a New CLI Command
+## Development Commands
 
-Follow these steps to add a new command to the Orion CLI:
+| Task | Command |
+|---|---|
+| Start renderer dev server | `npm run dev` |
+| Build renderer | `npm run build` |
+| Type-check project | `npm run typecheck` |
+| Run all tests | `npm run test` |
+| Build CLI bundle | `npm run cli:build` |
+| Run CLI tests | `npm run test:cli` |
+| Package desktop app | `npm run package` |
 
-### Step 1: Create the Command File
+Use the narrowest relevant check first. Broaden only when the change crosses boundaries.
 
-Create a new TypeScript file in `cli/commands/`:
+## Validation by Change Type
+
+| Change type | Minimum local checks |
+|---|---|
+| Documentation only | Manual read-through |
+| CLI command or CLI utility | `npm run cli:build`, `npm run test:cli` |
+| Electron IPC, preload, terminal, shell, Git, filesystem | `npm run typecheck`, targeted IPC tests if present |
+| Renderer component, panel, store, hook, utility | `npm run typecheck`, relevant Vitest tests |
+| Shared type, IPC channel, path/URL safety | `npm run typecheck`, tests touching both Electron and renderer contracts |
+| Build, release, package, dependency configuration | `npm run build`, `npm run cli:build`, relevant workflow/package review |
+| Security-sensitive behavior | Add or update regression tests and document risk in the PR |
+
+## Adding a CLI Command
+
+1. Create a module in `cli/commands/`.
+2. Register the command in `cli/index.ts`.
+3. Add focused tests under `cli/__tests__/` or extend an existing relevant test file.
+4. Build the CLI and smoke-check help output.
+
+Example command shape:
 
 ```typescript
-// cli/commands/my-command.ts
-import { Command } from 'commander';
+import { Command } from 'commander'
 
-export function registerMyCommand(program: Command): void {
+export function registerExampleCommand(program: Command): void {
   program
-    .command('my-command')
-    .description('Brief description of what this command does')
-    .option('-f, --flag <value>', 'description of the flag')
+    .command('example')
+    .description('Explain what the command does')
+    .option('--json', 'print structured output')
     .action(async (options) => {
-      // Command implementation
-    });
+      // Keep side effects explicit and user-confirmed.
+    })
 }
 ```
 
-### Step 2: Register the Command
-
-Import and register your command in the CLI entry point so it becomes available.
-
-### Step 3: Add Tests
-
-Create a corresponding test file:
-
-```typescript
-// tests/cli/my-command.test.ts
-import { describe, it, expect } from 'vitest';
-
-describe('my-command', () => {
-  it('should do the expected thing', () => {
-    // Test implementation
-  });
-});
-```
-
-### Step 4: Build and Verify
+Smoke check:
 
 ```bash
 npm run cli:build
-node dist-cli/index.mjs my-command --help
+node dist-cli/index.mjs example --help
 npm run test:cli
 ```
 
-## Code Style Guidelines
+## Code Style
 
-### General Rules
+- Use TypeScript and ES modules.
+- Keep changes focused on one coherent behavior or documentation update.
+- Prefer explicit validation helpers over inline ad hoc checks.
+- Keep user-facing errors actionable and concise.
+- Avoid logging secrets, full prompts with credentials, full environment dumps, or private local paths.
+- Do not edit generated output by hand unless the release process explicitly requires it.
+- Preserve existing design-system patterns when working in the renderer.
 
-- **TypeScript** is required for all source files.
-- Use **ES modules** (`import`/`export`), not CommonJS (`require`).
-- Target **Node.js 22.12+** -- avoid APIs unavailable in the supported runtime.
-- Prefer `async`/`await` over raw promises or callbacks.
-- Use meaningful variable and function names.
-- Keep functions focused: each function should do one thing well.
+## Security Expectations
 
-### Formatting
+Orion can access local files, terminals, Git state, clipboard content, and AI provider credentials. Treat these surfaces as sensitive.
 
-- Use **2-space indentation**.
-- Use **single quotes** for strings.
-- Include **trailing commas** in multi-line structures.
-- Add **semicolons** at the end of statements.
+- Require clear user intent before file writes, shell commands, destructive Git actions, or external navigation.
+- Treat renderer input, IPC payloads, file paths, URLs, provider responses, and workspace content as untrusted.
+- Use existing guard modules in `electron/ipc/` and safety helpers in `shared/` where possible.
+- Redact secrets from logs, issue reports, test fixtures, screenshots, and generated documentation.
+- Report vulnerabilities privately according to `SECURITY.md`.
 
-### File Organization
+## Pull Request Guidelines
 
-- One command per file in `cli/commands/`.
-- Group related utilities into shared modules.
-- Keep imports sorted: external packages first, then local modules.
+Before opening a PR:
 
-### Error Handling
+1. Create a focused branch.
+2. Keep generated artifacts out of the diff unless they are intentionally part of the change.
+3. Use a Conventional Commit-style message such as `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, or `ci:`.
+4. Run the narrow checks for your change type.
+5. Fill out the PR template with scope, test status, risk, and notes.
 
-- Always handle errors gracefully in CLI commands.
-- Provide clear, actionable error messages to the user.
-- Use `process.exit(1)` for fatal errors, not thrown exceptions at the top level.
+A strong PR includes:
 
-## Testing Requirements
+- A concise summary of the user-visible or maintainer-visible change.
+- The smallest useful diff.
+- Tests or a clear reason tests were not added.
+- Screenshots or short recordings for UI changes when visual behavior matters.
+- Risk notes for Electron, IPC, shell, Git, filesystem, provider, or packaging changes.
 
-### What to Test
+## Issue Guidelines
 
-- **All new CLI commands** must have corresponding tests.
-- **Bug fixes** must include a regression test.
-- **Edge cases**: empty input, invalid arguments, missing API keys.
+Use the issue templates when reporting bugs or requesting features.
 
-### Running Tests
+For bugs, include:
 
-```bash
-# Run all CLI tests
-npm run test:cli
+- Affected area.
+- Reproduction steps.
+- Expected and actual behavior.
+- OS, Node.js version, Orion version, install method, and provider if relevant.
+- Redacted logs or screenshots.
 
-# Run tests in watch mode
-npm run test -- --watch
+For feature requests, include:
 
-# Run a specific test file
-npx vitest run tests/cli/my-command.test.ts
-```
+- The workflow problem.
+- Proposed behavior.
+- Alternatives considered.
+- Acceptance criteria.
 
-### Test Guidelines
+## Release and Dependency Notes
 
-- Use `describe` blocks to group related tests.
-- Use clear `it` descriptions that explain the expected behavior.
-- Mock external services (AI providers, network calls).
-- Tests must pass on all supported platforms (Linux, macOS, Windows) and Node.js 22.12+.
+- CI and release workflows live in `.github/workflows/`.
+- Dependabot policy lives in `.github/dependabot.yml`.
+- Release publishing expects `NPM_TOKEN` to be configured in GitHub secrets.
+- Major dependency bumps should be reviewed individually, especially Electron, Vite, React, Monaco, TypeScript, and AI SDK updates.
 
-## Pull Request Process
+## Questions
 
-### Before Submitting
-
-1. **Create a feature branch:**
-   ```bash
-   git checkout -b feature/my-feature
-   ```
-
-2. **Make your changes** and commit with clear messages:
-   ```bash
-   git commit -m "feat: add my-command for doing X"
-   ```
-
-   Follow [Conventional Commits](https://www.conventionalcommits.org/) format:
-   - `feat:` for new features
-   - `fix:` for bug fixes
-   - `docs:` for documentation changes
-   - `refactor:` for refactoring
-   - `test:` for adding or updating tests
-   - `chore:` for maintenance tasks
-
-3. **Ensure all checks pass:**
-   ```bash
-   npm run cli:build
-   npm run test:cli
-   ```
-
-4. **Push your branch:**
-   ```bash
-   git push origin feature/my-feature
-   ```
-
-### Submitting the PR
-
-1. Open a pull request against the `main` branch.
-2. Fill out the PR template completely.
-3. Link any related issues.
-4. Wait for CI checks to pass.
-
-### Review Process
-
-- A maintainer will review your PR, usually within a few days.
-- Address any requested changes by pushing new commits to your branch.
-- Once approved, a maintainer will merge your PR.
-
-### After Merge
-
-- Delete your feature branch.
-- Pull the latest `main` to keep your fork up to date.
-
-## Questions?
-
-If you have questions or need help, feel free to:
-
-- Open a [Discussion](https://github.com/concrete-sangminlee/orion/discussions)
-- File an [Issue](https://github.com/concrete-sangminlee/orion/issues)
-
-Thank you for helping make Orion better!
+Use GitHub Discussions for open-ended questions and GitHub Issues for actionable bugs or feature requests.
