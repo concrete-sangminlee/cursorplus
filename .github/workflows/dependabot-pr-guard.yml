@@ -20,24 +20,48 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-          const owner = context.repo.owner
-          const repo = context.repo.repo
-          const issue_number = context.issue.number
-          const title = context.payload.pull_request.title || ''
-          const labels = ['dependencies', 'dependabot']
-          const marker = '<!-- dependabot-pr-guard -->'
-          const isSecurityUpdate = /security|cve|vulnerability/i.test(title)
-          const isMajorUpdate = /major|breaking/i.test(title)
+            const pullRequest = context.payload.pull_request
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const issue_number = context.issue.number
+            const marker = '<!-- dependabot-pr-guard -->'
+            const title = pullRequest.title || ''
+            const body = pullRequest.body || ''
+            const labels = ['dependencies', 'dependabot']
+            const isSecurityUpdate = /security|cve|vulnerability/i.test(title) || /security/i.test(body)
+            const isMajorUpdate = /major|breaking/i.test(title)
 
-          if (isSecurityUpdate) labels.push('security')
-          if (isMajorUpdate) labels.push('semver-major')
+            if (isSecurityUpdate) labels.push('security')
+            if (isMajorUpdate) labels.push('semver-major')
+
+            const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: issue_number,
+              per_page: 100,
+            })
+            const touched = changedFiles
+              .map((item) => (item.filename || '').toLowerCase())
+              .join('\n')
+
+            if (/\bpackage(-lock)?\.json\b/.test(touched) || /deps?\b/.test(touched)) {
+              labels.push('runtime')
+            }
+            if (/(^|\b)dev\b|dev-dependencies|peer-dependencies|test/.test(touched)) {
+              labels.push('dev')
+            }
+            if (/\btypes\b|d\.ts|typescript/.test(touched)) {
+              labels.push('types')
+            }
+
+            const uniqueLabels = [...new Set(labels)]
 
             try {
               await github.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number,
-                labels,
+                labels: uniqueLabels,
               })
             } catch (error) {
               core.info(`Skipping label update: ${error.message}`)
