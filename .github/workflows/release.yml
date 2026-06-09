@@ -28,8 +28,8 @@ jobs:
       - name: Verify release version and tag format
         run: |
           TAG_NAME="${GITHUB_REF_NAME#v}"
-          if ! [[ "$TAG_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release tag '$TAG_NAME' must be valid SemVer (x.y.z)."
+          if ! [[ "$TAG_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Release tag '$TAG_NAME' is not valid SemVer."
             exit 1
           fi
           PKG_VERSION="$(node -p "require('./package.json').version")"
