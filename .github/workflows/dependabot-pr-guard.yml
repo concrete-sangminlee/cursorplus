@@ -20,17 +20,24 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            const owner = context.repo.owner
-            const repo = context.repo.repo
-            const issue_number = context.issue.number
-            const marker = '<!-- dependabot-pr-guard -->'
+          const owner = context.repo.owner
+          const repo = context.repo.repo
+          const issue_number = context.issue.number
+          const title = context.payload.pull_request.title || ''
+          const labels = ['dependencies', 'dependabot']
+          const marker = '<!-- dependabot-pr-guard -->'
+          const isSecurityUpdate = /security|cve|vulnerability/i.test(title)
+          const isMajorUpdate = /major|breaking/i.test(title)
+
+          if (isSecurityUpdate) labels.push('security')
+          if (isMajorUpdate) labels.push('semver-major')
 
             try {
               await github.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number,
-                labels: ['dependencies', 'dependabot'],
+                labels,
               })
             } catch (error) {
               core.info(`Skipping label update: ${error.message}`)
