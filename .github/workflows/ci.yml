@@ -14,9 +14,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    needs: [audit]
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +46,6 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm test -- --run
       - run: npm run test:cli
@@ -40,6 +54,7 @@ jobs:
   cli-smoke:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    needs: [audit]
     strategy:
       fail-fast: false
       matrix:

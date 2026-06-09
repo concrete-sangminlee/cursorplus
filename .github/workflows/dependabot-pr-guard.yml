@@ -20,6 +20,20 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
+            const scopeHint = (filePath) => {
+              const file = (filePath || '').toLowerCase()
+              if (/(^|/)package(-lock)?\.json$/.test(file) || /deps?\.json$/.test(file) || /node_modules\//.test(file)) {
+                return 'runtime'
+              }
+              if (/(^|/)package-lock\.json$/.test(file) || /dev|peer|test/.test(file)) {
+                return 'dev'
+              }
+              if (/\b(typ(es)?|d\.ts)$/.test(file) || /typescript/.test(file)) {
+                return 'types'
+              }
+              return null
+            }
+
             const pullRequest = context.payload.pull_request
             const owner = context.repo.owner
             const repo = context.repo.repo
@@ -30,9 +44,11 @@ jobs:
             const labels = ['dependencies', 'dependabot']
             const isSecurityUpdate = /security|cve|vulnerability/i.test(title) || /security/i.test(body)
             const isMajorUpdate = /major|breaking/i.test(title)
+            const scopeSet = new Set()
 
             if (isSecurityUpdate) labels.push('security')
             if (isMajorUpdate) labels.push('semver-major')
+            if (isSecurityUpdate) scopeSet.add('security')
 
             const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
               owner,
@@ -43,6 +59,14 @@ jobs:
             const touched = changedFiles
               .map((item) => (item.filename || '').toLowerCase())
               .join('\n')
+            const uniqueTouches = [...new Set(touched.split('\n').filter(Boolean))]
+
+            for (const changed of uniqueTouches) {
+              const hint = scopeHint(changed)
+              if (hint) {
+                scopeSet.add(hint)
+              }
+            }
 
             if (/\bpackage(-lock)?\.json\b/.test(touched) || /deps?\b/.test(touched)) {
               labels.push('runtime')
@@ -55,6 +79,7 @@ jobs:
             }
 
             const uniqueLabels = [...new Set(labels)]
+            const scopeList = [...scopeSet].join(', ') || 'unclassified'
 
             try {
               await github.rest.issues.addLabels({
@@ -91,8 +116,11 @@ jobs:
             This PR was opened by Dependabot. Please confirm:
 
             - [ ] Dependency impact and license changes are reviewed.
+            - [ ] Dependency files touched align with `runtime`, `dev`, or `types` scope.
+            - [ ] Security update scope is confirmed: **${scopeSet.has('security') ? 'Yes' : 'No'}**.
             - [ ] Any security implications are called out in the PR description.
             - [ ] Scope of change matches dependency bump intent (runtime/dev/types).
             - [ ] Release notes/changelog is updated when user-visible behavior changes.
+            - [ ] Suggested scope: ${scopeList}
             `
             })
