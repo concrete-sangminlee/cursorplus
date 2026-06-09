@@ -28,7 +28,6 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
-      - run: npm ci
       - name: Verify release version and tag format
         run: |
           set -euo pipefail
@@ -94,6 +93,7 @@ NODE
             echo "Skip release from non-default-branch commit to avoid publishing detached tags."
             exit 1
           fi
+      - run: npm ci
       - run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm test -- --run
