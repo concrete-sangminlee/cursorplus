@@ -22,10 +22,17 @@ What problem does this solve, and why is this the right level of change?
 - [ ] `npm run typecheck`
 - [ ] `npm run test`
 - [ ] `npm run test:cli`
-- [ ] `npm run cli:build`
 - [ ] `npm run build`
 - [ ] Manual desktop check
 - [ ] Manual CLI check
+
+## CI and Quality Gates
+
+- [ ] `npm run typecheck`
+- [ ] `npm run test` (and `test:cli` if CLI touched)
+- [ ] `npm run cli:build` smoke (or relevant CLI package/release check)
+- [ ] docs links/markdown checks passed for changed docs
+- [ ] dependency-review passed for dependency updates
 
 ## Security and Dependency Impact
 

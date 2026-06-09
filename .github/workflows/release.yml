@@ -40,6 +40,7 @@ jobs:
       - run: npm run build
       - run: npm run cli:build
       - run: node dist-cli/index.mjs --version
+      - run: node dist-cli/index.mjs --help
       - run: npm pack --dry-run
       - name: Publish npm package
         if: env.NPM_TOKEN != ''
