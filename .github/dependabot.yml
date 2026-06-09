@@ -5,27 +5,49 @@ updates:
     schedule:
       interval: weekly
       day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
     open-pull-requests-limit: 5
+    rebase-strategy: auto
     versioning-strategy: increase
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
     groups:
-      # Group all minor/patch bumps into a single PR per ecosystem to keep noise low.
-      npm-minor-and-patch:
+      npm-runtime-minor-and-patch:
+        dependency-type: production
         update-types:
           - minor
           - patch
-      # Major bumps still get their own PR so they can be evaluated individually.
-      types:
+      npm-development-minor-and-patch:
+        dependency-type: development
+        exclude-patterns:
+          - "@types/*"
+        update-types:
+          - minor
+          - patch
+      npm-types-minor-and-patch:
         patterns:
           - '@types/*'
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
     open-pull-requests-limit: 3
+    rebase-strategy: auto
+    commit-message:
+      prefix: chore
+      include: scope
     groups:
-      actions:
+      actions-minor-and-patch:
         update-types:
           - minor
           - patch
