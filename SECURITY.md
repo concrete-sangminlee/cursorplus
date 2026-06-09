@@ -22,6 +22,7 @@ Send reports to `team@orion-ide.dev` with:
 - Steps to reproduce with the smallest safe proof of concept.
 - Impact assessment, including required privileges and affected data.
 - Any logs, screenshots, or crash traces with secrets removed.
+- For dependency-related findings, include package name, affected versions, and a minimal `package-lock.json` diff context.
 
 We aim to acknowledge reports within 48 hours. If the report is valid, we will coordinate
 a fix and publish release notes once users can upgrade safely.
