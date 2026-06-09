@@ -61,7 +61,7 @@ Use the narrowest relevant check first. Broaden only when the change crosses bou
 | Electron IPC, preload, terminal, shell, Git, filesystem | `npm run typecheck`, targeted IPC tests if present |
 | Renderer component, panel, store, hook, utility | `npm run typecheck`, relevant Vitest tests |
 | Shared type, IPC channel, path/URL safety | `npm run typecheck`, tests touching both Electron and renderer contracts |
-| Build, release, package, dependency configuration | `npm run build`, `npm run cli:build`, relevant workflow/package review |
+| Build, release, package, dependency configuration | `npm run build`, `npm run cli:build`, dependency-review checks, and relevant workflow/package review |
 | Security-sensitive behavior | Add or update regression tests and document risk in the PR |
 
 ## Adding a CLI Command
