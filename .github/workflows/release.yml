@@ -17,8 +17,12 @@ jobs:
     timeout-minutes: 20
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -28,13 +32,27 @@ jobs:
       - name: Verify release version and tag format
         run: |
           TAG_NAME="${GITHUB_REF_NAME#v}"
-          if ! [[ "$TAG_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+          if ! [[ "$TAG_NAME" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "Release tag '$TAG_NAME' is not valid SemVer."
             exit 1
           fi
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "$TAG_NAME" != "$PKG_VERSION" ]; then
             echo "Release tag ($TAG_NAME) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Verify release tag is on default branch history
+        run: |
+          BASE_BRANCH="origin/${DEFAULT_BRANCH:-main}"
+          if [ -z "$(git branch -r --list "$BASE_BRANCH")" ]; then
+            echo "Base branch ref '$BASE_BRANCH' not found; expected branch '${DEFAULT_BRANCH:-main}'."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$BASE_BRANCH" "$GITHUB_SHA"; then
+            echo "Tag commit ($GITHUB_SHA) is not on $BASE_BRANCH history."
+            echo "Skip release from non-default-branch commit to avoid publishing detached tags."
             exit 1
           fi
       - run: npm audit --audit-level=moderate
