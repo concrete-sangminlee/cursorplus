@@ -30,9 +30,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: docs-qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   markdown-links:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
