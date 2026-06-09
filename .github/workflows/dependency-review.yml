@@ -17,5 +17,5 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
-          fail-on-scopes: runtime, development
+          fail-on-scopes: runtime,development
           comment-summary-in-pr: true
