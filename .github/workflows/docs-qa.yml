@@ -25,6 +25,6 @@ jobs:
             --max-retries 3
             --accept 200,301,302,303,307,308,403,429
             --exclude-mail
-            -- README.md CONTRIBUTING.md SECURITY.md
-            .github/workflows/*.yml .github/*.md .github/ISSUE_TEMPLATE/*.md
+            -- README.md CONTRIBUTING.md SECURITY.md CHANGELOG.md
+            .github/**/*.md .github/workflows/*.yml
             cli/README.md docs/**/*.md

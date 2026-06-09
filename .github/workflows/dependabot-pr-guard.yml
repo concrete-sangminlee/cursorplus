@@ -1,0 +1,54 @@
+name: Dependabot PR Guard
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  annotate:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const issue_number = context.issue.number
+            const marker = '<!-- dependabot-pr-guard -->'
+
+            const existing = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number,
+                per_page: 100,
+              }
+            )
+
+            if (existing.some((comment) => comment.body?.includes(marker))) {
+              return
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: `${marker}
+            ## Dependabot dependency update
+
+            This PR was opened by Dependabot. Please confirm:
+
+            - [ ] Dependency impact and license changes are reviewed.
+            - [ ] Any security implications are called out in the PR description.
+            - [ ] Scope of change matches dependency bump intent (major/minor/patch).
+            - [ ] Release notes/changelog is updated when user-visible behavior changes.
+            `
+            })
