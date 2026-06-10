@@ -85,6 +85,16 @@ jobs:
             }
 
             const normalizedLabels = [...labelSet].sort()
+            const availableLabels = new Set(
+              (await github.paginate(github.rest.issues.listLabelsForRepo, {
+                owner,
+                repo,
+                per_page: 100,
+              }))
+                .map((repoLabel) => repoLabel.name),
+            )
+            const actionableLabels = normalizedLabels.filter((candidate) => availableLabels.has(candidate))
+
             const scopeList = [...scopeSet]
               .filter(Boolean)
               .sort()
@@ -98,15 +108,19 @@ jobs:
               ? `${changedFilesSummary.slice(0, 1180)}...`
               : changedFilesSummary
 
-            try {
+            if (actionableLabels.length === 0) {
+              core.info('No matching repository labels for Dependabot automation; skipping auto label updates.')
+            } else {
+              try {
               await github.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number,
-                labels: normalizedLabels,
+                labels: actionableLabels,
               })
-            } catch (error) {
-              core.info(`Skipping label update: ${error.message}`)
+              } catch (error) {
+                core.info(`Skipping label update: ${error.message}`)
+              }
             }
 
             const existing = await github.paginate(

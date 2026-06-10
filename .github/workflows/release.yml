@@ -184,8 +184,10 @@ NODE
               .map((item) => (typeof item === 'string' ? item : item.path))
               .map(normalizePath),
           )
-          const missingFiles = [...expectedFiles]
+          const normalizedExpectedFiles = [...expectedFiles].map(normalizePath)
+          const missingFiles = normalizedExpectedFiles
             .filter((file) => !hasPackedMatch(entryFiles, file))
+            .sort()
 
           if (missingFiles.length > 0) {
             console.error(`npm pack is missing required files: ${missingFiles.join(', ')}`)
@@ -229,7 +231,8 @@ NODE
           }
 
           console.log(`npm pack validation passed for ${packageName}@${version}`)
-          console.log(`Expected files present: ${expectedFiles.join(', ')}`)
+          console.log(`Expected files present: ${normalizedExpectedFiles.sort().join(', ')}`)
+          console.log(`Packed file count: ${(entry.files || []).length}`)
           NODE
       - name: Publish npm package
         if: env.NPM_TOKEN != ''
