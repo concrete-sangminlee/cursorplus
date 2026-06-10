@@ -11,6 +11,7 @@ on:
       - 'electron/**'
       - 'src/**'
       - 'cli/**'
+      - 'scripts/**'
       - 'shared/**'
       - 'build/**'
       - 'dist-electron/**'
@@ -29,6 +30,7 @@ on:
       - 'electron/**'
       - 'src/**'
       - 'cli/**'
+      - 'scripts/**'
       - 'shared/**'
       - 'build/**'
       - 'dist-electron/**'
@@ -84,6 +86,7 @@ jobs:
       - run: npm test -- --run
       - run: npm run test:cli
       - run: npm run build
+      - run: npm run release:validate-pack
 
   cli-smoke:
     runs-on: ${{ matrix.os }}
