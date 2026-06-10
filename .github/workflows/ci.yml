@@ -48,9 +48,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflow-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Lint GitHub workflow files
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            ghcr.io/rhysd/actionlint:1.7.7
+
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    needs: [workflow-lint]
     steps:
       - uses: actions/checkout@v6
         with:
