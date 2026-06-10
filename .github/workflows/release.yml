@@ -30,21 +30,13 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Verify release context
-        run: npm run release:validate -- --tag "${GITHUB_REF_NAME}" --changelog CHANGELOG.md --npm-token "${NPM_TOKEN}"
-
-      - name: Verify release tag is on default branch history
         run: |
-          BASE_BRANCH="origin/${DEFAULT_BRANCH:-main}"
-          if [ -z "$(git branch -r --list "$BASE_BRANCH")" ]; then
-            echo "Base branch ref '$BASE_BRANCH' not found; expected branch '${DEFAULT_BRANCH:-main}'."
-            exit 1
-          fi
-
-          if ! git merge-base --is-ancestor "$BASE_BRANCH" "$GITHUB_SHA"; then
-            echo "Tag commit ($GITHUB_SHA) is not on $BASE_BRANCH history."
-            echo "Skip release from non-default-branch commit to avoid publishing detached tags."
-            exit 1
-          fi
+          npm run release:validate \
+            -- --tag "${GITHUB_REF_NAME}" \
+            --changelog CHANGELOG.md \
+            --npm-token "${NPM_TOKEN}" \
+            --default-branch "${DEFAULT_BRANCH}" \
+            --sha "${GITHUB_SHA}"
       - run: npm ci
       - run: npm audit --audit-level=moderate
       - run: npm run typecheck

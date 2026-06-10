@@ -82,4 +82,58 @@ describe('release metadata validation', () => {
       isExistingNpmVersion: () => true,
     })).toThrow('already exists in npm registry')
   })
+
+  it('requires release commit to exist on default branch when branch check is enabled', () => {
+    const pkg = writeJson('@scope/demo', '3.0.0', 'package.json')
+    const lock = writeJson('@scope/demo', '3.0.0', 'package-lock.json')
+    const changelogPath = writeChangelog(pkg.dir, '# Changelog\n\n## 3.0.0')
+
+    expect(() => validateReleaseContext({
+      tagName: 'v3.0.0',
+      packageJsonPath: pkg.filePath,
+      packageLockPath: lock.filePath,
+      changelogPath,
+      npmToken: '',
+      checkExistingNpmVersion: false,
+      defaultBranch: 'main',
+      commitSha: 'abc123',
+      readFileText: (filePath) => fs.readFileSync(filePath, 'utf8'),
+      runGitCommand: (args) => {
+        if (args.join(' ') === 'branch -r --list origin/main') {
+          return '  origin/main\n'
+        }
+        if (args.join(' ') === 'merge-base --is-ancestor origin/main abc123') {
+          throw new Error('not ancestor')
+        }
+        return ''
+      },
+    })).toThrow('Tag commit (abc123) is not on origin/main history.')
+  })
+
+  it('passes when release commit is on default branch history', () => {
+    const pkg = writeJson('@scope/demo', '4.0.0', 'package.json')
+    const lock = writeJson('@scope/demo', '4.0.0', 'package-lock.json')
+    const changelogPath = writeChangelog(pkg.dir, '# Changelog\n\n## v4.0.0')
+
+    expect(() => validateReleaseContext({
+      tagName: 'v4.0.0',
+      packageJsonPath: pkg.filePath,
+      packageLockPath: lock.filePath,
+      changelogPath,
+      npmToken: '',
+      checkExistingNpmVersion: false,
+      defaultBranch: 'main',
+      commitSha: 'def456',
+      readFileText: (filePath) => fs.readFileSync(filePath, 'utf8'),
+      runGitCommand: (args) => {
+        if (args.join(' ') === 'branch -r --list origin/main') {
+          return '  origin/main\n'
+        }
+        if (args.join(' ') === 'merge-base --is-ancestor origin/main def456') {
+          return ''
+        }
+        return ''
+      },
+    })).not.toThrow()
+  })
 })

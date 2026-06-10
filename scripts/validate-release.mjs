@@ -30,15 +30,49 @@ export const packageVersionExists = (packageName, version) => {
   }
 }
 
+export const validateReleaseTagOnDefaultBranch = ({
+  defaultBranch = 'main',
+  commitSha = process.env.GITHUB_SHA || '',
+  repoPrefix = 'origin',
+  runGitCommand = (args) => execFileSync('git', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }),
+} = {}) => {
+  const baseBranch = `${repoPrefix}/${defaultBranch}`
+  const listResult = runGitCommand(['branch', '-r', '--list', baseBranch]).toString().trim()
+
+  if (!listResult) {
+    throw new Error(`Base branch ref '${baseBranch}' not found; expected branch '${defaultBranch}'.`)
+  }
+
+  if (!commitSha) {
+    throw new Error('Unable to determine the release commit SHA.')
+  }
+
+  try {
+    runGitCommand(['merge-base', '--is-ancestor', baseBranch, commitSha])
+  } catch (error) {
+    throw new Error(`Tag commit (${commitSha}) is not on ${baseBranch} history.`)
+  }
+}
+
 export const validateReleaseContext = ({
   tagName = process.env.GITHUB_REF_NAME || '',
   packageJsonPath = 'package.json',
   packageLockPath = 'package-lock.json',
   changelogPath = 'CHANGELOG.md',
   npmToken = process.env.NPM_TOKEN || '',
+  defaultBranch = 'main',
+  commitSha = process.env.GITHUB_SHA || '',
+  checkDefaultBranchHistory = true,
   checkExistingNpmVersion = true,
   readFileText = (filePath) => fs.readFileSync(filePath, 'utf8'),
   isExistingNpmVersion = packageVersionExists,
+  runGitCommand = (args) => execFileSync('git', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }),
 } = {}) => {
   const normalizedTag = String(tagName || '').replace(/^v/, '')
   if (!normalizedTag) {
@@ -69,6 +103,14 @@ export const validateReleaseContext = ({
     throw new Error(`Version ${normalizedTag} already exists in npm registry for ${result.packageName}.`)
   }
 
+  if (checkDefaultBranchHistory) {
+    validateReleaseTagOnDefaultBranch({
+      defaultBranch,
+      commitSha,
+      runGitCommand,
+    })
+  }
+
   return {
     packageName: result.packageName,
     version: result.packageVersion,
@@ -84,6 +126,9 @@ export const runCli = () => {
     packageLockPath: options['package-lock'] || 'package-lock.json',
     changelogPath: options.changelog || 'CHANGELOG.md',
     npmToken: options['npm-token'] || process.env.NPM_TOKEN || '',
+    defaultBranch: options['default-branch'] || process.env.DEFAULT_BRANCH || 'main',
+    commitSha: options.sha || process.env.GITHUB_SHA || '',
+    checkDefaultBranchHistory: options['skip-branch-check'] !== 'true',
     checkExistingNpmVersion: options['skip-npm-check'] !== 'true' && options['skip-registry-check'] !== 'true',
   })
 
