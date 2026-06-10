@@ -11,12 +11,18 @@ export const parseArgs = (args) => {
     const arg = args[index]
     if (!arg.startsWith('--')) continue
 
-    const [rawName, inlineValue] = arg.slice(2).split(/=(.*)/s, 2)
+    const equalsIndex = arg.indexOf('=')
+    const rawName = equalsIndex >= 0 ? arg.slice(2, equalsIndex) : arg.slice(2)
+    if (!rawName) continue
+    const inlineValue = equalsIndex >= 0 ? arg.slice(equalsIndex + 1) : undefined
+
     if (inlineValue !== undefined) {
       options[rawName] = inlineValue
-    } else {
+    } else if (args[index + 1] && !args[index + 1].startsWith('--')) {
       options[rawName] = args[index + 1]
       index += 1
+    } else {
+      options[rawName] = 'true'
     }
   }
 
@@ -34,7 +40,9 @@ export const readText = (filePath) => {
   return bytes.toString('utf8').replace(/^\uFEFF/, '')
 }
 
-export const normalizePath = (value) => String(value || '').replace(/^\.\/+/, '')
+export const normalizePath = (value) => String(value || '')
+  .replace(/^\.\/+/, '')
+  .replace(/\\+/g, '/')
 
 const readJson = (filePath) => JSON.parse(readText(filePath))
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

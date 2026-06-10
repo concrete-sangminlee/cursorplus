@@ -2,7 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { readText, validatePackPayload } from './validate-npm-pack.mjs'
+import {
+  hasPackedMatch,
+  normalizePath,
+  parseArgs,
+  readText,
+  validatePackPayload,
+} from './validate-npm-pack.mjs'
 
 const tempDirs = []
 
@@ -103,5 +109,40 @@ describe('readText', () => {
     ]))
 
     expect(readText(filePath)).toBe('[{"name":"orion"}]')
+  })
+})
+
+describe('parseArgs', () => {
+  it('parses long options in --flag=value and --flag value forms', () => {
+    expect(parseArgs(['--pack-json=my-pack.json', '--expected-version', '1.2.3']))
+      .toEqual({
+        'pack-json': 'my-pack.json',
+        'expected-version': '1.2.3',
+      })
+  })
+
+  it('treats standalone flags as true', () => {
+    expect(parseArgs(['--verbose'])).toEqual({
+      verbose: 'true',
+    })
+  })
+})
+
+describe('hasPackedMatch', () => {
+  const packFiles = new Set(['dist/main.js', 'src/index.js', 'README.md'])
+
+  it('matches explicit file names and directory prefixes', () => {
+    expect(hasPackedMatch(packFiles, 'dist/')).toBe(true)
+    expect(hasPackedMatch(packFiles, 'README.md')).toBe(true)
+  })
+
+  it('matches normalized windows-style paths', () => {
+    expect(normalizePath('dist\\\\main.js')).toBe('dist/main.js')
+    expect(hasPackedMatch(packFiles, 'dist\\\\')).toBe(true)
+  })
+
+  it('matches glob entries for nested files', () => {
+    expect(hasPackedMatch(packFiles, 'src/*.js')).toBe(true)
+    expect(hasPackedMatch(packFiles, 'LICENSE')).toBe(false)
   })
 })
