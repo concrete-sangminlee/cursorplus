@@ -8,10 +8,16 @@ on:
       - 'package-lock.json'
       - 'vite.config.ts'
       - 'tsconfig*.json'
+      - 'electron/**'
       - 'src/**'
       - 'cli/**'
+      - 'shared/**'
+      - 'build/**'
+      - 'dist-electron/**'
+      - 'dist-cli/**'
       - 'public/**'
       - 'electron-builder.yml'
+      - '.npmignore'
       - '.github/workflows/*.yml'
   pull_request:
     branches: [main]
@@ -20,10 +26,16 @@ on:
       - 'package-lock.json'
       - 'vite.config.ts'
       - 'tsconfig*.json'
+      - 'electron/**'
       - 'src/**'
       - 'cli/**'
+      - 'shared/**'
+      - 'build/**'
+      - 'dist-electron/**'
+      - 'dist-cli/**'
       - 'public/**'
       - 'electron-builder.yml'
+      - '.npmignore'
       - '.github/workflows/*.yml'
 
 permissions:
