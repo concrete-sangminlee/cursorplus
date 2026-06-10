@@ -41,13 +41,13 @@ jobs:
             const marker = '<!-- dependabot-pr-guard -->'
             const title = pullRequest.title || ''
             const body = pullRequest.body || ''
-            const labels = ['dependencies', 'dependabot']
             const isSecurityUpdate = /security|cve|vulnerability/i.test(title) || /security/i.test(body)
             const isMajorUpdate = /major|breaking/i.test(title)
             const scopeSet = new Set()
+            const labelSet = new Set(['dependencies', 'dependabot'])
 
-            if (isSecurityUpdate) labels.push('security')
-            if (isMajorUpdate) labels.push('semver-major')
+            if (isSecurityUpdate) labelSet.add('security')
+            if (isMajorUpdate) labelSet.add('semver-major')
             if (isSecurityUpdate) scopeSet.add('security')
 
             const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
@@ -56,43 +56,47 @@ jobs:
               pull_number: issue_number,
               per_page: 100,
             })
-            const touched = changedFiles
+            const touchedFiles = changedFiles
               .map((item) => (item.filename || '').toLowerCase())
-              .join('\n')
-            const uniqueTouches = [...new Set(touched.split('\n').filter(Boolean))]
+              .filter(Boolean)
+            const uniqueTouches = [...new Set(touchedFiles)]
 
             for (const changed of uniqueTouches) {
               const hint = scopeHint(changed)
               if (hint) {
                 scopeSet.add(hint)
+                labelSet.add(hint === 'security' ? 'security' : hint)
               }
             }
 
+            const touched = uniqueTouches.join('\n')
+
             if (/\bpackage(-lock)?\.json\b/.test(touched) || /deps?\b/.test(touched)) {
-              labels.push('runtime')
+              labelSet.add('runtime')
             }
             if (/(^|\b)dev\b|dev-dependencies|peer-dependencies|test/.test(touched)) {
-              labels.push('dev')
+              labelSet.add('dev')
             }
             if (/\btypes\b|d\.ts|typescript/.test(touched)) {
-              labels.push('types')
+              labelSet.add('types')
+            }
+            if (scopeSet.has('security')) {
+              labelSet.add('security')
             }
 
-            const uniqueLabels = [...new Set(labels)]
-            const normalizedLabels = uniqueLabels.sort()
+            const normalizedLabels = [...labelSet].sort()
             const scopeList = [...scopeSet]
-              .filter((scope) => scope)
+              .filter(Boolean)
               .sort()
-              .join(', ') || 'unclassified'
-            const normalizedScope = [...new Set(
-              scopeList
-                .split(', ')
-                .filter((scope) => scope.length > 0),
-            )].join(',')
+            const normalizedScope = scopeList.length > 0
+              ? scopeList.join(', ')
+              : 'unclassified'
             const changedSummary = uniqueTouches.slice(0, 20).join(', ') || 'no files'
-            const changedFilesSummary = changedSummary.length > 1200
-              ? `${changedSummary.slice(0, 1170)}...`
-              : changedSummary
+            const touchedCount = uniqueTouches.length
+            const changedFilesSummary = `${changedSummary}${touchedCount > 20 ? ` (and ${touchedCount - 20} more)` : ''}`
+            const clippedSummary = changedFilesSummary.length > 1200
+              ? `${changedFilesSummary.slice(0, 1180)}...`
+              : changedFilesSummary
 
             try {
               await github.rest.issues.addLabels({
@@ -135,6 +139,6 @@ jobs:
             - [ ] Scope of change matches dependency bump intent (runtime/dev/types).
             - [ ] Release notes/changelog is updated when user-visible behavior changes.
             - [ ] Scope: **[scope: ${normalizedScope}]**
-            - [ ] Suggested touched files: ${changedFilesSummary}
+            - [ ] Suggested touched files: ${clippedSummary}
             `
             })
