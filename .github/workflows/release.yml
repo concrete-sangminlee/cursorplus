@@ -33,11 +33,18 @@ jobs:
           set -euo pipefail
           TAG_NAME="${GITHUB_REF_NAME#v}"
           export TAG_NAME
+          PKG_NAME="$(node -p "require('./package.json').name")"
+          LOCKFILE_NAME="$(node -p "require('./package-lock.json').name")"
+          if [ "$PKG_NAME" != "$LOCKFILE_NAME" ]; then
+            echo "package.json name ($PKG_NAME) does not match package-lock.json name ($LOCKFILE_NAME)."
+            exit 1
+          fi
+
+          PKG_VERSION="$(node -p "require('./package.json').version")"
           if ! [[ "$TAG_NAME" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "Release tag '$TAG_NAME' is not valid SemVer."
             exit 1
           fi
-          PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "$TAG_NAME" != "$PKG_VERSION" ]; then
             echo "Release tag ($TAG_NAME) does not match package.json version ($PKG_VERSION)"
             exit 1
@@ -165,6 +172,16 @@ NODE
 
           if (!Array.isArray(entry.files) || entry.files.length === 0) {
             console.error('npm pack output is missing file list metadata.')
+            process.exit(1)
+          }
+
+          if (entry.name !== packageName) {
+            console.error(`Packed package name mismatch: expected ${packageName}, got ${entry.name}`)
+            process.exit(1)
+          }
+
+          if (entry.version !== version) {
+            console.error(`Packed package version mismatch: expected ${version}, got ${entry.version}`)
             process.exit(1)
           }
 

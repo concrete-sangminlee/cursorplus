@@ -20,19 +20,19 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            const scopeHint = (filePath) => {
-              const file = (filePath || '').toLowerCase()
-              if (/(^|/)package(-lock)?\.json$/.test(file) || /deps?\.json$/.test(file) || /node_modules\//.test(file)) {
-                return 'runtime'
-              }
-              if (/(^|/)package-lock\.json$/.test(file) || /dev|peer|test/.test(file)) {
-                return 'dev'
-              }
-              if (/\b(typ(es)?|d\.ts)$/.test(file) || /typescript/.test(file)) {
-                return 'types'
-              }
-              return null
+          const scopeHint = (filePath) => {
+            const file = (filePath || '').toLowerCase()
+            if (/(^|[\\/])(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)($|[\\/])/.test(file)) {
+              return 'runtime'
             }
+            if (/(^|[\\/])(dev|peer)-dependencies($|[\\/])/i.test(file) || /^tests?[\\/]/i.test(file) || /(^|[\\/])test[\\/]/i.test(file)) {
+              return 'dev'
+            }
+            if (/\.d\.ts$/.test(file) || /(^|[\\/])(types|typings|typescript)([\\/]|$)/i.test(file)) {
+              return 'types'
+            }
+            return null
+          }
 
             const pullRequest = context.payload.pull_request
             const owner = context.repo.owner
@@ -79,7 +79,15 @@ jobs:
             }
 
             const uniqueLabels = [...new Set(labels)]
-            const scopeList = [...scopeSet].join(', ') || 'unclassified'
+            const scopeList = [...scopeSet]
+              .filter((scope) => scope)
+              .sort()
+              .join(', ') || 'unclassified'
+            const normalizedScope = [...new Set(
+              scopeList
+                .split(', ')
+                .filter((scope) => scope.length > 0),
+            )].join(',')
 
             try {
               await github.rest.issues.addLabels({
@@ -121,6 +129,7 @@ jobs:
             - [ ] Any security implications are called out in the PR description.
             - [ ] Scope of change matches dependency bump intent (runtime/dev/types).
             - [ ] Release notes/changelog is updated when user-visible behavior changes.
-            - [ ] Suggested scope: ${scopeList}
+            - [ ] Scope: **[scope: ${normalizedScope}]**
+            - [ ] Suggested touched files: ${scopeList}
             `
             })
