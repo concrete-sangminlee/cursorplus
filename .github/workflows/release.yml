@@ -28,6 +28,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
+          cache-dependency-path: package-lock.json
       - name: Verify release version and tag format
         run: |
           set -euo pipefail
@@ -127,6 +128,7 @@ NODE
           const packageName = process.argv[2]
           const version = process.argv[3]
           const safeName = process.argv[4]
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
           const packJson = fs.readFileSync('/tmp/npm-pack.json', 'utf8')
           const parsed = JSON.parse(packJson)
           const entry = Array.isArray(parsed) ? parsed[0] : parsed
@@ -137,16 +139,30 @@ NODE
           }
 
           const expectedFiles = [
-            'dist-cli/index.mjs',
             'LICENSE',
             'README.md',
             'CHANGELOG.md',
             'SECURITY.md',
           ]
+          if (packageJson.main) expectedFiles.push(packageJson.main)
+          if (typeof packageJson.bin === 'string') {
+            expectedFiles.push(packageJson.bin)
+          } else if (packageJson.bin && typeof packageJson.bin === 'object') {
+            expectedFiles.push(...Object.values(packageJson.bin))
+          }
+          if (!expectedFiles.includes('package.json')) expectedFiles.push('package.json')
+          if (!expectedFiles.includes('package-lock.json')) expectedFiles.push('package-lock.json')
+          expectedFiles.push('dist-cli/index.mjs')
+          if (packageJson.files && Array.isArray(packageJson.files) && packageJson.files.length > 0) {
+            expectedFiles.push(...packageJson.files)
+          }
+          const expectedSet = new Set(
+            expectedFiles.map((file) => file.replace(/^\.\/+/, '')),
+          )
           const entryFiles = new Set(
             (entry.files || []).map((item) => (typeof item === 'string' ? item : item.path)),
           )
-          const missingFiles = expectedFiles.filter((file) => !entryFiles.has(file))
+          const missingFiles = [...expectedSet].filter((file) => !entryFiles.has(file))
 
           if (missingFiles.length > 0) {
             console.error(`npm pack is missing required files: ${missingFiles.join(', ')}`)

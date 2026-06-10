@@ -79,6 +79,7 @@ jobs:
             }
 
             const uniqueLabels = [...new Set(labels)]
+            const normalizedLabels = uniqueLabels.sort()
             const scopeList = [...scopeSet]
               .filter((scope) => scope)
               .sort()
@@ -88,13 +89,17 @@ jobs:
                 .split(', ')
                 .filter((scope) => scope.length > 0),
             )].join(',')
+            const changedSummary = uniqueTouches.slice(0, 20).join(', ') || 'no files'
+            const changedFilesSummary = changedSummary.length > 1200
+              ? `${changedSummary.slice(0, 1170)}...`
+              : changedSummary
 
             try {
               await github.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number,
-                labels: uniqueLabels,
+                labels: normalizedLabels,
               })
             } catch (error) {
               core.info(`Skipping label update: ${error.message}`)
@@ -130,6 +135,6 @@ jobs:
             - [ ] Scope of change matches dependency bump intent (runtime/dev/types).
             - [ ] Release notes/changelog is updated when user-visible behavior changes.
             - [ ] Scope: **[scope: ${normalizedScope}]**
-            - [ ] Suggested touched files: ${scopeList}
+            - [ ] Suggested touched files: ${changedFilesSummary}
             `
             })
