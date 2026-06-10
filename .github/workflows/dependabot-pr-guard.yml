@@ -9,7 +9,7 @@ on:
 permissions:
   issues: write
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   annotate:
@@ -20,19 +20,19 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-          const scopeHint = (filePath) => {
-            const file = (filePath || '').toLowerCase()
-            if (/(^|[\\/])(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)($|[\\/])/.test(file)) {
-              return 'runtime'
+            const scopeHint = (filePath) => {
+              const file = (filePath || '').toLowerCase()
+              if (/(^|[\\/])(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)$/.test(file)) {
+                return 'runtime'
+              }
+              if (/(^|[\\/])(dev|peer)-dependencies($|[\\/])/i.test(file) || /^tests?[\\/]/i.test(file) || /(^|[\\/])test[\\/]/i.test(file)) {
+                return 'dev'
+              }
+              if (/\.d\.ts$/.test(file) || /(^|[\\/])(types|typings|typescript)([\\/]|$)/i.test(file)) {
+                return 'types'
+              }
+              return null
             }
-            if (/(^|[\\/])(dev|peer)-dependencies($|[\\/])/i.test(file) || /^tests?[\\/]/i.test(file) || /(^|[\\/])test[\\/]/i.test(file)) {
-              return 'dev'
-            }
-            if (/\.d\.ts$/.test(file) || /(^|[\\/])(types|typings|typescript)([\\/]|$)/i.test(file)) {
-              return 'types'
-            }
-            return null
-          }
 
             const pullRequest = context.payload.pull_request
             const owner = context.repo.owner
@@ -46,9 +46,11 @@ jobs:
             const scopeSet = new Set()
             const labelSet = new Set(['dependencies', 'dependabot'])
 
-            if (isSecurityUpdate) labelSet.add('security')
+            if (isSecurityUpdate) {
+              labelSet.add('security')
+              scopeSet.add('security')
+            }
             if (isMajorUpdate) labelSet.add('semver-major')
-            if (isSecurityUpdate) scopeSet.add('security')
 
             const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
               owner,
@@ -56,16 +58,19 @@ jobs:
               pull_number: issue_number,
               per_page: 100,
             })
-            const touchedFiles = changedFiles
-              .map((item) => (item.filename || '').toLowerCase())
-              .filter(Boolean)
-            const uniqueTouches = [...new Set(touchedFiles)]
+            const uniqueTouches = [
+              ...new Set(
+                changedFiles
+                  .map((item) => (item.filename || '').toLowerCase())
+                  .filter(Boolean),
+              ),
+            ].sort()
 
             for (const changed of uniqueTouches) {
               const hint = scopeHint(changed)
               if (hint) {
                 scopeSet.add(hint)
-                labelSet.add(hint === 'security' ? 'security' : hint)
+                labelSet.add(hint)
               }
             }
 
@@ -73,34 +78,27 @@ jobs:
 
             if (/\bpackage(-lock)?\.json\b/.test(touched) || /deps?\b/.test(touched)) {
               labelSet.add('runtime')
+              scopeSet.add('runtime')
             }
             if (/(^|\b)dev\b|dev-dependencies|peer-dependencies|test/.test(touched)) {
               labelSet.add('dev')
+              scopeSet.add('dev')
             }
             if (/\btypes\b|d\.ts|typescript/.test(touched)) {
               labelSet.add('types')
-            }
-            if (scopeSet.has('security')) {
-              labelSet.add('security')
+              scopeSet.add('types')
             }
 
             const normalizedLabels = [...labelSet].sort()
-            const availableLabels = new Set(
-              (await github.paginate(github.rest.issues.listLabelsForRepo, {
-                owner,
-                repo,
-                per_page: 100,
-              }))
-                .map((repoLabel) => repoLabel.name),
-            )
-            const actionableLabels = normalizedLabels.filter((candidate) => availableLabels.has(candidate))
-
-            const scopeList = [...scopeSet]
-              .filter(Boolean)
-              .sort()
+            const scopeList = [...scopeSet].filter(Boolean).sort()
             const normalizedScope = scopeList.length > 0
               ? scopeList.join(', ')
               : 'unclassified'
+            const impactLevel = isSecurityUpdate || isMajorUpdate || scopeSet.has('runtime')
+              ? 'high'
+              : scopeSet.has('dev')
+                ? 'medium'
+                : 'low'
             const changedSummary = uniqueTouches.slice(0, 20).join(', ') || 'no files'
             const touchedCount = uniqueTouches.length
             const changedFilesSummary = `${changedSummary}${touchedCount > 20 ? ` (and ${touchedCount - 20} more)` : ''}`
@@ -108,20 +106,55 @@ jobs:
               ? `${changedFilesSummary.slice(0, 1180)}...`
               : changedFilesSummary
 
+            let actionableLabels = []
+            try {
+              const availableLabels = new Map(
+                (await github.paginate(github.rest.issues.listLabelsForRepo, {
+                  owner,
+                  repo,
+                  per_page: 100,
+                }))
+                  .map((repoLabel) => [repoLabel.name.toLowerCase(), repoLabel.name]),
+              )
+              actionableLabels = normalizedLabels
+                .map((candidate) => availableLabels.get(candidate.toLowerCase()))
+                .filter(Boolean)
+            } catch (error) {
+              core.info(`Unable to list repository labels: ${error.message}`)
+            }
+
             if (actionableLabels.length === 0) {
               core.info('No matching repository labels for Dependabot automation; skipping auto label updates.')
             } else {
               try {
-              await github.rest.issues.addLabels({
-                owner,
-                repo,
-                issue_number,
-                labels: actionableLabels,
-              })
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number,
+                  labels: actionableLabels,
+                })
               } catch (error) {
                 core.info(`Skipping label update: ${error.message}`)
               }
             }
+
+            const commentBody = [
+              marker,
+              '## Dependabot dependency update',
+              '',
+              'This PR was opened by Dependabot. Please confirm:',
+              '',
+              '- [ ] Dependency impact and license changes are reviewed.',
+              '- [ ] Dependency files touched align with `runtime`, `dev`, or `types` scope.',
+              `- [ ] Security update scope is confirmed: **${scopeSet.has('security') ? 'Yes' : 'No'}**.`,
+              '- [ ] Any security implications are called out in the PR description.',
+              '- [ ] Scope of change matches dependency bump intent (runtime/dev/types).',
+              '- [ ] Release notes/changelog is updated when user-visible behavior changes.',
+              `- [ ] Scope: **[scope: ${normalizedScope}]**`,
+              `- [ ] Impact hint: **${impactLevel}**`,
+              `- [ ] Suggested labels: ${normalizedLabels.join(', ')}`,
+              `- [ ] Suggested touched files: ${clippedSummary}`,
+            ].join('\n')
 
             const existing = await github.paginate(
               github.rest.issues.listComments,
@@ -132,27 +165,20 @@ jobs:
                 per_page: 100,
               }
             )
+            const previousComment = existing.find((comment) => comment.body?.includes(marker))
 
-            if (existing.some((comment) => comment.body?.includes(marker))) {
-              return
+            if (previousComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: previousComment.id,
+                body: commentBody,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: commentBody,
+              })
             }
-
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number,
-              body: `${marker}
-            ## Dependabot dependency update
-
-            This PR was opened by Dependabot. Please confirm:
-
-            - [ ] Dependency impact and license changes are reviewed.
-            - [ ] Dependency files touched align with `runtime`, `dev`, or `types` scope.
-            - [ ] Security update scope is confirmed: **${scopeSet.has('security') ? 'Yes' : 'No'}**.
-            - [ ] Any security implications are called out in the PR description.
-            - [ ] Scope of change matches dependency bump intent (runtime/dev/types).
-            - [ ] Release notes/changelog is updated when user-visible behavior changes.
-            - [ ] Scope: **[scope: ${normalizedScope}]**
-            - [ ] Suggested touched files: ${clippedSummary}
-            `
-            })

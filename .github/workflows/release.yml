@@ -76,7 +76,7 @@ jobs:
             console.error(`CHANGELOG.md does not contain a release heading for ${tag}`)
             process.exit(1)
           }
-NODE
+          NODE
           then
             exit 1
           fi
@@ -150,14 +150,20 @@ NODE
             const normalized = normalizePath(pattern)
             if (!normalized) return false
             if (packFiles.has(normalized)) return true
-            if (normalized.endsWith('/')) {
-              return [...packFiles].some((file) => file.startsWith(normalized))
+            const directoryPrefix = normalized.endsWith('/') ? normalized : `${normalized}/`
+            if ([...packFiles].some((file) => file.startsWith(directoryPrefix))) {
+              return true
             }
             if (/[*!?]/.test(normalized)) {
               const globExp = toRegexFromGlob(normalized)
               return [...packFiles].some((file) => globExp.test(file))
             }
             return false
+          }
+          const binEntries = (bin) => {
+            if (typeof bin === 'string') return [bin]
+            if (bin && typeof bin === 'object') return Object.values(bin)
+            return []
           }
 
           const expectedFiles = new Set([
@@ -166,15 +172,10 @@ NODE
             'CHANGELOG.md',
             'SECURITY.md',
             'package.json',
-            'package-lock.json',
             'dist-cli/index.mjs',
           ])
           if (packageJson.main) expectedFiles.add(packageJson.main)
-          if (typeof packageJson.bin === 'string') {
-            expectedFiles.add(packageJson.bin)
-          } else if (packageJson.bin && typeof packageJson.bin === 'object') {
-            Object.values(packageJson.bin).forEach((binEntry) => expectedFiles.add(binEntry))
-          }
+          binEntries(packageJson.bin).forEach((binEntry) => expectedFiles.add(binEntry))
           if (packageJson.files && Array.isArray(packageJson.files) && packageJson.files.length > 0) {
             packageJson.files.forEach((entry) => expectedFiles.add(entry))
           }
@@ -191,6 +192,18 @@ NODE
 
           if (missingFiles.length > 0) {
             console.error(`npm pack is missing required files: ${missingFiles.join(', ')}`)
+            process.exit(1)
+          }
+
+          const missingShebangs = binEntries(packageJson.bin)
+            .map(normalizePath)
+            .filter((binEntry) => {
+              if (!binEntry || !fs.existsSync(binEntry)) return true
+              return !fs.readFileSync(binEntry, 'utf8').startsWith('#!')
+            })
+
+          if (missingShebangs.length > 0) {
+            console.error(`npm binary files must exist and start with a shebang: ${missingShebangs.join(', ')}`)
             process.exit(1)
           }
 
