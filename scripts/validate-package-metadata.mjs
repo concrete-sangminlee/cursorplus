@@ -73,6 +73,15 @@ export const validatePackageMetadata = ({
 
 export const runCli = () => {
   const options = parseArgs(process.argv.slice(2))
+  if (options.help === 'true') {
+    process.stdout.write([
+      'metadata:validate --package-json=... --package-lock=... --expected-version=...',
+      'Validates package.json and package-lock.json name/version consistency.',
+    ].join('\n'))
+    process.stdout.write('\n')
+    return
+  }
+
   const expectedVersion = options['expected-version']
   const packageJsonPath = options['package-json'] || 'package.json'
   const packageLockPath = options['package-lock'] || 'package-lock.json'
