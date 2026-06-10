@@ -35,6 +35,7 @@ describe('release metadata validation', () => {
     expect(isValidSemVer('1.2.3')).toBe(true)
     expect(isValidSemVer('1.2.3-beta.1+build.1')).toBe(true)
     expect(isValidSemVer('v1.2.3')).toBe(false)
+    expect(isValidSemVer('refs/tags/v1.2.3')).toBe(false)
   })
 
   it('detects release heading in changelog content', () => {
@@ -64,6 +65,54 @@ describe('release metadata validation', () => {
       normalizedTag: '1.2.3',
       version: '1.2.3',
     })
+  })
+
+  it('normalizes refs/tags style input for tagName', () => {
+    const pkg = writeJson('@scope/demo', '5.0.0', 'package.json')
+    const lock = writeJson('@scope/demo', '5.0.0', 'package-lock.json')
+    const changelogPath = writeChangelog(pkg.dir, '# Changelog\n\n## 5.0.0')
+
+    const result = validateReleaseContext({
+      tagName: 'refs/tags/v5.0.0',
+      packageJsonPath: pkg.filePath,
+      packageLockPath: lock.filePath,
+      changelogPath,
+      npmToken: '',
+      checkExistingNpmVersion: false,
+      checkDefaultBranchHistory: false,
+      readFileText: (filePath) => fs.readFileSync(filePath, 'utf8'),
+      runGitCommand: () => '',
+    })
+
+    expect(result.normalizedTag).toBe('5.0.0')
+  })
+
+  it('normalizes refs/heads style default branch names', () => {
+    const pkg = writeJson('@scope/demo', '6.0.0', 'package.json')
+    const lock = writeJson('@scope/demo', '6.0.0', 'package-lock.json')
+    const changelogPath = writeChangelog(pkg.dir, '# Changelog\n\n## 6.0.0')
+
+    expect(() => validateReleaseContext({
+      tagName: 'v6.0.0',
+      packageJsonPath: pkg.filePath,
+      packageLockPath: lock.filePath,
+      changelogPath,
+      npmToken: '',
+      checkExistingNpmVersion: false,
+      defaultBranch: 'refs/heads/main',
+      commitSha: 'def456',
+      checkDefaultBranchHistory: true,
+      readFileText: (filePath) => fs.readFileSync(filePath, 'utf8'),
+      runGitCommand: (args) => {
+        if (args.join(' ') === 'branch -r --list origin/main') {
+          return '  origin/main\n'
+        }
+        if (args.join(' ') === 'merge-base --is-ancestor origin/main def456') {
+          return ''
+        }
+        return ''
+      },
+    })).not.toThrow()
   })
 
   it('fails when published version exists in registry', () => {

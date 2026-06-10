@@ -74,7 +74,10 @@ export const validateReleaseContext = ({
     stdio: ['ignore', 'pipe', 'pipe'],
   }),
 } = {}) => {
-  const normalizedTag = String(tagName || '').replace(/^v/, '')
+  const normalizedTag = String(tagName || '')
+    .trim()
+    .replace(/^refs\/tags\//, '')
+    .replace(/^v/, '')
   if (!normalizedTag) {
     throw new Error('Release tag is missing.')
   }
@@ -103,9 +106,10 @@ export const validateReleaseContext = ({
     throw new Error(`Version ${normalizedTag} already exists in npm registry for ${result.packageName}.`)
   }
 
+  const normalizedBranch = String(defaultBranch || 'main').replace(/^refs\/heads\//, '')
   if (checkDefaultBranchHistory) {
     validateReleaseTagOnDefaultBranch({
-      defaultBranch,
+      defaultBranch: normalizedBranch,
       commitSha,
       runGitCommand,
     })
