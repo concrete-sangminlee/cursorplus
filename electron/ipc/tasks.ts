@@ -8,6 +8,31 @@ import { resolveActiveWorkspacePath } from './workspace-path-guard'
 const runningTasks = new Map<string, ChildProcess>()
 let taskCounter = 0
 
+function killTaskProcess(child: ChildProcess): void {
+  // On Windows, use taskkill to kill the process tree. child.pid comes from our
+  // own runningTasks map, not from the renderer, so it's safe to interpolate.
+  if (process.platform === 'win32' && child.pid) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+  } else {
+    child.kill('SIGTERM')
+  }
+}
+
+/**
+ * Terminate every tracked task process. Called on app shutdown so a renderer
+ * crash or quit-while-running does not leave orphaned child processes behind.
+ */
+export function killAllTasks(): void {
+  for (const [taskId, child] of runningTasks) {
+    try {
+      killTaskProcess(child)
+    } catch {
+      // Best-effort cleanup during shutdown; nothing to recover here.
+    }
+    runningTasks.delete(taskId)
+  }
+}
+
 function isLikelyCommand(value: unknown): value is string {
   if (typeof value !== 'string') return false
   const trimmed = value.trim()
@@ -111,14 +136,7 @@ export function registerTaskHandlers(ipcMain: IpcMain, getWindow: () => BrowserW
     if (!child) return { success: false, error: 'Task not found' }
 
     try {
-      // On Windows, use taskkill to kill the process tree. child.pid comes
-      // from our own runningTasks map, not from the renderer, so it's safe
-      // to interpolate.
-      if (process.platform === 'win32' && child.pid) {
-        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
-      } else {
-        child.kill('SIGTERM')
-      }
+      killTaskProcess(child)
       runningTasks.delete(taskId)
       return { success: true }
     } catch (err) {

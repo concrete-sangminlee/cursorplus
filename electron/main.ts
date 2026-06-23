@@ -11,7 +11,9 @@ import { registerWorkspaceHandlers } from './ipc/workspace'
 import { registerFileOperationHandlers } from './ipc/file-operations'
 import { registerClipboardHandlers } from './ipc/clipboard'
 import { registerShellHandlers } from './ipc/shell'
-import { registerTaskHandlers } from './ipc/tasks'
+import { registerTaskHandlers, killAllTasks } from './ipc/tasks'
+import { killAllTerminals } from './terminal/manager'
+import { stopWatching } from './filesystem/watcher'
 
 // --- Constants ---
 const isMac = process.platform === 'darwin'
@@ -837,6 +839,14 @@ if (!gotSingleInstanceLock) {
   app.on('window-all-closed', () => {
     globalShortcut.unregisterAll()
     app.quit()
+  })
+
+  // Release long-lived OS resources before exit so we never leave orphaned
+  // shells, child processes, or file watchers behind.
+  app.on('before-quit', () => {
+    killAllTasks()
+    killAllTerminals()
+    stopWatching()
   })
 
   app.on('activate', () => {
