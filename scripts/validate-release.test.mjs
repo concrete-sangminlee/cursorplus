@@ -56,8 +56,19 @@ describe('release metadata validation', () => {
       changelogPath,
       npmToken: 'fake-token',
       checkExistingNpmVersion: false,
+      defaultBranch: 'main',
+      commitSha: 'abc123',
       readFileText: (filePath) => fs.readFileSync(filePath, 'utf8'),
       isExistingNpmVersion: () => false,
+      runGitCommand: (args) => {
+        if (args.join(' ') === 'branch -r --list origin/main') {
+          return '  origin/main\n'
+        }
+        if (args.join(' ') === 'merge-base --is-ancestor origin/main abc123') {
+          return ''
+        }
+        return ''
+      },
     })
 
     expect(result).toMatchObject({
