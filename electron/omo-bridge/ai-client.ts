@@ -1,5 +1,5 @@
 import type { OmoEvent } from './protocol'
-import { debugLog } from '../logger'
+import { debugLog, errorLog } from '../logger'
 
 interface AIConfig {
   provider: string
@@ -9,7 +9,7 @@ interface AIConfig {
 }
 
 function emit(handler: ((event: OmoEvent) => void) | null, event: OmoEvent) {
-  try { handler?.(event) } catch (err) { console.error('[AI Client] emit error:', err) }
+  try { handler?.(event) } catch (err) { errorLog('ai-client', 'emit error', err) }
 }
 
 function log(handler: ((event: OmoEvent) => void) | null, agentId: string, message: string, logType: string = 'info') {

@@ -1,6 +1,7 @@
 import os from 'os'
 import path from 'path'
 import { getProjectPath } from '../workspace/project-path'
+import { errorLog } from '../logger'
 
 interface PtyProcess {
   onData: (callback: (data: string) => void) => void
@@ -56,7 +57,7 @@ export async function createTerminal(
     terminals.set(id, term)
     return { success: true }
   } catch (err: any) {
-    console.error('Failed to create terminal:', err.message)
+    errorLog('terminal', 'Failed to create terminal', err.message)
     return { success: false, error: err.message }
   }
 }

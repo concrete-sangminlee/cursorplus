@@ -16,7 +16,7 @@ const defaultAgents: Agent[] = [
 let agents: Agent[] = []
 
 function emit(event: OmoEvent) {
-  try { messageHandler?.(event) } catch (err) { console.error('[OMO] emit error:', err) }
+  try { messageHandler?.(event) } catch (err) { errorLog('omo', 'emit error', err) }
 }
 
 function updateAgent(id: string, update: Partial<Agent>) {

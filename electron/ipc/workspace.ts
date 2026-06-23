@@ -4,6 +4,7 @@ import path from 'path'
 import { IPC } from '../../shared/ipc-channels'
 import type { WorkspaceSettings } from '../../shared/types'
 import { resolveActiveWorkspacePath } from './workspace-path-guard'
+import { errorLog, warnLog } from '../logger'
 
 const SETTINGS_DIR = '.orion'
 const SETTINGS_FILE = 'settings.json'
@@ -20,7 +21,7 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain) {
       try {
         safeRootPath = await resolveActiveWorkspacePath(rootPath, 'workspace settings root')
       } catch (err: any) {
-        console.warn('Refused workspace:read-settings:', err.message)
+        warnLog('workspace', 'Refused workspace:read-settings', err.message)
         return { settings: null, error: err.message }
       }
       try {
@@ -32,7 +33,7 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain) {
         if (err.code === 'ENOENT') {
           return { settings: null }
         }
-        console.error('Failed to read workspace settings:', err.message)
+        errorLog('workspace', 'Failed to read workspace settings', err.message)
         return { settings: null, error: err.message }
       }
     },
@@ -45,7 +46,7 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain) {
       try {
         safeRootPath = await resolveActiveWorkspacePath(rootPath, 'workspace settings root')
       } catch (err: any) {
-        console.warn('Refused workspace:write-settings:', err.message)
+        warnLog('workspace', 'Refused workspace:write-settings', err.message)
         return { success: false, error: err.message }
       }
       try {
@@ -55,7 +56,7 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain) {
         await fs.writeFile(filePath, JSON.stringify(settings, null, 2), 'utf-8')
         return { success: true }
       } catch (err: any) {
-        console.error('Failed to write workspace settings:', err.message)
+        errorLog('workspace', 'Failed to write workspace settings', err.message)
         return { success: false, error: err.message }
       }
     },

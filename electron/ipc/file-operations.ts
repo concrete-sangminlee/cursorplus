@@ -4,6 +4,7 @@ import path from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { IPC } from '../../shared/ipc-channels'
 import { resolveActiveWorkspacePath, WorkspacePathAccessError } from './workspace-path-guard'
+import { warnLog } from '../logger'
 
 // Track per-path watchers for file:watch
 const fileWatchers = new Map<string, FSWatcher>()
@@ -76,7 +77,7 @@ export function registerFileOperationHandlers(ipcMain: IpcMain, getWindow: () =>
       return true
     } catch (err: any) {
       if (err instanceof WorkspacePathAccessError) {
-        console.warn(`Refused file existence check: ${err.message}`)
+        warnLog('file-ops', 'Refused file existence check', err.message)
       }
       return false
     }

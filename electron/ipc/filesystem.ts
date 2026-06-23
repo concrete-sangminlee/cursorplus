@@ -6,6 +6,7 @@ import { IPC } from '../../shared/ipc-channels'
 import { readFileContent, writeFileContent, deleteItem, renameItem, buildFileTree, detectLanguage } from '../filesystem/operations'
 import { startWatching, stopWatching, markRecentWrite } from '../filesystem/watcher'
 import { setProjectPath } from '../workspace/project-path'
+import { errorLog, warnLog } from '../logger'
 import { resolveActiveWorkspacePath, resolveWorkspaceRootPath } from './workspace-path-guard'
 import { isSafeRevealPath } from '../../shared/path-safety'
 
@@ -17,7 +18,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
       const language = detectLanguage(safeFilePath)
       return { content, language }
     } catch (err: any) {
-      console.error('Failed to read file:', err.message)
+      errorLog('fs', 'Failed to read file', err.message)
       return { content: '', language: 'plaintext', error: err.message }
     }
   })
@@ -29,7 +30,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
       await writeFileContent(safeFilePath, content)
       return { success: true }
     } catch (err: any) {
-      console.error('Failed to write file:', err.message)
+      errorLog('fs', 'Failed to write file', err.message)
       return { success: false, error: err.message }
     }
   })
@@ -64,7 +65,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
       setProjectPath(safeRootPath)
       return tree
     } catch (err: any) {
-      console.error('Failed to open workspace:', err.message)
+      errorLog('fs', 'Failed to open workspace', err.message)
       return []
     }
   })
@@ -75,7 +76,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
       const safeDirPath = await resolveActiveWorkspacePath(dirPath, 'directory path')
       return await buildFileTree(safeDirPath)
     } catch (err: any) {
-      console.error('Failed to read dir:', err.message)
+      errorLog('fs', 'Failed to read dir', err.message)
       return []
     }
   })
@@ -112,7 +113,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
     try {
       safeRootPath = await resolveActiveWorkspacePath(rootPath, 'search root')
     } catch (err: any) {
-      console.warn('Refused fs:search root:', err.message)
+      warnLog('fs', 'Refused fs:search root', err.message)
       return results
     }
 
@@ -272,7 +273,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, getWindow: () => Br
       const safeDirPath = await resolveActiveWorkspacePath(dirPath, 'watch path')
       startWatching(safeDirPath, getWindow)
     } catch (err: any) {
-      console.warn('Refused fs:watch-start:', err.message)
+      warnLog('fs', 'Refused fs:watch-start', err.message)
     }
   })
 
