@@ -1580,36 +1580,51 @@ program.on('command:*', async (operands: string[]) => {
   const unknownCmd = operands[0];
   if (!unknownCmd) return;
 
+  // Resolve as an alias. resolveAlias() returns null when nothing matches (a
+  // normal "fall through" case); a thrown error means something real broke
+  // (e.g. a corrupt alias store) and must be surfaced rather than masked as
+  // an unknown command.
+  let expansion: string | null = null;
   try {
     const { resolveAlias } = await import('./commands/alias.js');
-    const expansion = resolveAlias(unknownCmd);
+    expansion = resolveAlias(unknownCmd);
+  } catch (err: any) {
+    handleCommandError(err, 'alias', 'Your alias configuration may be unreadable or corrupt.');
+    return;
+  }
 
-    if (expansion) {
-      // Rebuild argv: replace the alias with the expanded command tokens
-      const expandedTokens = expansion.split(/\s+/);
-      const remainingArgs = process.argv.slice(3); // args after the alias name
-      const newArgv = [process.argv[0], process.argv[1], ...expandedTokens, ...remainingArgs];
+  if (expansion) {
+    // Rebuild argv: replace the alias with the expanded command tokens
+    const expandedTokens = expansion.split(/\s+/);
+    const remainingArgs = process.argv.slice(3); // args after the alias name
+    const newArgv = [process.argv[0], process.argv[1], ...expandedTokens, ...remainingArgs];
 
-      console.log(chalk.dim(`  Alias: ${unknownCmd} => ${expansion}`));
-      console.log();
+    console.log(chalk.dim(`  Alias: ${unknownCmd} => ${expansion}`));
+    console.log();
 
+    // Run the expanded command and let failures surface. command:* listeners
+    // are not awaited by parseAsync, so an unhandled rejection here would be
+    // mistaken for an unknown command; handle it inline instead.
+    try {
       await program.parseAsync(newArgv);
-      return;
+    } catch (err: any) {
+      handleCommandError(err, expandedTokens[0] ?? unknownCmd, 'The aliased command failed to run.');
     }
-  } catch {
-    // Alias module not available, fall through
+    return;
   }
 
   // Try plugin commands (format: plugin-name:command)
   if (unknownCmd.includes(':')) {
+    let handled = false;
     try {
       const { executePluginCommand } = await import('./commands/plugin.js');
       const remainingArgs = process.argv.slice(3);
-      const handled = await executePluginCommand(unknownCmd, remainingArgs);
-      if (handled) return;
-    } catch {
-      // Plugin module not available, fall through
+      handled = await executePluginCommand(unknownCmd, remainingArgs);
+    } catch (err: any) {
+      handleCommandError(err, unknownCmd, 'The plugin command failed to run.');
+      return;
     }
+    if (handled) return;
   }
 
   // No alias or plugin found - show error with suggestion
