@@ -699,22 +699,25 @@ export const useFileStore = create<FileStore>((set, get) => ({
     const tree = cloneTree(state.fileTree)
     removeNode(tree, filePath)
 
-    // Clean up expanded dirs
-    const nextExpanded = new Set(state.expandedDirs)
-    nextExpanded.delete(filePath)
-    // Also remove any children from expanded dirs
-    for (const dir of nextExpanded) {
-      if (dir.startsWith(filePath)) {
-        nextExpanded.delete(dir)
-      }
+    // Trashing a directory must also drop every descendant. Match the path
+    // itself or a path under it ("/a/b" but not the sibling "/a/bc"), so all
+    // four caches stay consistent with the tree.
+    const isPathOrDescendant = (p: string) => p === filePath || p.startsWith(filePath + '/')
+
+    // Clean up expanded dirs (build a fresh Set rather than mutating while iterating)
+    const nextExpanded = new Set<string>()
+    for (const dir of state.expandedDirs) {
+      if (!isPathOrDescendant(dir)) nextExpanded.add(dir)
     }
 
-    // Remove from metadata cache
+    // Remove from metadata cache (path + descendants)
     const metaCache = new Map(state.fileMetadataCache)
-    metaCache.delete(filePath)
+    for (const key of [...metaCache.keys()]) {
+      if (isPathOrDescendant(key)) metaCache.delete(key)
+    }
 
-    // Remove from recent files
-    const recentFiles = state.recentFiles.filter((f) => f.path !== filePath)
+    // Remove from recent files (path + descendants)
+    const recentFiles = state.recentFiles.filter((f) => !isPathOrDescendant(f.path))
 
     set({
       fileTree: tree,

@@ -357,15 +357,17 @@ describe('createFileFromTemplate', () => {
 describe('moveToTrash', () => {
   beforeEach(() => useFileStore.setState({ fileTree: sampleTree() }))
 
-  it('removes the node and cleans expandedDirs, metadata, and recentFiles', async () => {
+  it('removes the node and prunes descendants from expandedDirs, metadata, and recentFiles', async () => {
     useFileStore.setState({
-      expandedDirs: new Set(['/proj/src/components', '/proj/src/components/deep']),
+      // A sibling whose path shares the trashed prefix must survive (not "/proj/src/components").
+      expandedDirs: new Set(['/proj/src/components', '/proj/src/components/deep', '/proj/src/components-old']),
       recentFiles: [
         { path: '/proj/src/components/Button.tsx', name: 'Button.tsx', lastAccessed: 1, accessCount: 1, score: 1 },
         { path: '/proj/readme.md', name: 'readme.md', lastAccessed: 1, accessCount: 1, score: 1 },
       ],
       fileMetadataCache: new Map([
         ['/proj/src/components/Button.tsx', { size: 1, isLargeFile: false, isBinary: false, encoding: 'utf-8', hasBOM: false, contentDeferred: false }],
+        ['/proj/src/components-old/Old.tsx', { size: 2, isLargeFile: false, isBinary: false, encoding: 'utf-8', hasBOM: false, contentDeferred: false }],
       ]) as never,
     })
 
@@ -374,8 +376,14 @@ describe('moveToTrash', () => {
 
     expect(st().fileTree[0].children!.some((c) => c.name === 'components')).toBe(false)
     expect(st().expandedDirs.has('/proj/src/components')).toBe(false)
-    expect(st().fileMetadataCache.has('/proj/src/components/Button.tsx')).toBe(true) // NOTE: not pruned by child path (see suspected bugs)
+    expect(st().expandedDirs.has('/proj/src/components/deep')).toBe(false)
+    // Descendant caches are pruned along with the directory.
+    expect(st().fileMetadataCache.has('/proj/src/components/Button.tsx')).toBe(false)
+    expect(st().recentFiles.some((f) => f.path === '/proj/src/components/Button.tsx')).toBe(false)
     expect(st().recentFiles.some((f) => f.path === '/proj/readme.md')).toBe(true)
+    // The prefix-sharing sibling is untouched.
+    expect(st().expandedDirs.has('/proj/src/components-old')).toBe(true)
+    expect(st().fileMetadataCache.has('/proj/src/components-old/Old.tsx')).toBe(true)
   })
 
   it('propagates IPC rejection', async () => {
