@@ -242,22 +242,27 @@ export const useProblemsStore = create<ProblemsStore>((set) => ({
       const lineNum = idx + 1
       const trimmed = line.trim()
 
-      // TODO/FIXME/HACK/BUG/XXX comments
-      const todoMatch = trimmed.match(/\/\/\s*(TODO|FIXME|HACK|BUG|XXX)[\s:]+(.+)/i)
+      // TODO/FIXME/HACK/BUG/XXX comments — line (`//`) or block (`/* */`)
+      const todoMatch = trimmed.match(/(?:\/\/|\/\*)\s*(TODO|FIXME|HACK|BUG|XXX)[\s:]+(.+)/i)
       if (todoMatch) {
         const tag = todoMatch[1].toUpperCase()
-        const severity: ProblemSeverity = tag === 'FIXME' || tag === 'BUG' ? 'warning' : 'info'
-        const col = line.indexOf(todoMatch[0]) + 1
-        problems.push({
-          id: `p-${++idCounter}`,
-          file: filePath,
-          line: lineNum,
-          column: col > 0 ? col : 1,
-          endColumn: col > 0 ? col + todoMatch[0].length : line.length + 1,
-          message: `${tag}: ${todoMatch[2].trim()}`,
-          severity,
-          source: 'todo-scanner',
-        })
+        // Strip a trailing block-comment terminator so `/* TODO: x */` reports
+        // "x", not "x */". A bare `/* HACK */` leaves no message and is skipped.
+        const message = todoMatch[2].replace(/\s*\*\/\s*$/, '').trim()
+        if (message) {
+          const severity: ProblemSeverity = tag === 'FIXME' || tag === 'BUG' ? 'warning' : 'info'
+          const col = line.indexOf(todoMatch[0]) + 1
+          problems.push({
+            id: `p-${++idCounter}`,
+            file: filePath,
+            line: lineNum,
+            column: col > 0 ? col : 1,
+            endColumn: col > 0 ? col + todoMatch[0].length : line.length + 1,
+            message: `${tag}: ${message}`,
+            severity,
+            source: 'todo-scanner',
+          })
+        }
       }
 
       // console.log detection (common code smell)

@@ -99,9 +99,14 @@ describe('useProblemsStore.scanFile — TODO/FIXME/HACK comment scanning', () =>
     expect(problems[0].message).toBe('TODO: clean up')
   })
 
-  it('does NOT detect block-comment style /* HACK */ (current behavior, regex is // only)', () => {
-    // Documents a known limitation: the scanner only recognizes line comments.
-    const problems = bySource(scan('/* HACK: this should arguably be flagged */'), 'todo-scanner')
+  it('detects block-comment style /* HACK: ... */ tags and strips the terminator', () => {
+    const problems = bySource(scan('/* HACK: this should be flagged */'), 'todo-scanner')
+    expect(problems).toHaveLength(1)
+    expect(problems[0].message).toBe('HACK: this should be flagged')
+  })
+
+  it('skips a bare /* HACK */ tag with no message (matches // behavior)', () => {
+    const problems = bySource(scan('/* HACK */'), 'todo-scanner')
     expect(problems).toHaveLength(0)
   })
 })
