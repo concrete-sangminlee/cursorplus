@@ -7,6 +7,14 @@ import path from 'path'
 
 const isTest = process.env.VITEST === 'true'
 
+// Vitest resolves React's conditional exports from NODE_ENV. A globally set
+// NODE_ENV=production (common on dev/CI machines) pulls in the production React
+// build, which omits the dev-only `React.act` and breaks renderHook/act in tests.
+// Pin it to 'test' so the suite is deterministic regardless of the ambient env.
+if (isTest && process.env.NODE_ENV === 'production') {
+  process.env.NODE_ENV = 'test'
+}
+
 export default defineConfig({
   test: {
     // No extra test config needed now that electron plugins are excluded during tests
