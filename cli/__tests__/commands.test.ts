@@ -5,40 +5,43 @@ import * as path from 'node:path';
 // ─── Test Data ──────────────────────────────────────────────────────────────
 
 /**
- * All command names registered in cli/index.ts.
- * Extracted from the source by reading .command('name') calls.
- */
-const ALL_COMMAND_NAMES = [
-  'chat', 'ask', 'explain', 'review', 'fix', 'edit', 'commit',
-  'search', 'diff', 'pr', 'run', 'test', 'agent', 'refactor', 'compare',
-  'plan', 'generate', 'docs', 'snippet', 'scaffold', 'boilerplate',
-  'shell', 'todo', 'fetch', 'changelog', 'log', 'summarize', 'migrate',
-  'deps', 'format', 'translate', 'env',
-  'debug', 'benchmark', 'security', 'typecheck',
-  'undo', 'status', 'doctor', 'clean',
-  'session', 'watch', 'config', 'init', 'gui', 'completions',
-  'hooks', 'alias',
-  'learn', 'pair', 'context',
-  'plugin', 'api', 'regex', 'cron',
-  'tutorial', 'examples', 'update', 'info',
-];
-
-/**
  * Command categories as defined in the help text of cli/index.ts.
+ * This is the single source of truth for the curated command list; the
+ * registration parity test below cross-checks it against index.ts so that
+ * adding or removing a command without updating this map fails the suite.
  */
 const COMMAND_CATEGORIES: Record<string, string[]> = {
   Core: ['chat', 'ask', 'explain', 'review', 'fix', 'edit', 'commit'],
   Code: ['search', 'diff', 'pr', 'run', 'test', 'agent', 'refactor', 'compare'],
   Generate: ['plan', 'generate', 'docs', 'snippet', 'scaffold', 'boilerplate'],
   Tools: ['shell', 'todo', 'fetch', 'changelog', 'log', 'summarize', 'migrate', 'deps', 'format', 'translate', 'env'],
-  Analysis: ['debug', 'benchmark', 'security', 'typecheck'],
+  Analysis: ['debug', 'benchmark', 'security', 'typecheck', 'optimize'],
   Safety: ['undo', 'status', 'doctor', 'clean'],
   Session: ['session', 'watch', 'config', 'init', 'gui', 'completions'],
-  Git: ['hooks', 'alias'],
+  Git: ['hooks', 'alias', 'blame'],
   AI: ['learn', 'pair', 'context'],
   Extend: ['plugin', 'api', 'regex', 'cron'],
+  Data: ['csv', 'http', 'diff-files', 'stats'],
+  Insights: ['map', 'cost'],
+  Meta: ['history', 'config-export', 'profile', 'metrics'],
   Help: ['tutorial', 'examples', 'update', 'info'],
 };
+
+/**
+ * All command names registered in cli/index.ts, derived from the categories
+ * above so the two never drift apart.
+ */
+const ALL_COMMAND_NAMES = Object.values(COMMAND_CATEGORIES).flat();
+
+/**
+ * Extract the top-level command names actually registered in index.ts.
+ * Matches lines that begin (after indentation) with `.command('name'...`,
+ * which excludes inline `colors.command(...)` / `cn(...)` help-text helpers.
+ */
+function extractRegisteredCommands(source: string): string[] {
+  const matches = source.matchAll(/^\s*\.command\((['"])([a-z][\w-]*)/gm);
+  return Array.from(matches, (m) => m[2]);
+}
 
 /**
  * Map of command name -> expected export function name from its command file.
@@ -81,6 +84,18 @@ const COMMAND_EXPORTS: Record<string, { file: string; fn: string }> = {
   benchmark: { file: 'benchmark.ts', fn: 'benchmarkCommand' },
   security: { file: 'security.ts', fn: 'securityCommand' },
   typecheck: { file: 'typecheck.ts', fn: 'typecheckCommand' },
+  optimize: { file: 'optimize.ts', fn: 'optimizeCommand' },
+  blame: { file: 'blame.ts', fn: 'blameCommand' },
+  csv: { file: 'csv.ts', fn: 'csvCommand' },
+  http: { file: 'http.ts', fn: 'httpCommand' },
+  'diff-files': { file: 'diff-files.ts', fn: 'diffFilesCommand' },
+  stats: { file: 'project-stats.ts', fn: 'statsCommand' },
+  map: { file: 'map.ts', fn: 'mapCommand' },
+  cost: { file: 'cost.ts', fn: 'costCommand' },
+  history: { file: 'history.ts', fn: 'historyCommand' },
+  'config-export': { file: 'config-export.ts', fn: 'configExportCommand' },
+  profile: { file: 'profile.ts', fn: 'profileCommand' },
+  metrics: { file: 'metrics.ts', fn: 'metricsCommand' },
 };
 
 // ─── Read index.ts content once ──────────────────────────────────────────────
@@ -118,9 +133,22 @@ describe('command registration in index.ts', () => {
     }
   });
 
-  it('total registered commands is at least 53', () => {
-    // The package description says "53+ commands"
-    expect(ALL_COMMAND_NAMES.length).toBeGreaterThanOrEqual(53);
+  it('curated command list exactly matches the commands registered in index.ts', () => {
+    // Parity guard: catches commands added to / removed from index.ts without
+    // updating COMMAND_CATEGORIES (the prior hardcoded list silently drifted to
+    // 59 while 71 were actually registered).
+    const registered = extractRegisteredCommands(indexSource).sort();
+    const curated = [...ALL_COMMAND_NAMES].sort();
+    expect(registered).toEqual(curated);
+  });
+
+  it('has no duplicate command names in the curated list', () => {
+    expect(new Set(ALL_COMMAND_NAMES).size).toBe(ALL_COMMAND_NAMES.length);
+  });
+
+  it('total registered commands matches the advertised "60+" claim', () => {
+    // package.json + README advertise "60+ commands".
+    expect(ALL_COMMAND_NAMES.length).toBeGreaterThanOrEqual(60);
   });
 });
 
