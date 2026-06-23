@@ -174,8 +174,10 @@ export const useToastStore = create<ToastStore>((set, get) => ({
       // Auto-dismiss logic based on type, priority, and progress
       const isProgressNotification = toast.progress !== undefined
       if (priority !== 'high' && !isProgressNotification) {
+        // Use ?? so an intentional 0 (e.g. AUTO_DISMISS_TIMEOUTS.error = "never
+        // auto-dismiss") is preserved rather than falling through to 5000.
         const duration =
-          toast.duration || AUTO_DISMISS_TIMEOUTS[toast.type] || 5000
+          toast.duration ?? AUTO_DISMISS_TIMEOUTS[toast.type] ?? 5000
         if (duration > 0) {
           setTimeout(() => {
             get().removeToast(id)
@@ -205,7 +207,7 @@ export const useToastStore = create<ToastStore>((set, get) => ({
         const isProgress = next.progress !== undefined
         if (nextPriority !== 'high' && !isProgress) {
           const duration =
-            next.duration || AUTO_DISMISS_TIMEOUTS[next.type] || 5000
+            next.duration ?? AUTO_DISMISS_TIMEOUTS[next.type] ?? 5000
           if (duration > 0) {
             setTimeout(() => {
               get().removeToast(next.id)
