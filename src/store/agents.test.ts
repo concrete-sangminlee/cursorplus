@@ -153,21 +153,19 @@ describe('useAgentStore', () => {
       expect(store().logs[0]).toEqual(entry)
     })
 
-    it('keeps the most recent 201 entries (slice(-200) of prior logs, then append)', () => {
+    it('caps the log at the most recent 200 entries', () => {
       // Seed 250 existing logs directly, then add one more via the action.
       const seeded = Array.from({ length: 250 }, (_, i) => makeLog({ id: `seed-${i}` }))
       useAgentStore.setState({ logs: seeded })
       store().addLog(makeLog({ id: 'newest' }))
 
       const logs = store().logs
-      // SUSPECTED BUG: the cap is applied to the PRIOR logs (slice(-200)) and
-      // then the new entry is appended, so the array settles at 201, not 200.
-      // The trailing 200 of the previous 250 are kept (seed-50 .. seed-249),
-      // and 'newest' is appended -> 201 total.
-      expect(logs).toHaveLength(201)
-      expect(logs[0].id).toBe('seed-50')
-      expect(logs[199].id).toBe('seed-249')
-      expect(logs[200].id).toBe('newest')
+      // Hard cap of 200: the trailing 199 prior logs (seed-51..seed-249) are kept
+      // and 'newest' is appended.
+      expect(logs).toHaveLength(200)
+      expect(logs[0].id).toBe('seed-51')
+      expect(logs[198].id).toBe('seed-249')
+      expect(logs[199].id).toBe('newest')
     })
 
     it('does not trim when fewer than the cap exist', () => {

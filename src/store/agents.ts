@@ -22,7 +22,8 @@ export const useAgentStore = create<AgentStore>((set) => ({
     })),
 
   addLog: (entry) =>
-    set((state) => ({ logs: [...state.logs.slice(-200), entry] })),
+    // Keep the most recent 200 entries (slice -199 leaves room for the new one).
+    set((state) => ({ logs: [...state.logs.slice(-199), entry] })),
 
   clearLogs: () => set({ logs: [] }),
 }))
