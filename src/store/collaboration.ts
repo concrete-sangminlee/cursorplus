@@ -722,6 +722,12 @@ export function applyOT(content: string, operations: OTOperation[]): string {
 }
 
 export function composeOT(ops1: OTOperation[], ops2: OTOperation[]): OTOperation[] {
+  // Work on shallow copies: the loop replaces array slots (e.g. ops1[i] = ...)
+  // to track partial consumption, which would otherwise mutate the caller's
+  // arrays. The op objects themselves are never mutated, so a shallow copy is
+  // enough to keep this a pure function.
+  ops1 = [...ops1]
+  ops2 = [...ops2]
   const result: OTOperation[] = []
   let i = 0, j = 0
 

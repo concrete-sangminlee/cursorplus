@@ -733,14 +733,13 @@ describe('composeOT', () => {
     expect(applyOT(base, composed)).toBe(sequential)
   })
 
-  it('mutates its input arrays in place (pinning current side-effecting behavior)', () => {
-    // Documents a suspected bug: composeOT rewrites ops1/ops2 entries while
-    // composing, so the caller's arrays are not safe to reuse afterward.
+  it('does not mutate its input arrays (pure function)', () => {
     const ops1: OTOperation[] = [{ type: 'insert', text: 'XY' }, { type: 'retain', count: 3 }]
     const ops2: OTOperation[] = [{ type: 'delete', count: 1 }, { type: 'retain', count: 4 }]
     composeOT(ops1, ops2)
-    expect(ops1[0]).toEqual({ type: 'insert', text: 'Y' }) // 'XY' was sliced to 'Y'
-    expect(ops2[1]).toEqual({ type: 'retain', count: 3 }) // 4 was reduced to 3
+    // Inputs are left untouched so the caller can safely reuse them.
+    expect(ops1).toEqual([{ type: 'insert', text: 'XY' }, { type: 'retain', count: 3 }])
+    expect(ops2).toEqual([{ type: 'delete', count: 1 }, { type: 'retain', count: 4 }])
   })
 
   it('merges adjacent retains into the minimum overlap', () => {
