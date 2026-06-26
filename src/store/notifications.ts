@@ -150,9 +150,16 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   error: (title, message) => get().notify({ level: 'error', title, message }),
 
   dismiss: (id) => {
-    set(s => ({
-      notifications: s.notifications.filter(n => n.id !== id),
-    }))
+    set(s => {
+      const dismissed = s.notifications.find(n => n.id === id)
+      return {
+        notifications: s.notifications.filter(n => n.id !== id),
+        // Dismissing an unread notification removes it from the unread total.
+        unreadCount: dismissed && !dismissed.read
+          ? Math.max(0, s.unreadCount - 1)
+          : s.unreadCount,
+      }
+    })
   },
 
   dismissAll: () => {
@@ -216,7 +223,9 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   updateProgress: (id, progress, message) => {
     set(s => ({
       progressItems: s.progressItems.map(p =>
-        p.id === id ? { ...p, progress: Math.min(100, Math.max(-1, progress)), message } : p
+        p.id === id
+          ? { ...p, progress: Math.min(100, Math.max(-1, progress)), ...(message !== undefined ? { message } : {}) }
+          : p
       ),
     }))
   },

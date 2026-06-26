@@ -151,15 +151,20 @@ describe('dismiss / dismissAll', () => {
     expect(store().notifications).toHaveLength(1)
   })
 
-  // SUSPECTED BUG: dismiss() removes the notification but never decrements
-  // unreadCount, so the badge count can drift above the number of unread items
-  // actually present. Pinning current behavior here.
-  it('dismiss leaves unreadCount stale (does not decrement)', () => {
+  it('dismiss decrements unreadCount when the dismissed item was unread', () => {
     const id = store().notify({ title: 'a' })
     expect(store().unreadCount).toBe(1)
     store().dismiss(id)
     expect(store().notifications).toHaveLength(0)
-    expect(store().unreadCount).toBe(1) // stale on purpose (documents the bug)
+    expect(store().unreadCount).toBe(0)
+  })
+
+  it('dismiss does not change unreadCount when the dismissed item was already read', () => {
+    const id = store().notify({ title: 'a' })
+    store().markRead(id)
+    expect(store().unreadCount).toBe(0)
+    store().dismiss(id)
+    expect(store().unreadCount).toBe(0)
   })
 
   it('dismissAll keeps only pinned notifications', () => {
@@ -350,13 +355,13 @@ describe('progress notifications', () => {
     expect(store().progressItems[0].progress).toBe(-1) // clamped low
   })
 
-  it('updateProgress sets message=undefined when omitted (current behavior)', () => {
+  it('updateProgress preserves the existing message when omitted', () => {
     const id = store().startProgress('Job')
     store().updateProgress(id, 10, 'hi')
     expect(store().progressItems[0].message).toBe('hi')
     store().updateProgress(id, 20) // no message arg
-    // NOTE: store writes `message` unconditionally, so it is overwritten with undefined.
-    expect(store().progressItems[0].message).toBeUndefined()
+    // message is only written when provided (conditional spread), so it survives.
+    expect(store().progressItems[0].message).toBe('hi')
     expect(store().progressItems[0].progress).toBe(20)
   })
 
