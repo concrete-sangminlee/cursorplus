@@ -176,17 +176,15 @@ describe('duplicateConversation', () => {
     expect(dup.messages.map(m => m.content)).toEqual(['hi'])
   })
 
-  it('SUSPECTED BUG: duplicate shares the same messages array reference as the original', () => {
+  it('gives the duplicate an independent messages array (same contents, different reference)', () => {
     const id = store.getState().createConversation('Original')
     store.getState().addMessage(id, { role: 'assistant', content: 'hi' })
     const newId = store.getState().duplicateConversation(id)
 
     const orig = store.getState().conversations.find(c => c.id === id)!
     const dup = store.getState().conversations.find(c => c.id === newId)!
-    // The spread `...conv` copies the array *reference*; the messages array is
-    // shared. Store actions always replace the array immutably, so this rarely
-    // bites in practice, but the shared reference is still surprising.
-    expect(dup.messages).toBe(orig.messages)
+    expect(dup.messages).not.toBe(orig.messages)
+    expect(dup.messages).toEqual(orig.messages)
   })
 })
 

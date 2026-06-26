@@ -192,6 +192,9 @@ export const useAIConversationStore = create<AIConversationState>()(
           ...conv,
           id: newId,
           title: `${conv.title} (copy)`,
+          // Copy the messages array so the duplicate is independent of the
+          // original (a shallow spread would share the same array reference).
+          messages: [...conv.messages],
           createdAt: Date.now(),
           updatedAt: Date.now(),
           pinned: false,
